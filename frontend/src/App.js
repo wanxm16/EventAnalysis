@@ -8,6 +8,7 @@ import Layout from './components/Layout';
 import EventList from './pages/EventList';
 import EventDetail from './pages/EventDetail';
 import ClusterDetail from './pages/ClusterDetail';
+import ClusterList from './pages/ClusterList';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/" element={<EventList />} />
             <Route path="/events" element={<EventList />} />
             <Route path="/events/:eventId" element={<EventDetail />} />
+            <Route path="/cluster-list" element={<ClusterList />} />
             <Route path="/clusters/:eventUID" element={<ClusterDetail />} />
           </Routes>
         </Layout>

@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 import re
 import os
 from datetime import datetime
-from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions
+from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions
 
 class EventService:
     def __init__(self):
@@ -330,6 +330,120 @@ class EventService:
             levels=levels,
             categories=categories,
             related_event_options=related_event_options
+        )
+    
+    def get_cluster_list(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
+                        min_event_count: Optional[int] = None, max_event_count: Optional[int] = None,
+                        min_duration: Optional[float] = None, max_duration: Optional[float] = None) -> ClusterListPaginatedResponse:
+        """获取聚合事件列表（分页）"""
+        
+        if self.cluster_df.empty:
+            return ClusterListPaginatedResponse(
+                items=[], total=0, page=page, page_size=page_size, total_pages=0
+            )
+        
+        df = self.cluster_df.copy()
+        
+        # 只显示record_count > 1的记录
+        df = df[df['record_count'] > 1]
+        
+        # 应用搜索过滤（对描述进行搜索）
+        if search:
+            search_condition = df['cluster_description'].astype(str).str.contains(search, case=False, na=False)
+            df = df[search_condition]
+        
+        # 应用事件数量筛选
+        if min_event_count is not None:
+            df = df[df['record_count'] >= min_event_count]
+        
+        if max_event_count is not None:
+            df = df[df['record_count'] <= max_event_count]
+        
+        # 应用持续时间筛选
+        if min_duration is not None:
+            df = df[df['duration_days'] >= min_duration]
+        
+        if max_duration is not None:
+            df = df[df['duration_days'] <= max_duration]
+        
+        # 按record_count倒序排列，然后按duration_days倒序
+        df = df.sort_values(['record_count', 'duration_days'], ascending=[False, False])
+        
+        # 计算分页
+        total = len(df)
+        total_pages = (total + page_size - 1) // page_size
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        # 获取当前页数据
+        page_df = df.iloc[start_idx:end_idx]
+        
+        # 转换为响应模型
+        items = []
+        for _, row in page_df.iterrows():
+            cluster = ClusterListResponse(
+                EventUID=str(row.get('EventUID', '')),
+                cluster_description=str(row.get('cluster_description', '')),
+                record_count=int(row.get('record_count', 0)),
+                duration_days=float(row.get('duration_days', 0)) if pd.notna(row.get('duration_days')) else None,
+                first_report_time=str(row.get('first_report_time', '')),
+                last_report_time=str(row.get('last_report_time', ''))
+            )
+            items.append(cluster)
+        
+        return ClusterListPaginatedResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
+    
+    def get_cluster_filter_options(self) -> ClusterFilterOptions:
+        """获取聚合事件筛选选项"""
+        
+        if self.cluster_df.empty:
+            return ClusterFilterOptions(
+                event_count_ranges=[],
+                duration_ranges=[]
+            )
+        
+        # 只考虑record_count > 1的记录
+        df = self.cluster_df[self.cluster_df['record_count'] > 1]
+        
+        if df.empty:
+            return ClusterFilterOptions(
+                event_count_ranges=[],
+                duration_ranges=[]
+            )
+        
+        # 事件数量范围选项
+        event_count_ranges = []
+        max_count = df['record_count'].max()
+        if max_count >= 2:
+            event_count_ranges.append("2")
+        if max_count >= 3:
+            event_count_ranges.append("3-5")
+        if max_count >= 6:
+            event_count_ranges.append("6-10")
+        if max_count > 10:
+            event_count_ranges.append("10+")
+        
+        # 持续时间范围选项
+        duration_ranges = []
+        max_duration = df['duration_days'].max()
+        if pd.notna(max_duration) and max_duration > 0:
+            duration_ranges.append("0-1天")
+            if max_duration > 1:
+                duration_ranges.append("1-7天")
+            if max_duration > 7:
+                duration_ranges.append("7-30天")
+            if max_duration > 30:
+                duration_ranges.append("30天以上")
+        
+        return ClusterFilterOptions(
+            event_count_ranges=event_count_ranges,
+            duration_ranges=duration_ranges
         )
 
 # 创建全局服务实例

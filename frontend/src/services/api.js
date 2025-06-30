@@ -52,6 +52,16 @@ export const eventAPI = {
     return api.get('/filter-options');
   },
 
+  // 获取聚合事件列表
+  getClusterList: (params) => {
+    return api.get('/cluster-list', { params });
+  },
+
+  // 获取聚合事件筛选选项
+  getClusterFilterOptions: () => {
+    return api.get('/cluster-filter-options');
+  },
+
   // 健康检查
   healthCheck: () => {
     return api.get('/health');

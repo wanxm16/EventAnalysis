@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout as AntLayout, Menu, Typography } from 'antd';
-import { HomeOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const { Header, Content, Footer } = AntLayout;
@@ -20,6 +20,11 @@ const Layout = ({ children }) => {
       key: '/events',
       icon: <UnorderedListOutlined />,
       label: '事件列表',
+    },
+    {
+      key: '/cluster-list',
+      icon: <ClusterOutlined />,
+      label: '聚合事件列表',
     },
   ];
 

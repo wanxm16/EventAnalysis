@@ -63,4 +63,36 @@ class EventQuery(BaseModel):
     town: Optional[str] = None
     level: Optional[str] = None
     category: Optional[str] = None
-    related_events: Optional[str] = None  # 相关事件数量筛选 
+    related_events: Optional[str] = None  # 相关事件数量筛选
+
+class ClusterListResponse(BaseModel):
+    """聚合事件列表响应模型"""
+    EventUID: str
+    cluster_description: str
+    record_count: int
+    duration_days: Optional[float] = None
+    first_report_time: str
+    last_report_time: str
+
+class ClusterListPaginatedResponse(BaseModel):
+    """聚合事件列表分页响应模型"""
+    items: List[ClusterListResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+class ClusterQuery(BaseModel):
+    """聚合事件查询参数模型"""
+    page: int = 1
+    page_size: int = 20
+    search: Optional[str] = None  # 对描述进行搜索
+    min_event_count: Optional[int] = None  # 最小事件数量
+    max_event_count: Optional[int] = None  # 最大事件数量
+    min_duration: Optional[float] = None  # 最小持续时间（天）
+    max_duration: Optional[float] = None  # 最大持续时间（天）
+
+class ClusterFilterOptions(BaseModel):
+    """聚合事件筛选选项模型"""
+    event_count_ranges: List[str]
+    duration_ranges: List[str] 

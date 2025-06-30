@@ -5,7 +5,8 @@ import uvicorn
 
 from models import (
     EventResponse, EventDetailResponse, ClusterEventResponse, 
-    PaginatedResponse, FilterOptions, EventQuery
+    PaginatedResponse, FilterOptions, EventQuery,
+    ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions
 )
 from services import event_service
 
@@ -121,6 +122,52 @@ async def get_filter_options():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取筛选选项失败: {str(e)}")
+
+@app.get("/api/cluster-list", response_model=ClusterListPaginatedResponse, summary="获取聚合事件列表")
+async def get_cluster_list(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: Optional[str] = Query(None, description="搜索描述关键词"),
+    min_event_count: Optional[int] = Query(None, ge=2, description="最小事件数量"),
+    max_event_count: Optional[int] = Query(None, ge=2, description="最大事件数量"),
+    min_duration: Optional[float] = Query(None, ge=0, description="最小持续时间（天）"),
+    max_duration: Optional[float] = Query(None, ge=0, description="最大持续时间（天）")
+):
+    """
+    获取聚合事件列表，只显示record_count > 1的记录
+    
+    - **page**: 页码，从1开始
+    - **page_size**: 每页数量，1-100之间
+    - **search**: 搜索描述关键词
+    - **min_event_count**: 最小事件数量筛选
+    - **max_event_count**: 最大事件数量筛选
+    - **min_duration**: 最小持续时间筛选（天）
+    - **max_duration**: 最大持续时间筛选（天）
+    """
+    try:
+        result = event_service.get_cluster_list(
+            page=page,
+            page_size=page_size,
+            search=search,
+            min_event_count=min_event_count,
+            max_event_count=max_event_count,
+            min_duration=min_duration,
+            max_duration=max_duration
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取聚合事件列表失败: {str(e)}")
+
+@app.get("/api/cluster-filter-options", response_model=ClusterFilterOptions, summary="获取聚合事件筛选选项")
+async def get_cluster_filter_options():
+    """
+    获取聚合事件的筛选选项，包括事件数量范围、持续时间范围
+    """
+    try:
+        result = event_service.get_cluster_filter_options()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取聚合事件筛选选项失败: {str(e)}")
 
 # 运行应用
 if __name__ == "__main__":
