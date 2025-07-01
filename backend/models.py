@@ -14,6 +14,7 @@ class EventResponse(BaseModel):
     CallerID: Optional[str] = None
     EventUID: Optional[str] = None
     sequence_total: Optional[int] = None
+    报警人信息: Optional[str] = None
 
 class EventDetailResponse(BaseModel):
     """事件详情响应模型"""

@@ -152,18 +152,22 @@ const EventList = () => {
     },
     {
       title: '报警人信息',
-      key: 'caller_info',
-      width: 140,
-      render: (_, record) => (
-        <div style={{ fontSize: '12px' }}>
-          {record.CallerPhone && (
-            <div>电话: {record.CallerPhone}</div>
-          )}
-          {record.CallerID && (
-            <div>ID: {record.CallerID}</div>
-          )}
-        </div>
-      ),
+      dataIndex: '报警人信息',
+      key: '报警人信息',
+      width: 200,
+      ellipsis: {
+        showTitle: false,
+      },
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={text}>
+            <div style={{ fontSize: '12px', lineHeight: '16px' }}>
+              {text}
+            </div>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '相关事件',

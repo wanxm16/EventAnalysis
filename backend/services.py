@@ -5,12 +5,14 @@ import re
 import os
 from datetime import datetime
 from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions
+import json
 
 class EventService:
     def __init__(self):
         """初始化服务，加载数据"""
         self.detail_df = None
         self.cluster_df = None
+        self.info_df = None  # 新增报警人信息数据
         self.load_data()
     
     def load_data(self):
@@ -22,6 +24,7 @@ class EventService:
             
             detail_path = os.path.join(parent_dir, 'data', 'conflict_event_detail.csv')
             cluster_path = os.path.join(parent_dir, 'data', 'conflict_event.csv')
+            info_path = os.path.join(parent_dir, 'data', 'info_merge.csv')
             
             # 加载事件详情数据
             self.detail_df = pd.read_csv(detail_path)
@@ -29,16 +32,20 @@ class EventService:
             # 加载聚类事件数据  
             self.cluster_df = pd.read_csv(cluster_path)
             
+            # 加载报警人信息数据
+            self.info_df = pd.read_csv(info_path)
+            
             # 数据清洗和预处理
             self._preprocess_data()
             
-            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条")
+            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条")
             
         except Exception as e:
             print(f"数据加载失败: {e}")
             # 创建空的DataFrame作为fallback
             self.detail_df = pd.DataFrame()
             self.cluster_df = pd.DataFrame()
+            self.info_df = pd.DataFrame()
     
     def _preprocess_data(self):
         """预处理数据"""
@@ -54,6 +61,54 @@ class EventService:
         
         if not self.cluster_df.empty:
             self.cluster_df = self.cluster_df.fillna('')
+        
+        if not self.info_df.empty:
+            self.info_df = self.info_df.fillna('')
+    
+    def _get_caller_info(self, event_id: str) -> Optional[str]:
+        """获取事件的报警人信息"""
+        if self.info_df.empty:
+            return None
+        
+        # 查找对应事件的信息
+        info_row = self.info_df[self.info_df['event_id'].astype(str) == event_id]
+        
+        if info_row.empty:
+            return None
+        
+        try:
+            extracted_info_str = info_row.iloc[0]['extracted_info']
+            if not extracted_info_str or pd.isna(extracted_info_str):
+                return None
+            
+            # 解析JSON
+            info_list = json.loads(extracted_info_str)
+            
+            # 提取报警人信息
+            callers = []
+            for person in info_list:
+                if person.get('role') == '报警人':
+                    caller_info = []
+                    name = person.get('name')
+                    phone = person.get('phone')
+                    id_card = person.get('id')
+                    
+                    if name:
+                        caller_info.append(f"姓名: {name}")
+                    if phone:
+                        caller_info.append(f"电话: {phone}")
+                    if id_card:
+                        caller_info.append(f"身份证: {id_card}")
+                    
+                    if caller_info:
+                        callers.append(" | ".join(caller_info))
+            
+            # 如果有多个报警人，用分号分隔
+            return "; ".join(callers) if callers else None
+            
+        except (json.JSONDecodeError, KeyError, Exception) as e:
+            print(f"解析报警人信息失败: {event_id}, 错误: {e}")
+            return None
     
     def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
                    town: Optional[str] = None, level: Optional[str] = None,
@@ -121,8 +176,11 @@ class EventService:
         # 转换为响应模型
         items = []
         for _, row in page_df.iterrows():
+            event_id = str(row.get('事件编号', ''))
+            caller_info = self._get_caller_info(event_id)
+            
             event = EventResponse(
-                事件编号=str(row.get('事件编号', '')),
+                事件编号=event_id,
                 事件描述=str(row.get('事件描述', '')),
                 镇街名称=str(row.get('镇街名称', '')),
                 事件级别=str(row.get('事件级别', '')),
@@ -131,7 +189,8 @@ class EventService:
                 CallerPhone=str(row.get('CallerPhone', '')) if row.get('CallerPhone') else None,
                 CallerID=str(row.get('CallerID', '')) if row.get('CallerID') else None,
                 EventUID=str(row.get('EventUID', '')) if row.get('EventUID') else None,
-                sequence_total=int(row.get('sequence_total', 1)) if pd.notna(row.get('sequence_total')) else None
+                sequence_total=int(row.get('sequence_total', 1)) if pd.notna(row.get('sequence_total')) else None,
+                报警人信息=caller_info
             )
             items.append(event)
         
