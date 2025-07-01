@@ -267,6 +267,11 @@ const ClusterDetail = () => {
     navigate('/events');
   };
 
+  // 查看事件详情
+  const handleViewEvent = (eventId) => {
+    navigate(`/events/${eventId}`);
+  };
+
   // 构建时间线项目
   const buildTimelineItems = () => {
     if (!clusterDetail?.timeline) return [];
@@ -282,7 +287,12 @@ const ClusterDetail = () => {
         <div className="timeline-item">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
-              <strong>{item.事件编号}</strong>
+              <strong 
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleViewEvent(item.事件编号)}
+              >
+                {item.事件编号}
+              </strong>
               <Tag 
                 color={item.办结时间 ? 'green' : 'blue'} 
                 style={{ marginLeft: 8 }}

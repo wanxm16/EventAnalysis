@@ -135,3 +135,49 @@ class PersonSearchResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int 
+
+# 人员分析相关模型
+class PersonAnalysis(BaseModel):
+    """人员分析响应模型"""
+    phone: str
+    name: Optional[str] = None
+    id_card: Optional[str] = None
+    primary_role: Optional[str] = None
+    event_count: int
+    name_candidates: Optional[str] = None
+    id_candidates: Optional[str] = None
+
+class PersonAnalysisResponse(BaseModel):
+    """人员分析列表分页响应模型"""
+    items: List[PersonAnalysis]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+class PersonEvent(BaseModel):
+    """人员关联事件模型"""
+    事件编号: str
+    事件描述: str
+    上报时间: Optional[str] = None
+    办结时间: Optional[str] = None
+    处置结果: Optional[str] = None
+    role: Optional[str] = None  # 在该事件中的角色
+
+class PersonDetailResponse(BaseModel):
+    """人员详情响应模型"""
+    phone: str
+    name: Optional[str] = None
+    id_card: Optional[str] = None
+    primary_role: Optional[str] = None
+    event_count: int
+    name_candidates: Optional[str] = None
+    id_candidates: Optional[str] = None
+    events: List[PersonEvent]
+
+class PersonAnalysisQuery(BaseModel):
+    """人员分析查询参数模型"""
+    page: int = 1
+    page_size: int = 20
+    search: Optional[str] = None  # 搜索姓名或手机号
+    role: Optional[str] = None    # 按角色筛选

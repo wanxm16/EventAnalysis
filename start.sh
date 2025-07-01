@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 事件查询系统一键启动脚本
+# 海曙区事件分析系统一键启动脚本
 # 使用方法: ./start.sh [选项]
 # 选项:
 #   --skip-install        跳过依赖安装
@@ -13,6 +13,14 @@
 #   --help               显示帮助信息
 
 set -e  # 出错时立即退出
+
+# 加载配置文件
+load_config() {
+    if [ -f "config.env" ]; then
+        print_info "加载配置文件: config.env"
+        source config.env
+    fi
+}
 
 # 默认配置
 BACKEND_PORT=8000
@@ -65,7 +73,7 @@ print_header() {
 
 # 显示帮助信息
 show_help() {
-    echo "事件查询系统启动脚本"
+    echo "海曙区事件分析系统启动脚本"
     echo ""
     echo "用法: $0 [选项]"
     echo ""
@@ -77,6 +85,7 @@ show_help() {
     echo "  --prod                   生产模式"
     echo "  --port-backend PORT      指定后端端口（默认8000）"
     echo "  --port-frontend PORT     指定前端端口（默认3000）"
+    echo "  --status                 快速检查服务状态"
     echo "  --help                   显示此帮助信息"
     echo ""
     echo "示例:"
@@ -85,6 +94,28 @@ show_help() {
     echo "  $0 --dev --skip-install  # 开发模式，跳过安装"
     echo "  $0 --port-backend 8080   # 使用自定义后端端口"
     exit 0
+}
+
+# 快速状态检查
+show_quick_status() {
+    echo "海曙区事件分析系统 - 服务状态"
+    echo "========================================"
+    
+    # 检查后端状态
+    if curl -s --max-time 2 "http://localhost:${BACKEND_PORT:-8000}/docs" > /dev/null 2>&1; then
+        print_success "后端服务: 运行中 (http://localhost:${BACKEND_PORT:-8000})"
+    else
+        print_error "后端服务: 未运行"
+    fi
+    
+    # 检查前端状态  
+    if curl -s --max-time 2 "http://localhost:${FRONTEND_PORT:-3000}" > /dev/null 2>&1; then
+        print_success "前端服务: 运行中 (http://localhost:${FRONTEND_PORT:-3000})"
+    else
+        print_error "前端服务: 未运行"
+    fi
+    
+    echo "========================================"
 }
 
 # 解析命令行参数
@@ -118,6 +149,10 @@ parse_args() {
             --port-frontend)
                 FRONTEND_PORT="$2"
                 shift 2
+                ;;
+            --status)
+                show_quick_status
+                exit 0
                 ;;
             --help)
                 show_help
@@ -261,7 +296,7 @@ advanced_health_check() {
             ;;
         "frontend")
             # 检查前端页面是否加载
-            if curl -s "http://localhost:$port" | grep -q "事件查询系统"; then
+            if curl -s "http://localhost:$port" | grep -q "海曙区事件分析系统\|React"; then
                 print_success "前端页面加载正常"
                 return 0
             else
@@ -477,6 +512,9 @@ cleanup() {
 
 # 主函数
 main() {
+    # 加载配置文件
+    load_config
+    
     # 解析命令行参数
     parse_args "$@"
     
@@ -485,7 +523,7 @@ main() {
     validate_port $FRONTEND_PORT "前端"
     
     # 打印启动信息
-    print_header "启动事件查询系统"
+    print_header "启动海曙区事件分析系统"
     echo "========================================"
     
     if [ "$DEV_MODE" = true ]; then

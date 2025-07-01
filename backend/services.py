@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 import re
 import os
 from datetime import datetime
-from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo, PersonSearchQuery, PersonSearchResponse
+from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo, PersonSearchQuery, PersonSearchResponse, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery
 import json
 
 class EventService:
@@ -14,6 +14,7 @@ class EventService:
         self.cluster_df = None
         self.info_df = None  # 新增报警人信息数据
         self.people_df = None  # 新增人口信息数据
+        self.phone_master_df = None  # 新增人员分析数据
         self.load_data()
     
     def load_data(self):
@@ -27,6 +28,7 @@ class EventService:
             cluster_path = os.path.join(parent_dir, 'data', 'conflict_event.csv')
             info_path = os.path.join(parent_dir, 'data', 'info_merge.csv')
             people_path = os.path.join(parent_dir, 'data', 'people_info_simple.csv')
+            phone_master_path = os.path.join(parent_dir, 'data', 'phone_master_index.csv')
             
             # 加载事件详情数据
             self.detail_df = pd.read_csv(detail_path)
@@ -40,10 +42,13 @@ class EventService:
             # 加载人口信息数据（使用更强的CSV解析参数）
             self.people_df = pd.read_csv(people_path, sep=',', quotechar='"', quoting=1, engine='python')
             
+            # 加载人员分析数据
+            self.phone_master_df = pd.read_csv(phone_master_path)
+            
             # 数据清洗和预处理
             self._preprocess_data()
             
-            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条")
+            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条, 人员分析 {len(self.phone_master_df)} 条")
             
         except Exception as e:
             print(f"数据加载失败: {e}")
@@ -52,6 +57,7 @@ class EventService:
             self.cluster_df = pd.DataFrame()
             self.info_df = pd.DataFrame()
             self.people_df = pd.DataFrame()
+            self.phone_master_df = pd.DataFrame()
     
     def _preprocess_data(self):
         """预处理数据"""
@@ -73,6 +79,14 @@ class EventService:
         
         if not self.people_df.empty:
             self.people_df = self.people_df.fillna('')
+        
+        if not self.phone_master_df.empty:
+            self.phone_master_df = self.phone_master_df.fillna('')
+            # 确保event_count是数字类型
+            if 'event_count' in self.phone_master_df.columns:
+                self.phone_master_df['event_count'] = pd.to_numeric(
+                    self.phone_master_df['event_count'], errors='coerce'
+                ).fillna(0).astype(int)
     
     def _get_caller_info(self, event_id: str) -> Optional[str]:
         """获取事件的报警人信息"""
@@ -754,6 +768,160 @@ class EventService:
             occupation_code=str(row.get('occupation_code', '')) if row.get('occupation_code') else None,
             employer_name=str(row.get('employer_name', '')) if row.get('employer_name') else None
         )
+    
+    def get_person_analysis(self, query: PersonAnalysisQuery) -> PersonAnalysisResponse:
+        """获取人员分析列表（分页）"""
+        
+        if self.phone_master_df.empty:
+            return PersonAnalysisResponse(
+                items=[], total=0, page=query.page, page_size=query.page_size, total_pages=0
+            )
+        
+        df = self.phone_master_df.copy()
+        
+        # 应用搜索过滤
+        if query.search:
+            search_escaped = re.escape(query.search)
+            search_condition = (
+                df['name'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df['phone'].astype(str).str.contains(search_escaped, case=False, na=False)
+            )
+            df = df[search_condition]
+        
+        # 应用角色筛选
+        if query.role:
+            df = df[df['primary_role'].astype(str).str.contains(query.role, case=False, na=False)]
+        
+        # 按event_count倒序排列
+        df = df.sort_values('event_count', ascending=False)
+        
+        # 计算分页
+        total = len(df)
+        total_pages = (total + query.page_size - 1) // query.page_size
+        start_idx = (query.page - 1) * query.page_size
+        end_idx = start_idx + query.page_size
+        
+        # 获取当前页数据
+        page_df = df.iloc[start_idx:end_idx]
+        
+        # 转换为响应模型
+        items = []
+        for _, row in page_df.iterrows():
+            person = PersonAnalysis(
+                phone=str(row.get('phone', '')),
+                name=str(row.get('name', '')) if row.get('name') else None,
+                id_card=str(row.get('id_card', '')) if row.get('id_card') else None,
+                primary_role=str(row.get('primary_role', '')) if row.get('primary_role') else None,
+                event_count=int(row.get('event_count', 0)),
+                name_candidates=str(row.get('name_candidates', '')) if row.get('name_candidates') else None,
+                id_candidates=str(row.get('id_candidates', '')) if row.get('id_candidates') else None
+            )
+            items.append(person)
+        
+        return PersonAnalysisResponse(
+            items=items,
+            total=total,
+            page=query.page,
+            page_size=query.page_size,
+            total_pages=total_pages
+        )
+    
+    def get_person_analysis_detail(self, phone: str) -> Optional[PersonDetailResponse]:
+        """获取人员分析详情"""
+        
+        if self.phone_master_df.empty:
+            return None
+        
+        # 查找人员信息
+        person_row = self.phone_master_df[self.phone_master_df['phone'].astype(str) == phone]
+        
+        if person_row.empty:
+            return None
+        
+        row = person_row.iloc[0]
+        
+        # 获取相关事件列表
+        related_events_str = str(row.get('related_events', ''))
+        events = []
+        
+        if related_events_str and related_events_str != 'nan':
+            try:
+                # 解析事件ID列表（格式：['id1', 'id2', ...]）
+                import ast
+                event_ids = ast.literal_eval(related_events_str)
+                
+                # 获取每个事件的详细信息
+                for event_id in event_ids:
+                    event_detail = self.get_event_detail(str(event_id))
+                    if event_detail:
+                        # 在事件中查找这个人的角色
+                        role = self._get_person_role_in_event(phone, str(event_id))
+                        
+                        event = PersonEvent(
+                            事件编号=event_detail.事件编号,
+                            事件描述=event_detail.事件描述,
+                            上报时间=event_detail.上报时间,
+                            办结时间=event_detail.办结时间,
+                            处置结果=event_detail.处置结果,
+                            role=role
+                        )
+                        events.append(event)
+                        
+            except Exception as e:
+                print(f"解析相关事件失败: {e}")
+        
+        # 按时间排序事件
+        events.sort(key=lambda x: pd.to_datetime(x.上报时间, errors='coerce') if x.上报时间 else pd.Timestamp.min)
+        
+        return PersonDetailResponse(
+            phone=str(row.get('phone', '')),
+            name=str(row.get('name', '')) if row.get('name') else None,
+            id_card=str(row.get('id_card', '')) if row.get('id_card') else None,
+            primary_role=str(row.get('primary_role', '')) if row.get('primary_role') else None,
+            event_count=int(row.get('event_count', 0)),
+            name_candidates=str(row.get('name_candidates', '')) if row.get('name_candidates') else None,
+            id_candidates=str(row.get('id_candidates', '')) if row.get('id_candidates') else None,
+            events=events
+        )
+    
+    def _get_person_role_in_event(self, phone: str, event_id: str) -> Optional[str]:
+        """获取人员在特定事件中的角色"""
+        if self.info_df.empty:
+            return None
+        
+        # 查找对应事件的信息
+        info_row = self.info_df[self.info_df['event_id'].astype(str) == event_id]
+        
+        if info_row.empty:
+            return None
+        
+        try:
+            extracted_info_str = info_row.iloc[0]['extracted_info']
+            if not extracted_info_str or pd.isna(extracted_info_str):
+                return None
+            
+            # 解析JSON
+            info_list = json.loads(extracted_info_str)
+            
+            # 查找匹配的手机号
+            for person in info_list:
+                person_phone = person.get('phone', '')
+                if person_phone == phone:
+                    return person.get('role', '未知')
+                    
+        except (json.JSONDecodeError, KeyError, Exception) as e:
+            print(f"解析角色信息失败: {event_id}, 错误: {e}")
+            return None
+        
+        return None
+    
+    def get_person_analysis_roles(self) -> List[str]:
+        """获取人员分析中的所有角色选项"""
+        if self.phone_master_df.empty:
+            return []
+        
+        roles = self.phone_master_df['primary_role'].dropna().unique()
+        return sorted([str(role) for role in roles if str(role).strip()])
 
 # 创建全局服务实例
 event_service = EventService() 

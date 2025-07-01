@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 事件查询系统停止脚本
+# 海曙区事件分析系统停止脚本
 # 使用方法: ./stop.sh [选项]
 # 选项:
 #   --force              强制停止（跳过优雅停机）
@@ -55,7 +55,7 @@ print_header() {
 
 # 显示帮助信息
 show_help() {
-    echo "事件查询系统停止脚本"
+    echo "海曙区事件分析系统停止脚本"
     echo ""
     echo "用法: $0 [选项]"
     echo ""
@@ -250,11 +250,13 @@ stop_backend() {
 stop_frontend() {
     print_step "检查前端服务..."
     
-    # 查找所有前端进程
+    # 查找所有前端进程（包含React和Node.js进程）
     local pnpm_pids=$(pgrep -f "pnpm.*start" 2>/dev/null || true)
     local npm_pids=$(pgrep -f "npm.*start" 2>/dev/null || true)
     local yarn_pids=$(pgrep -f "yarn.*start" 2>/dev/null || true)
-    local all_pids="$pnpm_pids $npm_pids $yarn_pids"
+    local node_pids=$(pgrep -f "node.*react-scripts" 2>/dev/null || true)
+    local webpack_pids=$(pgrep -f "webpack.*serve" 2>/dev/null || true)
+    local all_pids="$pnpm_pids $npm_pids $yarn_pids $node_pids $webpack_pids"
     
     # 去除空格和重复
     all_pids=$(echo $all_pids | tr ' ' '\n' | sort -u | tr '\n' ' ')
@@ -401,7 +403,7 @@ main() {
     fi
     
     # 打印停止信息
-    print_header "停止事件查询系统"
+    print_header "停止海曙区事件分析系统"
     echo "========================================"
     
     if [ "$FORCE_STOP" = true ]; then

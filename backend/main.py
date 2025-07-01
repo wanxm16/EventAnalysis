@@ -9,7 +9,12 @@ from models import (
     ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions,
     PersonInfo,
     PersonSearchQuery,
-    PersonSearchResponse
+    PersonSearchResponse,
+    PersonAnalysis,
+    PersonAnalysisResponse,
+    PersonEvent,
+    PersonDetailResponse,
+    PersonAnalysisQuery
 )
 from services import event_service
 
@@ -205,6 +210,61 @@ async def get_person_detail(person_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取人员详细信息失败: {str(e)}")
+
+@app.get("/api/person-analysis", response_model=PersonAnalysisResponse, summary="获取人员分析列表")
+async def get_person_analysis(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: Optional[str] = Query(None, description="搜索关键词（姓名或手机号）"),
+    role: Optional[str] = Query(None, description="角色筛选")
+):
+    """
+    获取人员分析列表，按事件数量倒序排列
+    
+    - **page**: 页码，从1开始
+    - **page_size**: 每页数量，1-100之间
+    - **search**: 搜索关键词，支持姓名或手机号
+    - **role**: 按角色筛选，如"报警人"、"对方"等
+    """
+    try:
+        query = PersonAnalysisQuery(
+            page=page,
+            page_size=page_size,
+            search=search,
+            role=role
+        )
+        result = event_service.get_person_analysis(query)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取人员分析列表失败: {str(e)}")
+
+@app.get("/api/person-analysis/roles", response_model=list[str], summary="获取人员分析角色选项")
+async def get_person_analysis_roles():
+    """
+    获取人员分析中的所有角色选项
+    """
+    try:
+        result = event_service.get_person_analysis_roles()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取角色选项失败: {str(e)}")
+
+@app.get("/api/person-analysis/{phone}", response_model=PersonDetailResponse, summary="获取人员分析详情")
+async def get_person_analysis_detail(phone: str):
+    """
+    根据手机号获取人员分析详情，包含关联的事件列表
+    
+    - **phone**: 手机号码
+    """
+    try:
+        result = event_service.get_person_analysis_detail(phone)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"未找到手机号为 {phone} 的人员信息")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取人员分析详情失败: {str(e)}")
 
 # 运行应用
 if __name__ == "__main__":
