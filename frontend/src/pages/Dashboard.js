@@ -40,13 +40,6 @@ const Dashboard = () => {
       features: ['人员统计', '角色分析', '人口库搜索', '关联事件']
     },
     {
-      title: '统计报告',
-      description: '全面的数据统计分析报告，展示系统核心指标和业务洞察',
-      icon: <DatabaseOutlined style={{ fontSize: '32px', color: '#13c2c2' }} />,
-      path: '/statistics-report',
-      features: ['数据概览', '质量分析', '关键发现', '技术指标']
-    },
-    {
       title: '事件问答',
       description: '基于AI的智能问答系统，快速获取事件相关信息和洞察',
       icon: <QuestionCircleOutlined style={{ fontSize: '32px', color: '#722ed1' }} />,
@@ -129,7 +122,7 @@ const Dashboard = () => {
       <Card title="核心功能模块" style={{ marginBottom: '24px' }}>
         <Row gutter={[24, 24]}>
           {functionCards.map((item, index) => (
-            <Col xs={24} sm={12} lg={8} xl={24/5} key={index}>
+            <Col xs={24} sm={12} lg={12} xl={6} key={index}>
               <Card
                 hoverable
                 style={{ height: '100%', cursor: 'pointer' }}
