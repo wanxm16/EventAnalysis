@@ -272,7 +272,7 @@ class EventService:
         row = event_row.iloc[0]
         
         # 计算相关事件数量
-        related_events_count = None
+        related_events_count = 0  # 默认为0
         sequence_total = row.get('sequence_total')
         if pd.notna(sequence_total) and sequence_total > 1:
             related_events_count = int(sequence_total) - 1

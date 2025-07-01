@@ -248,7 +248,7 @@ const EventDetail = () => {
       </Card>
 
       {/* 聚类信息 */}
-      {eventDetail.EventUID && (
+      {eventDetail.EventUID && eventDetail.related_events_count > 0 && (
         <Card
           title={
             <Space>
@@ -289,7 +289,7 @@ const EventDetail = () => {
           <Button onClick={handleBack}>
             返回列表
           </Button>
-          {eventDetail.EventUID && (
+          {eventDetail.EventUID && eventDetail.related_events_count > 0 && (
             <Button
               type="primary"
               icon={<ClusterOutlined />}
