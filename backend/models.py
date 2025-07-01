@@ -30,6 +30,8 @@ class EventDetailResponse(BaseModel):
     EventUID: Optional[str] = None
     sequence_total: Optional[int] = None
     related_events_count: Optional[int] = None
+    报警人信息: Optional[str] = None
+    当事人信息: Optional[str] = None
 
 class ClusterEventResponse(BaseModel):
     """聚类事件响应模型"""

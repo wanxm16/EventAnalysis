@@ -149,6 +149,20 @@ const ClusterDetail = () => {
             {item.事件描述}
           </div>
           
+          {/* 报警人信息 */}
+          {item.报警人信息 && (
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4 }}>
+              <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
+            </div>
+          )}
+          
+          {/* 当事人信息 */}
+          {item.当事人信息 && (
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4 }}>
+              <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
+            </div>
+          )}
+          
           {item.处置结果 && (
             <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#f5f5f5', borderRadius: '4px' }}>
               <strong>处置结果:</strong> {item.处置结果}

@@ -110,6 +110,54 @@ class EventService:
             print(f"解析报警人信息失败: {event_id}, 错误: {e}")
             return None
     
+    def _get_involved_parties_info(self, event_id: str) -> Optional[str]:
+        """获取事件的当事人信息（除报警人外的所有人）"""
+        if self.info_df.empty:
+            return None
+        
+        # 查找对应事件的信息
+        info_row = self.info_df[self.info_df['event_id'].astype(str) == event_id]
+        
+        if info_row.empty:
+            return None
+        
+        try:
+            extracted_info_str = info_row.iloc[0]['extracted_info']
+            if not extracted_info_str or pd.isna(extracted_info_str):
+                return None
+            
+            # 解析JSON
+            info_list = json.loads(extracted_info_str)
+            
+            # 提取当事人信息（除报警人外的所有人）
+            parties = []
+            for person in info_list:
+                if person.get('role') != '报警人':  # 除报警人外的所有人
+                    party_info = []
+                    role = person.get('role', '当事人')
+                    name = person.get('name')
+                    phone = person.get('phone')
+                    id_card = person.get('id')
+                    
+                    if role and role != '报警人':
+                        party_info.append(f"角色: {role}")
+                    if name:
+                        party_info.append(f"姓名: {name}")
+                    if phone:
+                        party_info.append(f"电话: {phone}")
+                    if id_card:
+                        party_info.append(f"身份证: {id_card}")
+                    
+                    if party_info:
+                        parties.append(" | ".join(party_info))
+            
+            # 如果有多个当事人，用分号分隔
+            return "; ".join(parties) if parties else None
+            
+        except (json.JSONDecodeError, KeyError, Exception) as e:
+            print(f"解析当事人信息失败: {event_id}, 错误: {e}")
+            return None
+    
     def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
                    town: Optional[str] = None, level: Optional[str] = None,
                    category: Optional[str] = None, related_events: Optional[str] = None) -> PaginatedResponse:
@@ -124,14 +172,21 @@ class EventService:
         
         # 应用搜索过滤
         if search:
-            search_condition = (
-                df['事件编号'].astype(str).str.contains(search, case=False, na=False) |
-                df['事件描述'].astype(str).str.contains(search, case=False, na=False) |
-                df['处置结果'].astype(str).str.contains(search, case=False, na=False) |
-                df['CallerPhone'].astype(str).str.contains(search, case=False, na=False) |
-                df['CallerID'].astype(str).str.contains(search, case=False, na=False)
+            # 为每个事件获取报警人信息用于搜索
+            df_with_caller = df.copy()
+            df_with_caller['报警人信息_搜索'] = df_with_caller['事件编号'].apply(
+                lambda x: self._get_caller_info(str(x)) or ''
             )
-            df = df[search_condition]
+            
+            search_condition = (
+                df_with_caller['事件编号'].astype(str).str.contains(search, case=False, na=False) |
+                df_with_caller['事件描述'].astype(str).str.contains(search, case=False, na=False) |
+                df_with_caller['处置结果'].astype(str).str.contains(search, case=False, na=False) |
+                df_with_caller['CallerPhone'].astype(str).str.contains(search, case=False, na=False) |
+                df_with_caller['CallerID'].astype(str).str.contains(search, case=False, na=False) |
+                df_with_caller['报警人信息_搜索'].astype(str).str.contains(search, case=False, na=False)
+            )
+            df = df_with_caller[search_condition].drop(columns=['报警人信息_搜索'])
         
         # 应用筛选条件
         if town:
@@ -222,6 +277,10 @@ class EventService:
         if pd.notna(sequence_total) and sequence_total > 1:
             related_events_count = int(sequence_total) - 1
         
+        # 获取报警人信息和当事人信息
+        caller_info = self._get_caller_info(event_id)
+        involved_parties_info = self._get_involved_parties_info(event_id)
+        
         return EventDetailResponse(
             事件编号=str(row.get('事件编号', '')),
             事件描述=str(row.get('事件描述', '')),
@@ -234,7 +293,9 @@ class EventService:
             处置结果=str(row.get('处置结果', '')) if row.get('处置结果') else None,
             EventUID=str(row.get('EventUID', '')) if row.get('EventUID') else None,
             sequence_total=int(sequence_total) if pd.notna(sequence_total) else None,
-            related_events_count=related_events_count
+            related_events_count=related_events_count,
+            报警人信息=caller_info,
+            当事人信息=involved_parties_info
         )
     
     def get_cluster_detail(self, event_uid: str) -> Optional[ClusterEventResponse]:
@@ -353,12 +414,20 @@ class EventService:
         timeline = []
         
         for _, row in events_df.iterrows():
+            event_id = str(row.get('事件编号', ''))
+            
+            # 获取报警人信息和当事人信息
+            caller_info = self._get_caller_info(event_id)
+            involved_parties_info = self._get_involved_parties_info(event_id)
+            
             timeline_item = {
-                '事件编号': str(row.get('事件编号', '')),
+                '事件编号': event_id,
                 '事件描述': str(row.get('事件描述', '')),
                 '上报时间': str(row.get('上报时间', '')),
                 '办结时间': str(row.get('办结时间', '')) if row.get('办结时间') else None,
-                '处置结果': str(row.get('处置结果', '')) if row.get('处置结果') else None
+                '处置结果': str(row.get('处置结果', '')) if row.get('处置结果') else None,
+                '报警人信息': caller_info,
+                '当事人信息': involved_parties_info
             }
             timeline.append(timeline_item)
         

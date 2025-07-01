@@ -228,6 +228,22 @@ const EventDetail = () => {
           <Descriptions.Item label="处置结果" span={2}>
             {eventDetail.处置结果 || '-'}
           </Descriptions.Item>
+          
+          <Descriptions.Item label="报警人信息" span={2}>
+            {eventDetail.报警人信息 ? (
+              <div style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>
+                {eventDetail.报警人信息}
+              </div>
+            ) : '-'}
+          </Descriptions.Item>
+          
+          <Descriptions.Item label="当事人信息" span={2}>
+            {eventDetail.当事人信息 ? (
+              <div style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>
+                {eventDetail.当事人信息}
+              </div>
+            ) : '-'}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
