@@ -98,4 +98,40 @@ class ClusterQuery(BaseModel):
 class ClusterFilterOptions(BaseModel):
     """聚合事件筛选选项模型"""
     event_count_ranges: List[str]
-    duration_ranges: List[str] 
+    duration_ranges: List[str]
+
+class PersonInfo(BaseModel):
+    """人口信息响应模型"""
+    person_id: str
+    name_cn: str
+    id_card_no: str  # 脱敏后的身份证
+    mobile_phone: str  # 脱敏后的手机号
+    gender: Optional[str] = None
+    birth_date: Optional[str] = None
+    nationality_code: Optional[str] = None
+    ethnicity_code: Optional[str] = None
+    hukou_province: Optional[str] = None
+    hukou_city: Optional[str] = None
+    hukou_county: Optional[str] = None
+    reside_province: Optional[str] = None
+    reside_city: Optional[str] = None
+    reside_county: Optional[str] = None
+    highest_education: Optional[str] = None
+    occupation_code: Optional[str] = None
+    employer_name: Optional[str] = None
+
+class PersonSearchQuery(BaseModel):
+    """人口信息搜索查询模型"""
+    name: Optional[str] = None
+    id_card: Optional[str] = None  # 脱敏的身份证
+    phone: Optional[str] = None    # 脱敏的手机号
+    page: int = 1
+    page_size: int = 10
+
+class PersonSearchResponse(BaseModel):
+    """人口信息搜索响应模型"""
+    items: List[PersonInfo]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int 

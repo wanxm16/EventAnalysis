@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 import re
 import os
 from datetime import datetime
-from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions
+from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo, PersonSearchQuery, PersonSearchResponse
 import json
 
 class EventService:
@@ -13,6 +13,7 @@ class EventService:
         self.detail_df = None
         self.cluster_df = None
         self.info_df = None  # 新增报警人信息数据
+        self.people_df = None  # 新增人口信息数据
         self.load_data()
     
     def load_data(self):
@@ -25,6 +26,7 @@ class EventService:
             detail_path = os.path.join(parent_dir, 'data', 'conflict_event_detail.csv')
             cluster_path = os.path.join(parent_dir, 'data', 'conflict_event.csv')
             info_path = os.path.join(parent_dir, 'data', 'info_merge.csv')
+            people_path = os.path.join(parent_dir, 'data', 'people_info_simple.csv')
             
             # 加载事件详情数据
             self.detail_df = pd.read_csv(detail_path)
@@ -35,10 +37,13 @@ class EventService:
             # 加载报警人信息数据
             self.info_df = pd.read_csv(info_path)
             
+            # 加载人口信息数据（使用更强的CSV解析参数）
+            self.people_df = pd.read_csv(people_path, sep=',', quotechar='"', quoting=1, engine='python')
+            
             # 数据清洗和预处理
             self._preprocess_data()
             
-            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条")
+            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条")
             
         except Exception as e:
             print(f"数据加载失败: {e}")
@@ -46,6 +51,7 @@ class EventService:
             self.detail_df = pd.DataFrame()
             self.cluster_df = pd.DataFrame()
             self.info_df = pd.DataFrame()
+            self.people_df = pd.DataFrame()
     
     def _preprocess_data(self):
         """预处理数据"""
@@ -64,6 +70,9 @@ class EventService:
         
         if not self.info_df.empty:
             self.info_df = self.info_df.fillna('')
+        
+        if not self.people_df.empty:
+            self.people_df = self.people_df.fillna('')
     
     def _get_caller_info(self, event_id: str) -> Optional[str]:
         """获取事件的报警人信息"""
@@ -172,6 +181,9 @@ class EventService:
         
         # 应用搜索过滤
         if search:
+            # 转义正则表达式特殊字符，避免搜索包含*等字符时出错
+            search_escaped = re.escape(search)
+            
             # 为每个事件获取报警人信息用于搜索
             df_with_caller = df.copy()
             df_with_caller['报警人信息_搜索'] = df_with_caller['事件编号'].apply(
@@ -179,12 +191,12 @@ class EventService:
             )
             
             search_condition = (
-                df_with_caller['事件编号'].astype(str).str.contains(search, case=False, na=False) |
-                df_with_caller['事件描述'].astype(str).str.contains(search, case=False, na=False) |
-                df_with_caller['处置结果'].astype(str).str.contains(search, case=False, na=False) |
-                df_with_caller['CallerPhone'].astype(str).str.contains(search, case=False, na=False) |
-                df_with_caller['CallerID'].astype(str).str.contains(search, case=False, na=False) |
-                df_with_caller['报警人信息_搜索'].astype(str).str.contains(search, case=False, na=False)
+                df_with_caller['事件编号'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df_with_caller['事件描述'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df_with_caller['处置结果'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df_with_caller['CallerPhone'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df_with_caller['CallerID'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df_with_caller['报警人信息_搜索'].astype(str).str.contains(search_escaped, case=False, na=False)
             )
             df = df_with_caller[search_condition].drop(columns=['报警人信息_搜索'])
         
@@ -572,6 +584,175 @@ class EventService:
         return ClusterFilterOptions(
             event_count_ranges=event_count_ranges,
             duration_ranges=duration_ranges
+        )
+    
+    def _mask_id_card(self, id_card: str) -> str:
+        """对身份证号码进行脱敏处理"""
+        if not id_card or len(id_card) < 6:
+            return id_card
+        
+        if len(id_card) == 18:
+            # 18位身份证：保留前4位和后4位，中间10位用*替代
+            return id_card[:4] + '*' * 10 + id_card[-4:]
+        elif len(id_card) == 15:
+            # 15位身份证：保留前3位和后3位，中间9位用*替代
+            return id_card[:3] + '*' * 9 + id_card[-3:]
+        else:
+            # 其他长度：前三分之一和后三分之一保留，中间用*替代
+            show_len = len(id_card) // 3
+            return id_card[:show_len] + '*' * (len(id_card) - 2 * show_len) + id_card[-show_len:]
+    
+    def _mask_phone(self, phone: str) -> str:
+        """对手机号码进行脱敏处理"""
+        if not phone or len(phone) < 7:
+            return phone
+        
+        if len(phone) == 11:
+            # 11位手机号：保留前3位和后4位，中间4位用*替代
+            return phone[:3] + '*' * 4 + phone[-4:]
+        else:
+            # 其他长度：保留前3位和后3位，中间用*替代
+            return phone[:3] + '*' * (len(phone) - 6) + phone[-3:]
+    
+    def _match_masked_id_card(self, search_id: str, original_id: str) -> bool:
+        """匹配脱敏身份证号码"""
+        if not search_id or not original_id:
+            return False
+        
+        # 如果查询的是脱敏格式，尝试匹配
+        if '*' in search_id:
+            # 按照前四后四的规则进行匹配
+            parts = search_id.split('*')
+            if len(parts) >= 2:
+                prefix = parts[0]  # 前缀
+                suffix = parts[-1] # 后缀
+                
+                # 确保前缀至少4位，后缀至少4位
+                if len(prefix) >= 4 and len(suffix) >= 4:
+                    return (original_id.startswith(prefix) and 
+                           original_id.endswith(suffix) and
+                           len(original_id) >= len(prefix) + len(suffix))
+        
+        # 如果查询的是完整号码，直接匹配
+        return search_id == original_id
+    
+    def _match_masked_phone(self, search_phone: str, original_phone: str) -> bool:
+        """匹配脱敏手机号码"""
+        if not search_phone or not original_phone:
+            return False
+        
+        # 如果查询的是脱敏格式，尝试匹配
+        if '*' in search_phone:
+            # 按照前三后四的规则进行匹配
+            parts = search_phone.split('*')
+            if len(parts) >= 2:
+                prefix = parts[0]  # 前缀
+                suffix = parts[-1] # 后缀
+                
+                # 确保前缀至少3位，后缀至少4位
+                if len(prefix) >= 3 and len(suffix) >= 4:
+                    return (original_phone.startswith(prefix) and 
+                           original_phone.endswith(suffix) and
+                           len(original_phone) >= len(prefix) + len(suffix))
+        
+        # 如果查询的是完整号码，直接匹配
+        return search_phone == original_phone
+    
+    def search_people(self, query: PersonSearchQuery) -> PersonSearchResponse:
+        """搜索人口信息"""
+        if self.people_df.empty:
+            return PersonSearchResponse(
+                items=[], total=0, page=query.page, page_size=query.page_size, total_pages=0
+            )
+        
+        df = self.people_df.copy()
+        
+        # 应用搜索条件
+        if query.name:
+            df = df[df['name_cn'].astype(str).str.contains(query.name, case=False, na=False)]
+        
+        if query.id_card:
+            # 对身份证进行匹配（支持脱敏格式）
+            mask = df.apply(lambda row: self._match_masked_id_card(query.id_card, str(row['id_card_no'])), axis=1)
+            df = df[mask]
+        
+        if query.phone:
+            # 对手机号进行匹配（支持脱敏格式）
+            mask = df.apply(lambda row: self._match_masked_phone(query.phone, str(row['mobile_phone'])), axis=1)
+            df = df[mask]
+        
+        # 计算分页
+        total = len(df)
+        total_pages = (total + query.page_size - 1) // query.page_size
+        start_idx = (query.page - 1) * query.page_size
+        end_idx = start_idx + query.page_size
+        
+        # 获取当前页数据
+        page_df = df.iloc[start_idx:end_idx]
+        
+        # 转换为响应模型
+        items = []
+        for _, row in page_df.iterrows():
+            person = PersonInfo(
+                person_id=str(row.get('person_id', '')),
+                name_cn=str(row.get('name_cn', '')),
+                id_card_no=self._mask_id_card(str(row.get('id_card_no', ''))),
+                mobile_phone=self._mask_phone(str(row.get('mobile_phone', ''))),
+                gender=str(row.get('gender', '')) if row.get('gender') else None,
+                birth_date=str(row.get('birth_date', '')) if row.get('birth_date') else None,
+                nationality_code=str(row.get('nationality_code', '')) if row.get('nationality_code') else None,
+                ethnicity_code=str(row.get('ethnicity_code', '')) if row.get('ethnicity_code') else None,
+                hukou_province=str(row.get('hukou_province', '')) if row.get('hukou_province') else None,
+                hukou_city=str(row.get('hukou_city', '')) if row.get('hukou_city') else None,
+                hukou_county=str(row.get('hukou_county', '')) if row.get('hukou_county') else None,
+                reside_province=str(row.get('reside_province', '')) if row.get('reside_province') else None,
+                reside_city=str(row.get('reside_city', '')) if row.get('reside_city') else None,
+                reside_county=str(row.get('reside_county', '')) if row.get('reside_county') else None,
+                highest_education=str(row.get('highest_education', '')) if row.get('highest_education') else None,
+                occupation_code=str(row.get('occupation_code', '')) if row.get('occupation_code') else None,
+                employer_name=str(row.get('employer_name', '')) if row.get('employer_name') else None
+            )
+            items.append(person)
+        
+        return PersonSearchResponse(
+            items=items,
+            total=total,
+            page=query.page,
+            page_size=query.page_size,
+            total_pages=total_pages
+        )
+    
+    def get_person_detail(self, person_id: str) -> Optional[PersonInfo]:
+        """获取人员详细信息"""
+        if self.people_df.empty:
+            return None
+        
+        person_row = self.people_df[self.people_df['person_id'].astype(str) == person_id]
+        
+        if person_row.empty:
+            return None
+        
+        row = person_row.iloc[0]
+        
+        # 返回详细信息（脱敏处理）
+        return PersonInfo(
+            person_id=str(row.get('person_id', '')),
+            name_cn=str(row.get('name_cn', '')),
+            id_card_no=self._mask_id_card(str(row.get('id_card_no', ''))),
+            mobile_phone=self._mask_phone(str(row.get('mobile_phone', ''))),
+            gender=str(row.get('gender', '')) if row.get('gender') else None,
+            birth_date=str(row.get('birth_date', '')) if row.get('birth_date') else None,
+            nationality_code=str(row.get('nationality_code', '')) if row.get('nationality_code') else None,
+            ethnicity_code=str(row.get('ethnicity_code', '')) if row.get('ethnicity_code') else None,
+            hukou_province=str(row.get('hukou_province', '')) if row.get('hukou_province') else None,
+            hukou_city=str(row.get('hukou_city', '')) if row.get('hukou_city') else None,
+            hukou_county=str(row.get('hukou_county', '')) if row.get('hukou_county') else None,
+            reside_province=str(row.get('reside_province', '')) if row.get('reside_province') else None,
+            reside_city=str(row.get('reside_city', '')) if row.get('reside_city') else None,
+            reside_county=str(row.get('reside_county', '')) if row.get('reside_county') else None,
+            highest_education=str(row.get('highest_education', '')) if row.get('highest_education') else None,
+            occupation_code=str(row.get('occupation_code', '')) if row.get('occupation_code') else None,
+            employer_name=str(row.get('employer_name', '')) if row.get('employer_name') else None
         )
 
 # 创建全局服务实例

@@ -13,6 +13,11 @@ import {
   Col,
   Statistic,
   Divider,
+  Drawer,
+  Form,
+  Input,
+  Table,
+  Modal,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -21,6 +26,8 @@ import {
   UserOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
+  SearchOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { eventAPI } from '../services/api';
@@ -31,6 +38,20 @@ const ClusterDetail = () => {
   
   const [loading, setLoading] = useState(false);
   const [clusterDetail, setClusterDetail] = useState(null);
+  
+  // 人口搜索相关状态
+  const [searchDrawerVisible, setSearchDrawerVisible] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [personDetailVisible, setPersonDetailVisible] = useState(false);
+  const [searchForm] = Form.useForm();
+  
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 10,
+    total: 0
+  });
 
   // 加载聚类事件详情
   const loadClusterDetail = async () => {
@@ -43,6 +64,135 @@ const ClusterDetail = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 人口搜索API调用
+  const searchPeople = async (searchData, page = 1) => {
+    try {
+      setSearchLoading(true);
+      const response = await fetch('http://localhost:8000/api/people/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...searchData,
+          page,
+          page_size: pagination.pageSize
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('搜索失败');
+      }
+      
+      const data = await response.json();
+      setSearchResults(data.items);
+      setPagination({
+        ...pagination,
+        current: data.page,
+        total: data.total
+      });
+    } catch (error) {
+      message.error('搜索失败: ' + error.message);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+  
+  // 获取人员详情
+  const fetchPersonDetail = async (personId) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/people/${personId}`);
+      if (!response.ok) {
+        throw new Error('获取人员详情失败');
+      }
+      const data = await response.json();
+      setSelectedPerson(data);
+      setPersonDetailVisible(true);
+    } catch (error) {
+      message.error('获取人员详情失败: ' + error.message);
+    }
+  };
+  
+  // 解析报警人信息
+  const parseCallerInfo = (callerInfo) => {
+    if (!callerInfo) return {};
+    
+    const parts = callerInfo.split('|').map(part => part.trim());
+    const info = {};
+    
+    parts.forEach(part => {
+      if (part.includes('姓名:')) {
+        info.name = part.split('姓名:')[1].trim();
+      } else if (part.includes('电话:')) {
+        info.phone = part.split('电话:')[1].trim();
+      } else if (part.includes('身份证:')) {
+        info.idCard = part.split('身份证:')[1].trim();
+      }
+    });
+    
+    return info;
+  };
+  
+  // 解析当事人信息
+  const parseInvolvedPartiesInfo = (partiesInfo) => {
+    if (!partiesInfo) return {};
+    
+    const parts = partiesInfo.split('|').map(part => part.trim());
+    const info = {};
+    
+    parts.forEach(part => {
+      if (part.includes('角色:')) {
+        info.role = part.split('角色:')[1].trim();
+      } else if (part.includes('姓名:')) {
+        info.name = part.split('姓名:')[1].trim();
+      } else if (part.includes('电话:')) {
+        info.phone = part.split('电话:')[1].trim();
+      } else if (part.includes('身份证:')) {
+        info.idCard = part.split('身份证:')[1].trim();
+      }
+    });
+    
+    return info;
+  };
+  
+  // 打开搜索抽屉
+  const openSearchDrawer = (personInfo, personType = 'caller') => {
+    let personData = {};
+    
+    if (personType === 'caller') {
+      personData = parseCallerInfo(personInfo);
+    } else if (personType === 'party') {
+      personData = parseInvolvedPartiesInfo(personInfo);
+    }
+    
+    const searchData = {
+      name: personData.name || '',
+      phone: personData.phone || '',
+      id_card: personData.idCard || ''
+    };
+    
+    searchForm.setFieldsValue(searchData);
+    setSearchDrawerVisible(true);
+    setSearchResults([]);
+    
+    // 自动触发搜索
+    if (searchData.name || searchData.phone || searchData.id_card) {
+      searchPeople(searchData);
+    }
+  };
+  
+  // 执行搜索
+  const handleSearch = () => {
+    const searchData = searchForm.getFieldsValue();
+    searchPeople(searchData);
+  };
+  
+  // 分页处理
+  const handleTableChange = (page) => {
+    const searchData = searchForm.getFieldsValue();
+    searchPeople(searchData, page.current);
   };
 
   // 解析特殊时间格式 (如 "26/5/25 8:20")
@@ -151,15 +301,39 @@ const ClusterDetail = () => {
           
           {/* 报警人信息 */}
           {item.报警人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4 }}>
-              <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
+              </div>
+              <Button
+                type="link"
+                size="small"
+                icon={<SearchOutlined />}
+                onClick={() => openSearchDrawer(item.报警人信息, 'caller')}
+                style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}
+                title="搜索报警人信息"
+              >
+                搜索
+              </Button>
             </div>
           )}
           
           {/* 当事人信息 */}
           {item.当事人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4 }}>
-              <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
+              </div>
+              <Button
+                type="link"
+                size="small"
+                icon={<SearchOutlined />}
+                onClick={() => openSearchDrawer(item.当事人信息, 'party')}
+                style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}
+                title="搜索当事人信息"
+              >
+                搜索
+              </Button>
             </div>
           )}
           
@@ -362,6 +536,142 @@ const ClusterDetail = () => {
           </Button>
         </Space>
       </Card>
+
+      {/* 人口搜索抽屉 */}
+      <Drawer
+        title="人口信息搜索"
+        placement="right"
+        width={800}
+        onClose={() => setSearchDrawerVisible(false)}
+        open={searchDrawerVisible}
+      >
+        <Form
+          form={searchForm}
+          layout="vertical"
+          style={{ marginBottom: 16 }}
+        >
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="name" label="姓名">
+                <Input placeholder="请输入姓名" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="phone" label="电话号码">
+                <Input placeholder="请输入电话号码" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="id_card" label="身份证号">
+                <Input placeholder="请输入身份证号" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item>
+            <Button type="primary" onClick={handleSearch} loading={searchLoading}>
+              搜索
+            </Button>
+          </Form.Item>
+        </Form>
+
+        <Table
+          columns={[
+            {
+              title: '姓名',
+              dataIndex: 'name_cn',
+              key: 'name_cn',
+              width: 120,
+            },
+            {
+              title: '身份证号码',
+              dataIndex: 'id_card_no',
+              key: 'id_card_no',
+              width: 180,
+            },
+            {
+              title: '电话号码',
+              dataIndex: 'mobile_phone',
+              key: 'mobile_phone',
+              width: 150,
+            },
+            {
+              title: '性别',
+              dataIndex: 'gender',
+              key: 'gender',
+              width: 80,
+            },
+            {
+              title: '出生日期',
+              dataIndex: 'birth_date',
+              key: 'birth_date',
+              width: 120,
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 80,
+              render: (_, record) => (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => fetchPersonDetail(record.person_id)}
+                >
+                  详情
+                </Button>
+              ),
+            },
+          ]}
+          dataSource={searchResults}
+          loading={searchLoading}
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `共 ${total} 条记录`,
+          }}
+          onChange={handleTableChange}
+          rowKey="person_id"
+          size="small"
+          scroll={{ x: 700 }}
+        />
+      </Drawer>
+
+      {/* 人员详情弹窗 */}
+      <Modal
+        title="人员详情"
+        open={personDetailVisible}
+        onCancel={() => setPersonDetailVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setPersonDetailVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={600}
+      >
+        {selectedPerson && (
+          <Descriptions column={2} bordered>
+            <Descriptions.Item label="姓名" span={2}>
+              {selectedPerson.name_cn}
+            </Descriptions.Item>
+            <Descriptions.Item label="身份证号码" span={2}>
+              {selectedPerson.id_card_no}
+            </Descriptions.Item>
+            <Descriptions.Item label="电话号码">
+              {selectedPerson.mobile_phone}
+            </Descriptions.Item>
+            <Descriptions.Item label="性别">
+              {selectedPerson.gender}
+            </Descriptions.Item>
+            <Descriptions.Item label="出生日期">
+              {selectedPerson.birth_date}
+            </Descriptions.Item>
+            <Descriptions.Item label="人员ID">
+              {selectedPerson.person_id}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 };

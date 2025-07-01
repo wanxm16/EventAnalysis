@@ -6,7 +6,10 @@ import uvicorn
 from models import (
     EventResponse, EventDetailResponse, ClusterEventResponse, 
     PaginatedResponse, FilterOptions, EventQuery,
-    ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions
+    ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions,
+    PersonInfo,
+    PersonSearchQuery,
+    PersonSearchResponse
 )
 from services import event_service
 
@@ -168,6 +171,40 @@ async def get_cluster_filter_options():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取聚合事件筛选选项失败: {str(e)}")
+
+@app.post("/api/people/search", response_model=PersonSearchResponse, summary="搜索人口信息")
+async def search_people(query: PersonSearchQuery):
+    """
+    搜索人口信息
+    
+    - **name**: 姓名（模糊搜索）
+    - **id_card**: 身份证号码（支持脱敏格式）
+    - **phone**: 手机号码（支持脱敏格式）
+    - **page**: 页码，从1开始
+    - **page_size**: 每页数量，1-100之间
+    """
+    try:
+        result = event_service.search_people(query)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"搜索人口信息失败: {str(e)}")
+
+@app.get("/api/people/{person_id}", response_model=PersonInfo, summary="获取人员详细信息")
+async def get_person_detail(person_id: str):
+    """
+    根据人员ID获取详细信息
+    
+    - **person_id**: 人员ID
+    """
+    try:
+        result = event_service.get_person_detail(person_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"未找到人员ID为 {person_id} 的人员信息")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取人员详细信息失败: {str(e)}")
 
 # 运行应用
 if __name__ == "__main__":

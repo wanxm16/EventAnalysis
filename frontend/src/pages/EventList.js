@@ -260,6 +260,25 @@ const EventList = () => {
     loadEvents({ page: 1 });
   };
 
+  // 快速搜索
+  const handleQuickSearch = (eventId) => {
+    // 设置搜索框的值
+    form.setFieldsValue({ search: eventId });
+    
+    // 执行搜索
+    const params = {
+      search: eventId,
+      town: undefined,
+      level: undefined,
+      category: undefined,
+      related_events: undefined,
+    };
+    
+    setSearchParams(params);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadEvents({ page: 1, ...params });
+  };
+
   // 处理分页变化
   const handleTableChange = (pagination) => {
     setPagination(pagination);
@@ -362,6 +381,39 @@ const EventList = () => {
             </Space>
           </Form.Item>
         </Form>
+        
+        {/* 快速搜索链接 */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+          <div style={{ marginBottom: 8, color: '#666', fontSize: '14px' }}>
+            🔍 快速搜索：
+          </div>
+          <Space wrap>
+            <Button 
+              type="link" 
+              size="small"
+              onClick={() => handleQuickSearch('GLW202505070325')}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              GLW202505070325
+            </Button>
+            <Button 
+              type="link" 
+              size="small"
+              onClick={() => handleQuickSearch('SQW202505310509')}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              SQW202505310509
+            </Button>
+            <Button 
+              type="link" 
+              size="small"
+              onClick={() => handleQuickSearch('JXIW202505310016')}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              JXIW202505310016
+            </Button>
+          </Space>
+        </div>
       </Card>
 
       {/* 事件列表表格 */}
