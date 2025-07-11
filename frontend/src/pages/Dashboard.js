@@ -43,8 +43,7 @@ const Dashboard = () => {
       title: '事件问答',
       description: '基于AI的智能问答系统，快速获取事件相关信息和洞察',
       icon: <QuestionCircleOutlined style={{ fontSize: '32px', color: '#722ed1' }} />,
-      isExternal: true,
-      url: 'http://192.168.2.63:8501/',
+      path: '/ai-chat',
       features: ['智能问答', '数据洞察', '趋势分析', '决策支持']
     }
   ];

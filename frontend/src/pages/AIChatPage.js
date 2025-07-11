@@ -170,9 +170,9 @@ const AIChatPage = () => {
       <div style={{ 
         flex: 1, 
         padding: '16px 24px',
-        paddingBottom: '120px', // 为底部输入框留出空间
+        paddingBottom: '70px', // 进一步减少底部空间，匹配更紧凑的输入框
         overflowY: 'auto',
-        maxHeight: 'calc(100vh - 200px)'
+        maxHeight: 'calc(100vh - 140px)' // 进一步减少最大高度限制
       }}>
         <div style={{ 
           maxWidth: '900px', 
@@ -352,7 +352,7 @@ const AIChatPage = () => {
         right: 0,
         background: '#fff',
         borderTop: '1px solid #e8e8e8',
-        padding: '16px 24px',
+        padding: '12px 24px', // 减少垂直padding
         boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
         zIndex: 1000
       }}>
@@ -368,7 +368,7 @@ const AIChatPage = () => {
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="输入您的问题... (Ctrl/Cmd+Enter 发送)"
-            autoSize={{ minRows: 2, maxRows: 4 }}
+            autoSize={{ minRows: 1, maxRows: 3 }} // 减少最小和最大行数
             style={{
               flex: 1,
               borderRadius: '12px',
@@ -384,8 +384,8 @@ const AIChatPage = () => {
             size="large"
             style={{
               borderRadius: '12px',
-              height: '48px',
-              minWidth: '48px'
+              height: '40px', // 减少按钮高度
+              minWidth: '40px' // 减少按钮宽度
             }}
           />
         </div>
@@ -393,9 +393,9 @@ const AIChatPage = () => {
           fontSize: '12px', 
           color: '#999', 
           textAlign: 'center',
-          marginTop: '8px',
+          marginTop: '6px', // 减少上边距
           maxWidth: '900px',
-          margin: '8px auto 0'
+          margin: '6px auto 0' // 减少总体边距
         }}>
           💡 提示：使用 Ctrl/Cmd+Enter 快速发送消息
         </div>
