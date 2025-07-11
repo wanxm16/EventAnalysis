@@ -13,6 +13,7 @@ import ClusterList from './pages/ClusterList';
 import PersonAnalysisList from './pages/PersonAnalysisList';
 import PersonAnalysisDetail from './pages/PersonAnalysisDetail';
 import StatisticsReport from './pages/StatisticsReport';
+import AIChatPage from './pages/AIChatPage';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
             <Route path="/clusters/:eventUID" element={<ClusterDetail />} />
             <Route path="/person-analysis" element={<PersonAnalysisList />} />
             <Route path="/person-analysis/:phone" element={<PersonAnalysisDetail />} />
+            <Route path="/ai-chat" element={<AIChatPage />} />
             <Route path="/statistics-report" element={<StatisticsReport />} />
           </Routes>
         </Layout>

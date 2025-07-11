@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 
 class EventResponse(BaseModel):
@@ -181,3 +181,30 @@ class PersonAnalysisQuery(BaseModel):
     page_size: int = 20
     search: Optional[str] = None  # 搜索姓名或手机号
     role: Optional[str] = None    # 按角色筛选
+
+# AI问答相关模型
+class ChatMessage(BaseModel):
+    """聊天消息模型"""
+    role: str  # user, assistant, system
+    content: str
+    timestamp: Optional[datetime] = None
+
+class ChatQuery(BaseModel):
+    """AI问答查询模型"""
+    message: str
+    conversation_id: Optional[str] = None  # 对话ID，用于上下文追踪
+
+class ChatResponse(BaseModel):
+    """AI问答响应模型"""
+    success: bool
+    message: str
+    query_type: Optional[str] = None  # sql, vector, hybrid
+    conversation_id: Optional[str] = None
+    data: Optional[Any] = None  # SQL结果、搜索结果等详细数据
+    
+class ChatStatistics(BaseModel):
+    """AI问答统计信息模型"""
+    total_events: int
+    by_town: List[Dict[str, Any]]
+    by_level: List[Dict[str, Any]]  
+    by_category: List[Dict[str, Any]]

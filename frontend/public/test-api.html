@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API连接测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        #output { white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>API连接测试</h1>
+    
+    <button onclick="testHealthCheck()">测试健康检查</button>
+    <button onclick="testChatAPI()">测试聊天API</button>
+    <button onclick="clearOutput()">清除输出</button>
+    
+    <div id="output"></div>
+
+    <script>
+        function log(message, isError = false) {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.className = `test-result ${isError ? 'error' : 'success'}`;
+            div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        async function testHealthCheck() {
+            try {
+                log('正在测试健康检查...');
+                const response = await fetch('http://localhost:8000/api/chat/health');
+                const data = await response.json();
+                log('健康检查成功: ' + JSON.stringify(data, null, 2));
+            } catch (error) {
+                log('健康检查失败: ' + error.message, true);
+                console.error('Health check error:', error);
+            }
+        }
+
+        async function testChatAPI() {
+            try {
+                log('正在测试聊天API...');
+                const response = await fetch('http://localhost:8000/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: '测试连接'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log('聊天API测试成功!');
+                log('响应: ' + JSON.stringify(data, null, 2));
+            } catch (error) {
+                log('聊天API测试失败: ' + error.message, true);
+                console.error('Chat API error:', error);
+            }
+        }
+
+        // 页面加载后自动运行健康检查
+        window.onload = function() {
+            log('页面加载完成，开始API连接测试...');
+            testHealthCheck();
+        };
+    </script>
+</body>
+</html> 

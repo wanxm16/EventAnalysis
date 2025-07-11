@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout as AntLayout, Menu, Typography } from 'antd';
-import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, QuestionCircleOutlined, BarChartOutlined } from '@ant-design/icons';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, QuestionCircleOutlined, BarChartOutlined, CommentOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const { Header, Content, Footer } = AntLayout;
@@ -32,8 +32,8 @@ const Layout = ({ children }) => {
       label: '人员分析',
     },
     {
-      key: 'qa-external',
-      icon: <QuestionCircleOutlined />,
+      key: '/ai-chat',
+      icon: <CommentOutlined />,
       label: '事件问答',
     },
     {
@@ -44,12 +44,7 @@ const Layout = ({ children }) => {
   ];
 
   const handleMenuClick = ({ key }) => {
-    if (key === 'qa-external') {
-      // 在新窗口打开外部链接
-      window.open('http://192.168.2.63:8501/', '_blank', 'noopener,noreferrer');
-    } else {
-      navigate(key);
-    }
+    navigate(key);
   };
 
   return (

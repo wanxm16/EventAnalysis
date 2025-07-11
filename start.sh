@@ -10,6 +10,7 @@
 #   --prod                生产模式
 #   --port-backend PORT   指定后端端口（默认8000）
 #   --port-frontend PORT  指定前端端口（默认3000）
+#   --init-vector         强制重新初始化向量数据库
 #   --help               显示帮助信息
 
 set -e  # 出错时立即退出
@@ -30,6 +31,7 @@ BACKEND_ONLY=false
 FRONTEND_ONLY=false
 DEV_MODE=false
 PROD_MODE=false
+INIT_VECTOR=false
 
 # 颜色定义
 RED='\033[0;31m'
@@ -71,6 +73,10 @@ print_header() {
     echo -e "${PURPLE}🚀 $1${NC}"
 }
 
+print_progress() {
+    echo -e "${YELLOW}⏳ $1${NC}"
+}
+
 # 显示帮助信息
 show_help() {
     echo "海曙区事件分析系统启动脚本"
@@ -85,6 +91,7 @@ show_help() {
     echo "  --prod                   生产模式"
     echo "  --port-backend PORT      指定后端端口（默认8000）"
     echo "  --port-frontend PORT     指定前端端口（默认3000）"
+    echo "  --init-vector            强制重新初始化向量数据库"
     echo "  --status                 快速检查服务状态"
     echo "  --help                   显示此帮助信息"
     echo ""
@@ -150,6 +157,10 @@ parse_args() {
                 FRONTEND_PORT="$2"
                 shift 2
                 ;;
+            --init-vector)
+                INIT_VECTOR=true
+                shift
+                ;;
             --status)
                 show_quick_status
                 exit 0
@@ -195,28 +206,75 @@ check_command() {
     fi
 }
 
-# 检查Python虚拟环境
-check_python_env() {
+# 改进的虚拟环境检查和创建
+setup_python_env() {
+    print_step "检查Python虚拟环境..."
+    
+    # 检查项目根目录的虚拟环境
+    if [ -d "venv" ]; then
+        print_success "发现项目虚拟环境: venv/"
+        VENV_PATH="venv"
+        return 0
+    fi
+    
+    # 检查backend目录的虚拟环境
     if [ -d "backend/venv" ]; then
-        print_info "检测到Python虚拟环境，将自动激活"
+        print_info "发现后端虚拟环境: backend/venv/"
+        VENV_PATH="backend/venv"
         return 0
-    elif [ -d "venv" ]; then
-        print_info "检测到项目根目录虚拟环境，将自动激活"
-        return 0
+    fi
+    
+    # 如果没有虚拟环境，提示创建
+    print_warning "未检测到Python虚拟环境"
+    print_info "建议创建虚拟环境以确保依赖隔离"
+    
+    # 询问是否创建虚拟环境
+    if [ "$PROD_MODE" = true ]; then
+        # 生产模式自动创建
+        create_virtual_env
     else
-        print_warning "未检测到虚拟环境，建议创建虚拟环境"
-        return 1
+        print_info "是否创建虚拟环境？(推荐) [Y/n]"
+        read -r response
+        if [[ "$response" =~ ^[Nn]$ ]]; then
+            print_warning "跳过虚拟环境创建，使用系统Python环境"
+            VENV_PATH=""
+        else
+            create_virtual_env
+        fi
+    fi
+}
+
+# 创建虚拟环境
+create_virtual_env() {
+    print_step "创建Python虚拟环境..."
+    
+    # 在项目根目录创建虚拟环境
+    if python3 -m venv venv; then
+        print_success "虚拟环境创建成功: venv/"
+        VENV_PATH="venv"
+    else
+        print_error "虚拟环境创建失败"
+        exit 1
     fi
 }
 
 # 激活Python虚拟环境
 activate_python_env() {
-    if [ -d "backend/venv" ]; then
-        log_debug "激活backend/venv虚拟环境"
-        source backend/venv/bin/activate
-    elif [ -d "venv" ]; then
-        log_debug "激活根目录venv虚拟环境"
-        source venv/bin/activate
+    if [ -n "$VENV_PATH" ] && [ -d "$VENV_PATH" ]; then
+        log_debug "激活虚拟环境: $VENV_PATH"
+        source "$VENV_PATH/bin/activate"
+        
+        # 验证虚拟环境是否激活成功
+        if [ -n "$VIRTUAL_ENV" ]; then
+            print_success "虚拟环境已激活: $VIRTUAL_ENV"
+            log_debug "Python路径: $(which python3)"
+            log_debug "pip路径: $(which pip)"
+        else
+            print_error "虚拟环境激活失败"
+            exit 1
+        fi
+    else
+        print_warning "使用系统Python环境"
     fi
 }
 
@@ -251,30 +309,43 @@ check_port() {
     fi
 }
 
-# 健康检查
+# 改进的健康检查
 health_check() {
     local url=$1
     local service_name=$2
-    local max_attempts=30
+    local max_attempts=60  # 增加到60秒
     local attempt=0
     
-    print_step "等待 $service_name 启动..."
+    print_progress "等待 $service_name 启动中..."
+    
+    # 显示进度条
     while [ $attempt -lt $max_attempts ]; do
-        if curl -s --max-time 2 "$url" > /dev/null 2>&1; then
+        if curl -s --max-time 3 "$url" > /dev/null 2>&1; then
+            echo ""  # 换行
             print_success "$service_name 启动成功！"
             return 0
         fi
+        
         attempt=$((attempt + 1))
+        
+        # 更好的进度显示
         if [ "$DEV_MODE" = true ]; then
-            echo -n "[$attempt/$max_attempts]"
+            printf "\r⏳ [$attempt/$max_attempts] 等待 $service_name 响应..."
         else
-            echo -n "."
+            # 显示旋转符号
+            case $((attempt % 4)) in
+                0) printf "\r⏳ 启动中 |" ;;
+                1) printf "\r⏳ 启动中 /" ;;
+                2) printf "\r⏳ 启动中 -" ;;
+                3) printf "\r⏳ 启动中 \\" ;;
+            esac
         fi
+        
         sleep 1
     done
     
     echo ""
-    print_error "$service_name 启动超时"
+    print_error "$service_name 启动超时 (${max_attempts}秒)"
     return 1
 }
 
@@ -285,22 +356,43 @@ advanced_health_check() {
     
     case $service in
         "backend")
-            # 检查后端API是否正常
-            if curl -s "http://localhost:$port/api/filter-options" | grep -q "towns"; then
-                print_success "后端API功能正常"
-                return 0
+            print_step "检查后端API功能..."
+            
+            # 检查基础API端点
+            if curl -s --max-time 5 "http://localhost:$port/docs" | grep -q "FastAPI\|OpenAPI"; then
+                print_success "✓ API文档可访问"
             else
-                print_warning "后端API响应异常"
+                print_warning "✗ API文档访问异常"
                 return 1
             fi
+            
+            # 检查核心API端点
+            if curl -s --max-time 5 "http://localhost:$port/api/filter-options" | grep -q "towns"; then
+                print_success "✓ 数据API功能正常"
+            else
+                print_warning "✗ 数据API响应异常"
+                return 1
+            fi
+            
+            # 检查AI聊天API
+            if curl -s --max-time 5 "http://localhost:$port/api/chat/health" > /dev/null 2>&1; then
+                print_success "✓ AI聊天API可用"
+            else
+                print_warning "✗ AI聊天API不可用"
+            fi
+            
+            print_success "后端服务功能检查完成"
+            return 0
             ;;
         "frontend")
-            # 检查前端页面是否加载
-            if curl -s "http://localhost:$port" | grep -q "海曙区事件分析系统\|React"; then
-                print_success "前端页面加载正常"
+            print_step "检查前端页面..."
+            
+            # 检查首页加载
+            if curl -s --max-time 5 "http://localhost:$port" | grep -q "海曙区事件分析系统\|React"; then
+                print_success "✓ 前端页面加载正常"
                 return 0
             else
-                print_warning "前端页面加载异常"
+                print_warning "✗ 前端页面加载异常"
                 return 1
             fi
             ;;
@@ -323,15 +415,52 @@ install_dependencies() {
                 return 1
             fi
             
+            # 激活虚拟环境
+            if [ -n "$VENV_PATH" ]; then
+                source "../$VENV_PATH/bin/activate"
+                log_debug "后端依赖安装使用虚拟环境: $VIRTUAL_ENV"
+            fi
+            
+            # 检查关键依赖是否已安装
+            local key_deps=("fastapi" "uvicorn" "pandas" "duckdb" "chromadb" "openai")
+            local missing_deps=()
+            
+            for dep in "${key_deps[@]}"; do
+                if ! python3 -c "import $dep" 2>/dev/null; then
+                    missing_deps+=("$dep")
+                fi
+            done
+            
             # 检查是否需要安装
-            if [ ! -f ".deps_installed" ] || [ "requirements.txt" -nt ".deps_installed" ]; then
-                activate_python_env
-                pip3 install -r requirements.txt
-                if [ $? -eq 0 ]; then
+            if [ ${#missing_deps[@]} -gt 0 ] || [ ! -f ".deps_installed" ] || [ "requirements.txt" -nt ".deps_installed" ]; then
+                if [ ${#missing_deps[@]} -gt 0 ]; then
+                    print_warning "发现缺失的依赖: ${missing_deps[*]}"
+                fi
+                
+                print_progress "正在安装Python依赖包..."
+                
+                # 配置清华镜像站
+                print_info "使用清华大学镜像站加速安装"
+                pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+                pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+                
+                # 升级pip
+                pip install --upgrade pip
+                
+                # 安装依赖
+                if pip install -r requirements.txt; then
                     touch .deps_installed
                     print_success "Python依赖安装完成"
                 else
                     print_error "Python依赖安装失败"
+                    # 显示详细错误信息
+                    print_info "尝试逐个安装依赖以定位问题..."
+                    while read -r requirement; do
+                        if [ -n "$requirement" ] && [ "${requirement:0:1}" != "#" ]; then
+                            print_info "安装: $requirement"
+                            pip install "$requirement" || print_warning "安装失败: $requirement"
+                        fi
+                    done < requirements.txt
                     cd ..
                     return 1
                 fi
@@ -363,10 +492,32 @@ install_dependencies() {
             
             log_debug "使用包管理器: $pkg_manager"
             
-            # 检查是否需要安装
-            if [ ! -f ".deps_installed" ] || [ "package.json" -nt ".deps_installed" ]; then
-                $pkg_manager install
-                if [ $? -eq 0 ]; then
+            # 检查node_modules是否存在
+            local needs_install=false
+            if [ ! -d "node_modules" ] || [ ! -f ".deps_installed" ] || [ "package.json" -nt ".deps_installed" ]; then
+                needs_install=true
+            fi
+            
+            if [ "$needs_install" = true ]; then
+                print_progress "正在安装前端依赖包 (使用 $pkg_manager)..."
+                
+                # 配置国内镜像站
+                case $pkg_manager in
+                    "pnpm")
+                        print_info "配置pnpm使用淘宝镜像"
+                        pnpm config set registry https://registry.npmmirror.com/
+                        ;;
+                    "yarn")
+                        print_info "配置yarn使用淘宝镜像"
+                        yarn config set registry https://registry.npmmirror.com/
+                        ;;
+                    "npm")
+                        print_info "配置npm使用淘宝镜像"
+                        npm config set registry https://registry.npmmirror.com/
+                        ;;
+                esac
+                
+                if $pkg_manager install; then
                     touch .deps_installed
                     print_success "前端依赖安装完成"
                 else
@@ -395,7 +546,12 @@ start_backend() {
     fi
     
     # 激活虚拟环境
-    activate_python_env
+    if [ -n "$VENV_PATH" ]; then
+        source "../$VENV_PATH/bin/activate"
+        print_info "后端服务将在虚拟环境中运行: $VIRTUAL_ENV"
+    else
+        print_warning "后端服务将在系统Python环境中运行"
+    fi
     
     # 设置环境变量
     export PORT=$BACKEND_PORT
@@ -403,16 +559,34 @@ start_backend() {
         export DEBUG=true
     fi
     
-    # 启动服务
+    # 启动服务并捕获输出
+    print_progress "正在启动后端服务 (端口: $BACKEND_PORT)..."
+    
     if [ "$DEV_MODE" = true ]; then
+        # 开发模式显示详细输出
         python3 main.py &
+        BACKEND_PID=$!
     else
-        python3 main.py > /dev/null 2>&1 &
+        # 生产模式重定向输出但保留错误信息
+        python3 main.py > backend.log 2>&1 &
+        BACKEND_PID=$!
     fi
     
-    BACKEND_PID=$!
     log_debug "后端进程ID: $BACKEND_PID"
     cd ..
+    
+    # 等待一下让进程启动
+    sleep 2
+    
+    # 检查进程是否还在运行
+    if ! kill -0 $BACKEND_PID 2>/dev/null; then
+        print_error "后端进程启动后立即退出，请检查日志"
+        if [ -f "backend/backend.log" ]; then
+            print_info "错误日志:"
+            tail -10 backend/backend.log
+        fi
+        return 1
+    fi
     
     # 健康检查
     if health_check "http://localhost:$BACKEND_PORT/" "后端服务"; then
@@ -421,6 +595,11 @@ start_backend() {
         fi
         return 0
     else
+        # 如果健康检查失败，显示日志
+        if [ -f "backend/backend.log" ]; then
+            print_error "后端启动失败，最近日志:"
+            tail -20 backend/backend.log
+        fi
         return 1
     fi
 }
@@ -452,10 +631,12 @@ start_frontend() {
     export REACT_APP_API_URL="http://localhost:$BACKEND_PORT"
     
     # 启动服务
+    print_progress "正在启动前端服务 (端口: $FRONTEND_PORT)..."
+    
     if [ "$DEV_MODE" = true ]; then
         $start_cmd &
     else
-        $start_cmd > /dev/null 2>&1 &
+        $start_cmd > frontend.log 2>&1 &
     fi
     
     FRONTEND_PID=$!
@@ -469,6 +650,11 @@ start_frontend() {
         fi
         return 0
     else
+        # 如果健康检查失败，显示日志
+        if [ -f "frontend/frontend.log" ]; then
+            print_error "前端启动失败，最近日志:"
+            tail -20 frontend/frontend.log
+        fi
         return 1
     fi
 }
@@ -558,7 +744,7 @@ main() {
     
     if [ "$FRONTEND_ONLY" != true ]; then
         check_command python3
-        check_python_env || true  # 不要因为虚拟环境不存在而退出
+        setup_python_env  # 改进的虚拟环境设置
     fi
     
     print_success "系统环境检查完成"
@@ -584,6 +770,20 @@ main() {
     
     if [ "$BACKEND_ONLY" != true ]; then
         check_port $FRONTEND_PORT "前端服务"
+    fi
+    
+    # 初始化向量数据库（如果需要）
+    if [ "$INIT_VECTOR" = true ] && [ "$FRONTEND_ONLY" != true ]; then
+        print_step "初始化向量数据库..."
+        if [ -n "$VENV_PATH" ]; then
+            source "$VENV_PATH/bin/activate"
+        fi
+        
+        if python backend/manage_vector_db.py --clean; then
+            print_success "向量数据库清理完成"
+        else
+            print_warning "向量数据库清理失败"
+        fi
     fi
     
     # 设置信号处理
@@ -616,6 +816,7 @@ main() {
     if [ "$FRONTEND_ONLY" != true ]; then
         echo "  🔧 后端API: http://localhost:$BACKEND_PORT"
         echo "  📚 API文档: http://localhost:$BACKEND_PORT/docs"
+        echo "  🤖 AI聊天: http://localhost:$BACKEND_PORT/api/chat/health"
     fi
     
     if [ "$BACKEND_ONLY" != true ]; then
@@ -623,6 +824,19 @@ main() {
     fi
     
     echo ""
+    if [ "$DEV_MODE" = true ]; then
+        echo "  📋 后端日志: tail -f backend/backend.log"
+        echo "  📋 前端日志: tail -f frontend/frontend.log"
+        echo ""
+    fi
+    
+    # 显示向量数据库状态
+    if [ "$FRONTEND_ONLY" != true ]; then
+        echo "  📊 向量数据库状态: python backend/manage_vector_db.py --status"
+        echo "  🔄 重新初始化: ./start.sh --init-vector"
+        echo ""
+    fi
+    
     print_warning "按 Ctrl+C 停止所有服务"
     echo "========================================"
     

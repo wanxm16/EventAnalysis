@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import uvicorn
+from contextlib import asynccontextmanager
 
 from models import (
     EventResponse, EventDetailResponse, ClusterEventResponse, 
@@ -14,15 +15,42 @@ from models import (
     PersonAnalysisResponse,
     PersonEvent,
     PersonDetailResponse,
-    PersonAnalysisQuery
+    PersonAnalysisQuery,
+    ChatQuery,
+    ChatResponse, 
+    ChatStatistics
 )
 from services import event_service
+
+# 全局变量存储AI聊天服务实例
+ai_chat_service = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    global ai_chat_service
+    # 启动时
+    try:
+        print("🔄 正在初始化AI聊天服务...")
+        from ai_chat_service import AIChatService
+        ai_chat_service = AIChatService()
+        print("✅ AI聊天服务初始化完成")
+    except Exception as e:
+        print(f"❌ AI聊天服务初始化失败: {e}")
+        # 不阻止应用启动，但记录错误
+        ai_chat_service = None
+    
+    yield  # 应用运行
+    
+    # 关闭时
+    print("🔄 正在关闭AI聊天服务...")
 
 # 创建FastAPI应用
 app = FastAPI(
     title="事件查询系统 API",
     description="基于冲突事件数据的查询和管理系统",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # 配置CORS中间件
@@ -265,6 +293,86 @@ async def get_person_analysis_detail(phone: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取人员分析详情失败: {str(e)}")
+
+# 显式处理OPTIONS请求
+@app.options("/api/chat")
+async def chat_options():
+    """处理CORS预检请求"""
+    return {"message": "OK"}
+
+# AI问答API端点
+@app.post("/api/chat", response_model=ChatResponse, summary="AI问答接口")
+async def chat(query: ChatQuery):
+    """
+    AI问答接口，支持自然语言查询事件数据
+    
+    - **message**: 用户的问题或查询内容
+    - **conversation_id**: 可选的对话ID，用于上下文追踪
+    """
+    try:
+        # 检查AI聊天服务是否已初始化
+        if ai_chat_service is None:
+            raise HTTPException(status_code=503, detail="AI聊天服务未初始化")
+        
+        # 调用AI问答服务
+        result = ai_chat_service.chat(query.message)
+        
+        # 转换为响应模型
+        return ChatResponse(
+            success=True,
+            message=result['answer'],
+            query_type=result.get('query_type'),
+            conversation_id=query.conversation_id,
+            data=result.get('data')
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI问答处理失败: {str(e)}")
+
+@app.get("/api/chat/statistics", response_model=ChatStatistics, summary="获取数据统计信息")
+async def get_chat_statistics():
+    """
+    获取AI问答系统的数据统计信息
+    """
+    try:
+        if ai_chat_service is None:
+            raise HTTPException(status_code=503, detail="AI聊天服务未初始化")
+        
+        stats = ai_chat_service.get_statistics()
+        
+        return ChatStatistics(
+            total_events=stats.get('total_events', 0),
+            by_town=stats.get('by_town', []),
+            by_level=stats.get('by_level', []),
+            by_category=stats.get('by_category', [])
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
+
+@app.get("/api/chat/health", summary="AI问答健康检查")
+async def chat_health_check():
+    """AI问答系统健康检查"""
+    try:
+        if ai_chat_service is None:
+            return {
+                "status": "error",
+                "message": "AI聊天服务未初始化",
+                "data_loaded": False
+            }
+        
+        return {
+            "status": "healthy",
+            "message": "AI问答系统运行正常",
+            "data_loaded": True
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"AI问答系统异常: {str(e)}",
+            "data_loaded": False
+        }
 
 # 运行应用
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
 #   --frontend-only      只停止前端服务
 #   --clean              清理临时文件和缓存
 #   --status             显示服务状态
+#   --logs               显示最近日志
 #   --help              显示帮助信息
 
 set -e  # 出错时立即退出
@@ -18,6 +19,7 @@ BACKEND_ONLY=false
 FRONTEND_ONLY=false
 CLEAN_FILES=false
 SHOW_STATUS=false
+SHOW_LOGS=false
 
 # 颜色定义
 RED='\033[0;31m'
@@ -53,6 +55,10 @@ print_header() {
     echo -e "${PURPLE}🛑 $1${NC}"
 }
 
+print_progress() {
+    echo -e "${YELLOW}⏳ $1${NC}"
+}
+
 # 显示帮助信息
 show_help() {
     echo "海曙区事件分析系统停止脚本"
@@ -65,6 +71,7 @@ show_help() {
     echo "  --frontend-only      只停止前端服务"
     echo "  --clean              清理临时文件和缓存"
     echo "  --status             显示服务状态"
+    echo "  --logs               显示最近日志"
     echo "  --help               显示此帮助信息"
     echo ""
     echo "示例:"
@@ -72,6 +79,7 @@ show_help() {
     echo "  $0 --backend-only    # 只停止后端"
     echo "  $0 --force --clean   # 强制停止并清理文件"
     echo "  $0 --status          # 只显示服务状态"
+    echo "  $0 --logs            # 显示服务日志"
     exit 0
 }
 
@@ -99,6 +107,10 @@ parse_args() {
                 SHOW_STATUS=true
                 shift
                 ;;
+            --logs)
+                SHOW_LOGS=true
+                shift
+                ;;
             --help)
                 show_help
                 ;;
@@ -111,44 +123,176 @@ parse_args() {
     done
 }
 
+# 检查虚拟环境
+detect_virtual_env() {
+    local venv_path=""
+    local venv_info=""
+    
+    if [ -d "venv" ]; then
+        venv_path="venv"
+        venv_info="项目虚拟环境"
+    elif [ -d "backend/venv" ]; then
+        venv_path="backend/venv"
+        venv_info="后端虚拟环境"
+    fi
+    
+    if [ -n "$venv_path" ]; then
+        print_info "发现虚拟环境: $venv_info ($venv_path)"
+        echo "$venv_path"
+    else
+        print_info "未检测到虚拟环境"
+        echo ""
+    fi
+}
+
+# 改进的进程检测
+find_backend_processes() {
+    local processes=""
+    local venv_path=$(detect_virtual_env)
+    
+    # 查找Python main.py进程
+    if [ -n "$venv_path" ]; then
+        # 查找运行在特定虚拟环境中的进程
+        processes=$(ps aux | grep -E "python.*main\.py" | grep -v grep | awk '{print $2}' || true)
+    else
+        # 查找所有Python main.py进程
+        processes=$(pgrep -f "python.*main\.py" 2>/dev/null || true)
+    fi
+    
+    echo "$processes"
+}
+
+# 查找前端进程
+find_frontend_processes() {
+    local pnpm_pids=$(pgrep -f "pnpm.*start" 2>/dev/null || true)
+    local npm_pids=$(pgrep -f "npm.*start" 2>/dev/null || true)
+    local yarn_pids=$(pgrep -f "yarn.*start" 2>/dev/null || true)
+    local node_pids=$(pgrep -f "node.*react-scripts" 2>/dev/null || true)
+    local webpack_pids=$(pgrep -f "webpack.*serve" 2>/dev/null || true)
+    
+    # 合并所有进程ID并去重
+    local all_pids="$pnpm_pids $npm_pids $yarn_pids $node_pids $webpack_pids"
+    echo $all_pids | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+}
+
+# 检查进程详细信息
+get_process_info() {
+    local pid=$1
+    if kill -0 $pid 2>/dev/null; then
+        local cmd=$(ps -p $pid -o comm= 2>/dev/null || echo "unknown")
+        local args=$(ps -p $pid -o args= 2>/dev/null | cut -c1-50 || echo "unknown")
+        local cpu=$(ps -p $pid -o %cpu= 2>/dev/null || echo "0")
+        local mem=$(ps -p $pid -o %mem= 2>/dev/null || echo "0")
+        printf "%-8s %-15s %-8s %-8s %s\n" "$pid" "$cmd" "${cpu}%" "${mem}%" "$args"
+        return 0
+    else
+        return 1
+    fi
+}
+
 # 检查服务状态
 check_service_status() {
     local service=$1
     local port=$2
-    local process_pattern=$3
+    local process_finder=$3
     
     local status="停止"
-    local pid=""
+    local pids=""
     local port_status="未占用"
+    local process_count=0
     
-    # 检查进程是否存在
-    if pgrep -f "$process_pattern" > /dev/null 2>&1; then
-        pid=$(pgrep -f "$process_pattern" | head -1)
+    # 查找进程
+    case $process_finder in
+        "backend")
+            pids=$(find_backend_processes)
+            ;;
+        "frontend")
+            pids=$(find_frontend_processes)
+            ;;
+    esac
+    
+    if [ -n "$pids" ] && [ "$pids" != " " ]; then
+        process_count=$(echo "$pids" | wc -w)
         status="运行中"
     fi
     
     # 检查端口是否被占用
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
         port_status="已占用"
-        if [ -z "$pid" ]; then
-            pid=$(lsof -ti :$port | head -1)
+        if [ -z "$pids" ]; then
+            local port_pid=$(lsof -ti :$port | head -1)
+            pids="$port_pid"
+            process_count=1
         fi
     fi
     
-    printf "%-12s %-8s %-8s %-8s %-10s\n" "$service" "$status" "$port" "$port_status" "$pid"
+    printf "%-12s %-8s %-8s %-8s %-8s %s\n" "$service" "$status" "$port" "$port_status" "$process_count" "$pids"
+}
+
+# 显示进程详细信息
+show_process_details() {
+    local service=$1
+    local pids=$2
+    
+    if [ -n "$pids" ] && [ "$pids" != " " ]; then
+        echo ""
+        print_info "$service 进程详情:"
+        printf "%-8s %-15s %-8s %-8s %s\n" "PID" "命令" "CPU%" "内存%" "参数"
+        echo "================================================================"
+        for pid in $pids; do
+            get_process_info $pid || echo "$pid - 进程已退出"
+        done
+    fi
 }
 
 # 显示所有服务状态
 show_service_status() {
     print_info "服务状态检查："
     echo ""
-    printf "%-12s %-8s %-8s %-8s %-10s\n" "服务" "状态" "端口" "端口状态" "进程ID"
-    echo "=================================================="
+    printf "%-12s %-8s %-8s %-8s %-8s %s\n" "服务" "状态" "端口" "端口状态" "进程数" "进程ID"
+    echo "========================================================================"
     
-    check_service_status "后端服务" "8000" "python.*main.py"
-    check_service_status "前端服务" "3000" "pnpm.*start|npm.*start|yarn.*start"
+    check_service_status "后端服务" "8000" "backend"
+    check_service_status "前端服务" "3000" "frontend"
+    
+    # 显示详细进程信息
+    if [ "$SHOW_STATUS" = true ]; then
+        local backend_pids=$(find_backend_processes)
+        local frontend_pids=$(find_frontend_processes)
+        
+        show_process_details "后端服务" "$backend_pids"
+        show_process_details "前端服务" "$frontend_pids"
+    fi
     
     echo ""
+}
+
+# 显示日志
+show_service_logs() {
+    print_header "显示服务日志"
+    echo "========================================"
+    
+    # 显示后端日志
+    if [ -f "backend/backend.log" ]; then
+        print_info "后端服务日志 (最近20行):"
+        echo "----------------------------------------"
+        tail -20 backend/backend.log
+        echo ""
+    else
+        print_warning "未找到后端日志文件"
+    fi
+    
+    # 显示前端日志
+    if [ -f "frontend/frontend.log" ]; then
+        print_info "前端服务日志 (最近20行):"
+        echo "----------------------------------------"
+        tail -20 frontend/frontend.log
+        echo ""
+    else
+        print_warning "未找到前端日志文件"
+    fi
+    
+    echo "========================================"
 }
 
 # 优雅停止进程
@@ -157,20 +301,22 @@ graceful_stop() {
     local service_name=$2
     local timeout=${3:-10}
     
-    if [ -z "$pids" ]; then
+    if [ -z "$pids" ] || [ "$pids" = " " ]; then
+        print_info "$service_name 没有运行中的进程"
         return 0
     fi
     
-    print_step "优雅停止 $service_name..."
+    print_step "优雅停止 $service_name (进程: $pids)..."
     
     # 发送TERM信号
     for pid in $pids; do
         if kill -0 $pid 2>/dev/null; then
+            print_info "发送TERM信号到进程 $pid"
             kill -TERM $pid 2>/dev/null || true
         fi
     done
     
-    # 等待进程退出
+    # 等待进程退出，显示进度
     local count=0
     while [ $count -lt $timeout ]; do
         local running_pids=""
@@ -185,7 +331,8 @@ graceful_stop() {
             return 0
         fi
         
-        echo -n "."
+        # 显示等待进度
+        printf "\r⏳ 等待进程退出... [%d/%d] 剩余进程: %s" $count $timeout "$running_pids"
         sleep 1
         count=$((count + 1))
     done
@@ -196,11 +343,12 @@ graceful_stop() {
     # 强制停止
     for pid in $pids; do
         if kill -0 $pid 2>/dev/null; then
+            print_info "强制终止进程 $pid"
             kill -9 $pid 2>/dev/null || true
         fi
     done
     
-    sleep 1
+    sleep 2
     print_success "$service_name 已强制停止"
 }
 
@@ -209,19 +357,21 @@ force_stop() {
     local pids=$1
     local service_name=$2
     
-    if [ -z "$pids" ]; then
+    if [ -z "$pids" ] || [ "$pids" = " " ]; then
+        print_info "$service_name 没有运行中的进程"
         return 0
     fi
     
-    print_step "强制停止 $service_name..."
+    print_step "强制停止 $service_name (进程: $pids)..."
     
     for pid in $pids; do
         if kill -0 $pid 2>/dev/null; then
+            print_info "强制终止进程 $pid"
             kill -9 $pid 2>/dev/null || true
         fi
     done
     
-    sleep 1
+    sleep 2
     print_success "$service_name 已强制停止"
 }
 
@@ -229,10 +379,9 @@ force_stop() {
 stop_backend() {
     print_step "检查后端服务..."
     
-    # 查找所有后端进程
-    local pids=$(pgrep -f "python.*main.py" 2>/dev/null || true)
+    local pids=$(find_backend_processes)
     
-    if [ -z "$pids" ]; then
+    if [ -z "$pids" ] || [ "$pids" = " " ]; then
         print_info "未找到运行中的后端服务"
         return 0
     fi
@@ -242,7 +391,7 @@ stop_backend() {
     if [ "$FORCE_STOP" = true ]; then
         force_stop "$pids" "后端服务"
     else
-        graceful_stop "$pids" "后端服务" 10
+        graceful_stop "$pids" "后端服务" 15
     fi
 }
 
@@ -250,28 +399,19 @@ stop_backend() {
 stop_frontend() {
     print_step "检查前端服务..."
     
-    # 查找所有前端进程（包含React和Node.js进程）
-    local pnpm_pids=$(pgrep -f "pnpm.*start" 2>/dev/null || true)
-    local npm_pids=$(pgrep -f "npm.*start" 2>/dev/null || true)
-    local yarn_pids=$(pgrep -f "yarn.*start" 2>/dev/null || true)
-    local node_pids=$(pgrep -f "node.*react-scripts" 2>/dev/null || true)
-    local webpack_pids=$(pgrep -f "webpack.*serve" 2>/dev/null || true)
-    local all_pids="$pnpm_pids $npm_pids $yarn_pids $node_pids $webpack_pids"
+    local pids=$(find_frontend_processes)
     
-    # 去除空格和重复
-    all_pids=$(echo $all_pids | tr ' ' '\n' | sort -u | tr '\n' ' ')
-    
-    if [ -z "$all_pids" ] || [ "$all_pids" = " " ]; then
+    if [ -z "$pids" ] || [ "$pids" = " " ]; then
         print_info "未找到运行中的前端服务"
         return 0
     fi
     
-    print_info "发现前端进程: $all_pids"
+    print_info "发现前端进程: $pids"
     
     if [ "$FORCE_STOP" = true ]; then
-        force_stop "$all_pids" "前端服务"
+        force_stop "$pids" "前端服务"
     else
-        graceful_stop "$all_pids" "前端服务" 15
+        graceful_stop "$pids" "前端服务" 20
     fi
 }
 
@@ -285,6 +425,7 @@ clean_ports() {
         if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
             print_step "清理端口 $port 占用..."
             local pids=$(lsof -ti :$port)
+            print_info "端口 $port 被进程占用: $pids"
             
             if [ "$FORCE_STOP" = true ]; then
                 echo $pids | xargs kill -9 2>/dev/null || true
@@ -303,59 +444,95 @@ clean_ports() {
             else
                 print_warning "端口 $port 清理失败"
             fi
+        else
+            print_info "端口 $port 未被占用"
         fi
     done
 }
 
-# 清理临时文件
+# 改进的临时文件清理
 clean_temp_files() {
-    print_step "清理临时文件..."
+    print_step "清理临时文件和缓存..."
     
     local cleaned=false
+    local cleaned_items=()
     
     # 清理后端临时文件
     if [ -d "backend" ]; then
         cd backend
-        if [ -f "__pycache__" ] || [ -d "__pycache__" ]; then
+        
+        # Python缓存
+        if [ -d "__pycache__" ]; then
             rm -rf __pycache__
-            print_info "已清理后端Python缓存"
+            cleaned_items+=("Python __pycache__")
             cleaned=true
         fi
-        if [ -f "*.pyc" ]; then
-            rm -f *.pyc
-            print_info "已清理Python字节码文件"
+        
+        # Python字节码文件
+        local pyc_files=$(find . -name "*.pyc" 2>/dev/null)
+        if [ -n "$pyc_files" ]; then
+            find . -name "*.pyc" -delete
+            cleaned_items+=("Python字节码文件")
             cleaned=true
         fi
+        
+        # 日志文件
+        if [ -f "backend.log" ]; then
+            rm -f backend.log
+            cleaned_items+=("后端日志文件")
+            cleaned=true
+        fi
+        
         cd ..
     fi
     
     # 清理前端临时文件
     if [ -d "frontend" ]; then
         cd frontend
-        if [ -d ".next" ]; then
-            rm -rf .next
-            print_info "已清理Next.js缓存"
-            cleaned=true
-        fi
+        
+        # React构建文件
         if [ -d "build" ]; then
             rm -rf build
-            print_info "已清理React构建文件"
+            cleaned_items+=("React构建文件")
             cleaned=true
         fi
+        
+        # Next.js缓存
+        if [ -d ".next" ]; then
+            rm -rf .next
+            cleaned_items+=("Next.js缓存")
+            cleaned=true
+        fi
+        
+        # 前端日志
+        if [ -f "frontend.log" ]; then
+            rm -f frontend.log
+            cleaned_items+=("前端日志文件")
+            cleaned=true
+        fi
+        
         cd ..
     fi
     
-    # 清理日志文件
-    if [ -f "*.log" ]; then
+    # 清理项目根目录日志
+    local log_files=$(find . -maxdepth 1 -name "*.log" 2>/dev/null)
+    if [ -n "$log_files" ]; then
         rm -f *.log
-        print_info "已清理日志文件"
+        cleaned_items+=("项目日志文件")
         cleaned=true
     fi
     
-    if [ "$cleaned" = false ]; then
-        print_info "没有找到需要清理的临时文件"
+    # 清理临时测试文件
+    if [ -f "test_*.tmp" ]; then
+        rm -f test_*.tmp
+        cleaned_items+=("临时测试文件")
+        cleaned=true
+    fi
+    
+    if [ "$cleaned" = true ]; then
+        print_success "已清理: ${cleaned_items[*]}"
     else
-        print_success "临时文件清理完成"
+        print_info "没有找到需要清理的临时文件"
     fi
 }
 
@@ -365,28 +542,43 @@ verify_stop() {
     
     local backend_running=false
     local frontend_running=false
+    local issues=()
     
     # 检查后端
     if [ "$FRONTEND_ONLY" != true ]; then
-        if pgrep -f "python.*main.py" > /dev/null 2>&1; then
+        local backend_pids=$(find_backend_processes)
+        if [ -n "$backend_pids" ] && [ "$backend_pids" != " " ]; then
             backend_running=true
-            print_warning "后端服务仍在运行"
+            issues+=("后端服务仍在运行 (PID: $backend_pids)")
         fi
     fi
     
     # 检查前端
     if [ "$BACKEND_ONLY" != true ]; then
-        if pgrep -f "pnpm.*start|npm.*start|yarn.*start" > /dev/null 2>&1; then
+        local frontend_pids=$(find_frontend_processes)
+        if [ -n "$frontend_pids" ] && [ "$frontend_pids" != " " ]; then
             frontend_running=true
-            print_warning "前端服务仍在运行"
+            issues+=("前端服务仍在运行 (PID: $frontend_pids)")
         fi
     fi
     
-    if [ "$backend_running" = false ] && [ "$frontend_running" = false ]; then
+    # 检查端口占用
+    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        issues+=("端口8000仍被占用")
+    fi
+    
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        issues+=("端口3000仍被占用")
+    fi
+    
+    if [ ${#issues[@]} -eq 0 ]; then
         print_success "所有服务已成功停止"
         return 0
     else
-        print_error "部分服务停止失败"
+        print_warning "发现以下问题:"
+        for issue in "${issues[@]}"; do
+            echo "  - $issue"
+        done
         return 1
     fi
 }
@@ -395,6 +587,12 @@ verify_stop() {
 main() {
     # 解析命令行参数
     parse_args "$@"
+    
+    # 如果只是显示日志
+    if [ "$SHOW_LOGS" = true ]; then
+        show_service_logs
+        exit 0
+    fi
     
     # 如果只是显示状态
     if [ "$SHOW_STATUS" = true ]; then
@@ -417,6 +615,9 @@ main() {
     else
         print_info "停止模式: 所有服务"
     fi
+    
+    # 检测虚拟环境
+    detect_virtual_env > /dev/null
     
     # 显示当前状态
     show_service_status
@@ -445,11 +646,9 @@ main() {
     print_success "系统停止完成！"
     
     # 最终状态检查
-    if [ "$SHOW_STATUS" != false ]; then
-        echo ""
-        print_info "最终状态："
-        show_service_status
-    fi
+    echo ""
+    print_info "最终状态："
+    show_service_status
 }
 
 # 运行主函数

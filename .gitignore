@@ -123,4 +123,30 @@ frontend/.deps_installed
 
 # Logs
 logs
-*.log 
+*.log
+
+# 项目特定文件
+# 配置文件（包含敏感信息）
+config.env
+
+# 数据库文件
+data/*.db
+data/*.duckdb
+data/*.duckdb.wal
+
+# 向量数据库
+data/chroma_db/
+
+# 日志文件
+logs/
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# API密钥和配置
+.env
+.env.*
+!.env.example
+!config.env.example 
