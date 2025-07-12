@@ -174,10 +174,10 @@ const EventList = () => {
       key: 'related',
       width: 100,
       render: (_, record) => {
-        if (record.sequence_total > 1) {
+        if (record.相关事件 && record.相关事件 > 0) {
           return (
             <Tag color="blue">
-              {record.sequence_total - 1} 个关联
+              {record.相关事件} 个关联
             </Tag>
           );
         }
@@ -262,6 +262,8 @@ const EventList = () => {
 
   // 快速搜索
   const handleQuickSearch = (eventId) => {
+    // 清除所有筛选条件
+    form.resetFields();
     // 设置搜索框的值
     form.setFieldsValue({ search: eventId });
     
@@ -274,8 +276,10 @@ const EventList = () => {
       related_events: undefined,
     };
     
+    // 清除之前的搜索状态
+    setEvents([]);
     setSearchParams(params);
-    setPagination(prev => ({ ...prev, current: 1 }));
+    setPagination({ current: 1, pageSize: 20, total: 0 });
     loadEvents({ page: 1, ...params });
   };
 

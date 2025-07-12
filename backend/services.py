@@ -193,35 +193,32 @@ class EventService:
     def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
                    town: Optional[str] = None, level: Optional[str] = None,
                    category: Optional[str] = None, related_events: Optional[str] = None) -> PaginatedResponse:
-        """获取事件列表（分页）"""
+        """获取事件列表（分页）- 基于raw_conflict.csv数据"""
         
-        if self.detail_df.empty:
+        if self.raw_conflict_df.empty:
             return PaginatedResponse(
                 items=[], total=0, page=page, page_size=page_size, total_pages=0
             )
         
-        df = self.detail_df.copy()
+        df = self.raw_conflict_df.copy()
+        
+        # 为每个事件获取报警人信息（从info_merge.csv）
+        df['报警人信息'] = df['事件编号'].apply(
+            lambda x: self._get_caller_info(str(x)) or ''
+        )
         
         # 应用搜索过滤
         if search:
             # 转义正则表达式特殊字符，避免搜索包含*等字符时出错
             search_escaped = re.escape(search)
             
-            # 为每个事件获取报警人信息用于搜索
-            df_with_caller = df.copy()
-            df_with_caller['报警人信息_搜索'] = df_with_caller['事件编号'].apply(
-                lambda x: self._get_caller_info(str(x)) or ''
-            )
-            
             search_condition = (
-                df_with_caller['事件编号'].astype(str).str.contains(search_escaped, case=False, na=False) |
-                df_with_caller['事件描述'].astype(str).str.contains(search_escaped, case=False, na=False) |
-                df_with_caller['处置结果'].astype(str).str.contains(search_escaped, case=False, na=False) |
-                df_with_caller['CallerPhone'].astype(str).str.contains(search_escaped, case=False, na=False) |
-                df_with_caller['CallerID'].astype(str).str.contains(search_escaped, case=False, na=False) |
-                df_with_caller['报警人信息_搜索'].astype(str).str.contains(search_escaped, case=False, na=False)
+                df['事件编号'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df['事件描述'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df['处置结果'].astype(str).str.contains(search_escaped, case=False, na=False) |
+                df['报警人信息'].astype(str).str.contains(search_escaped, case=False, na=False)
             )
-            df = df_with_caller[search_condition].drop(columns=['报警人信息_搜索'])
+            df = df[search_condition]
         
         # 应用筛选条件
         if town:
@@ -233,20 +230,45 @@ class EventService:
         if category:
             df = df[df['二级分类'].astype(str).str.contains(category, case=False, na=False)]
         
-        # 应用相关事件数量筛选
+        # 应用相关事件数量筛选 - 需要从cluster_df获取sequence_total信息
         if related_events:
-            if related_events == "0":  # 无关联事件
-                df = df[df['sequence_total'] <= 1]
-            elif related_events == "1":  # 1个关联事件
-                df = df[df['sequence_total'] == 2]
-            elif related_events == "2-5":  # 2-5个关联事件
-                df = df[(df['sequence_total'] >= 3) & (df['sequence_total'] <= 6)]
-            elif related_events == "5+":  # 5个以上关联事件
-                df = df[df['sequence_total'] > 6]
+            # 为原始事件添加聚类信息
+            if not self.cluster_df.empty:
+                # 创建事件编号到sequence_total的映射
+                cluster_mapping = {}
+                for _, cluster_row in self.cluster_df.iterrows():
+                    event_uid = str(cluster_row.get('EventUID', ''))
+                    sequence_total = cluster_row.get('sequence_total', 1)
+                    
+                    # 从detail_df中找到属于此聚类的事件编号
+                    if not self.detail_df.empty:
+                        cluster_events = self.detail_df[
+                            self.detail_df['EventUID'].astype(str) == event_uid
+                        ]
+                        for _, detail_row in cluster_events.iterrows():
+                            event_id = str(detail_row.get('事件编号', ''))
+                            cluster_mapping[event_id] = sequence_total
+                
+                # 为df添加sequence_total列
+                df['sequence_total'] = df['事件编号'].map(cluster_mapping).fillna(1)
+                
+                # 应用筛选
+                if related_events == "0":  # 无关联事件
+                    df = df[df['sequence_total'] <= 1]
+                elif related_events == "1":  # 1个关联事件
+                    df = df[df['sequence_total'] == 2]
+                elif related_events == "2-5":  # 2-5个关联事件
+                    df = df[(df['sequence_total'] >= 3) & (df['sequence_total'] <= 6)]
+                elif related_events == "5+":  # 5个以上关联事件
+                    df = df[df['sequence_total'] > 6]
         
         # 按上报时间倒序排列
         try:
-            df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
+            # 尝试多种时间格式解析
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
             df = df.sort_values('上报时间_parsed', ascending=False, na_position='last')
             df = df.drop(columns=['上报时间_parsed'])  # 删除临时列
         except Exception as e:
@@ -267,7 +289,26 @@ class EventService:
         items = []
         for _, row in page_df.iterrows():
             event_id = str(row.get('事件编号', ''))
-            caller_info = self._get_caller_info(event_id)
+            caller_info = str(row.get('报警人信息', ''))  # 使用已经获取的报警人信息
+            
+            # 从detail_df获取EventUID和其他扩展信息
+            event_uid = None
+            caller_phone = None
+            caller_id = None
+            related_events_count = 0
+            
+            if not self.detail_df.empty:
+                detail_row = self.detail_df[self.detail_df['事件编号'] == event_id]
+                if not detail_row.empty:
+                    first_detail = detail_row.iloc[0]
+                    event_uid = str(first_detail.get('EventUID', '')) if first_detail.get('EventUID') else None
+                    caller_phone = str(first_detail.get('CallerPhone', '')) if first_detail.get('CallerPhone') else None
+                    caller_id = str(first_detail.get('CallerID', '')) if first_detail.get('CallerID') else None
+                    
+                    # 计算相关事件数：sequence_total - 1
+                    sequence_total = first_detail.get('sequence_total', 1)
+                    if pd.notna(sequence_total) and sequence_total > 1:
+                        related_events_count = int(sequence_total) - 1
             
             event = EventResponse(
                 事件编号=event_id,
@@ -276,11 +317,12 @@ class EventService:
                 事件级别=str(row.get('事件级别', '')),
                 二级分类=str(row.get('二级分类', '')),
                 上报时间=str(row.get('上报时间', '')),
-                CallerPhone=str(row.get('CallerPhone', '')) if row.get('CallerPhone') else None,
-                CallerID=str(row.get('CallerID', '')) if row.get('CallerID') else None,
-                EventUID=str(row.get('EventUID', '')) if row.get('EventUID') else None,
-                sequence_total=int(row.get('sequence_total', 1)) if pd.notna(row.get('sequence_total')) else None,
-                报警人信息=caller_info
+                CallerPhone=caller_phone,
+                CallerID=caller_id,
+                EventUID=event_uid,
+                sequence_total=int(row.get('sequence_total', 1)) if pd.notna(row.get('sequence_total')) else 1,
+                相关事件=related_events_count if related_events_count > 0 else None,
+                报警人信息=caller_info if caller_info else None
             )
             items.append(event)
         
