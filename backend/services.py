@@ -15,6 +15,7 @@ class EventService:
         self.info_df = None  # 新增报警人信息数据
         self.people_df = None  # 新增人口信息数据
         self.phone_master_df = None  # 新增人员分析数据
+        self.raw_conflict_df = None  # 原始事件数据
         self.load_data()
     
     def load_data(self):
@@ -29,6 +30,7 @@ class EventService:
             info_path = os.path.join(parent_dir, 'data', 'info_merge.csv')
             people_path = os.path.join(parent_dir, 'data', 'people_info_simple.csv')
             phone_master_path = os.path.join(parent_dir, 'data', 'phone_master_index.csv')
+            raw_conflict_path = os.path.join(parent_dir, 'data', 'raw_conflict.csv')
             
             # 加载事件详情数据
             self.detail_df = pd.read_csv(detail_path)
@@ -48,7 +50,13 @@ class EventService:
             # 数据清洗和预处理
             self._preprocess_data()
             
-            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条, 人员分析 {len(self.phone_master_df)} 条")
+            # 加载原始事件数据
+            if os.path.exists(raw_conflict_path):
+                self.raw_conflict_df = pd.read_csv(raw_conflict_path)
+            else:
+                self.raw_conflict_df = pd.DataFrame()
+                
+            print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条, 人员分析 {len(self.phone_master_df)} 条, 原始事件 {len(self.raw_conflict_df)} 条")
             
         except Exception as e:
             print(f"数据加载失败: {e}")
@@ -58,6 +66,7 @@ class EventService:
             self.info_df = pd.DataFrame()
             self.people_df = pd.DataFrame()
             self.phone_master_df = pd.DataFrame()
+            self.raw_conflict_df = pd.DataFrame()
     
     def _preprocess_data(self):
         """预处理数据"""
@@ -339,6 +348,7 @@ class EventService:
         cluster_info = cluster_row.iloc[0]
         
         # 获取该聚类下的所有事件
+        # EventUID在detail_df中直接就是cluster_xxxx格式
         cluster_events = self.detail_df[self.detail_df['EventUID'].astype(str) == event_uid]
         
         if cluster_events.empty:
@@ -599,6 +609,98 @@ class EventService:
             event_count_ranges=event_count_ranges,
             duration_ranges=duration_ranges
         )
+    
+    def get_statistics_report(self) -> Dict[str, Any]:
+        """获取统计报告数据"""
+        try:
+            # 1. 总事件数量 = raw_conflict.csv里事件编码的数量
+            total_events = len(self.raw_conflict_df) if not self.raw_conflict_df.empty else 0
+            
+            # 2. 可定位事件的数量 = conflict_event_detail.csv中phone_flag=has_phone的数量
+            located_events = len(self.detail_df[
+                self.detail_df['phone_flag'] == 'has_phone'
+            ]) if not self.detail_df.empty else 0
+            
+            # 3. 聚类集合数 = conflict_event.csv中sequence_total>1的事件簇的数量
+            cluster_sets = len(self.cluster_df[
+                self.cluster_df['sequence_total'] > 1
+            ]) if not self.cluster_df.empty else 0
+            
+            # 4. 涉及人员 = phone_master_index.csv中count(phone)
+            total_persons = len(self.phone_master_df) if not self.phone_master_df.empty else 0
+            
+            # 5. 事件覆盖率 = 可定位事件数量/总事件数量
+            event_coverage_rate = (located_events / total_events * 100) if total_events > 0 else 0
+            
+            # 6. 聚类效率 = conflict_event.csv中sequence_total>1的事件簇中包含的事件数量/聚类集合数
+            # 聚类效率 = 事件簇包含的事件的数量/事件簇的数量
+            if cluster_sets > 0 and not self.cluster_df.empty:
+                clustered_events_total = self.cluster_df[
+                    self.cluster_df['sequence_total'] > 1
+                ]['sequence_total'].sum()
+                cluster_efficiency = clustered_events_total / cluster_sets
+            else:
+                cluster_efficiency = 0
+                clustered_events_total = 0
+            
+            # 7. 双证齐全 = phone_master_index.csv中既有手机号码又有身份证号码的人的数量
+            dual_credentials = 0
+            if not self.phone_master_df.empty:
+                dual_credentials = len(self.phone_master_df[
+                    (self.phone_master_df['phone'].notna()) & 
+                    (self.phone_master_df['phone'] != '') &
+                    (self.phone_master_df['id_card'].notna()) & 
+                    (self.phone_master_df['id_card'] != '')
+                ])
+            
+            # 8. 仅有手机号码 = phone_master_index.csv中仅有手机号码的人数量
+            phone_only = 0
+            if not self.phone_master_df.empty:
+                phone_only = len(self.phone_master_df[
+                    (self.phone_master_df['phone'].notna()) & 
+                    (self.phone_master_df['phone'] != '') &
+                    ((self.phone_master_df['id_card'].isna()) | (self.phone_master_df['id_card'] == ''))
+                ])
+            
+            return {
+                "report_date": datetime.now().strftime("%Y年%m月%d日"),
+                "core_stats": {
+                    "total_events": int(total_events),
+                    "located_events": int(located_events),
+                    "cluster_sets": int(cluster_sets),
+                    "clustered_events": int(clustered_events_total),
+                    "total_persons": int(total_persons),
+                    "dual_credentials": int(dual_credentials),
+                    "phone_only": int(phone_only)
+                },
+                "rates": {
+                    "event_coverage_rate": round(float(event_coverage_rate), 2),
+                    "cluster_efficiency": round(float(cluster_efficiency), 1),
+                    "dual_credentials_rate": round(float((dual_credentials / total_persons * 100) if total_persons > 0 else 0), 1),
+                    "phone_only_rate": round(float((phone_only / total_persons * 100) if total_persons > 0 else 0), 1)
+                }
+            }
+            
+        except Exception as e:
+            print(f"统计报告生成失败: {e}")
+            return {
+                "report_date": datetime.now().strftime("%Y年%m月%d日"),
+                "core_stats": {
+                    "total_events": 0,
+                    "located_events": 0,
+                    "cluster_sets": 0,
+                    "clustered_events": 0,
+                    "total_persons": 0,
+                    "dual_credentials": 0,
+                    "phone_only": 0
+                },
+                "rates": {
+                    "event_coverage_rate": 0,
+                    "cluster_efficiency": 0,
+                    "dual_credentials_rate": 0,
+                    "phone_only_rate": 0
+                }
+            }
     
     def _mask_id_card(self, id_card: str) -> str:
         """对身份证号码进行脱敏处理"""

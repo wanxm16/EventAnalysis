@@ -374,6 +374,17 @@ async def chat_health_check():
             "data_loaded": False
         }
 
+@app.get("/api/statistics/report", summary="获取统计报告")
+async def get_statistics_report():
+    """
+    获取统计报告数据，基于实际数据计算各项指标
+    """
+    try:
+        stats = event_service.get_statistics_report()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"统计报告生成失败: {str(e)}")
+
 # 运行应用
 if __name__ == "__main__":
     uvicorn.run(

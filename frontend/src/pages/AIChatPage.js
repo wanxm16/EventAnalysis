@@ -120,8 +120,61 @@ const AIChatPage = () => {
   };
 
   // 处理快捷问题
-  const handleQuickQuestion = (question) => {
-    setInputText(question);
+  const handleQuickQuestion = async (question) => {
+    // 直接发送请求而不是只设置输入框
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      content: question,
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setLoading(true);
+
+    try {
+      const response = await api.post('/chat', {
+        message: question,
+        conversation_id: null
+      });
+
+      const assistantMessage = {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: response.message,
+        queryType: response.query_type,
+        sql: response.data?.sql,
+        timestamp: new Date().toLocaleTimeString()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('发送消息失败:', error);
+      let errorContent = '抱歉，发送失败。';
+      
+      if (error.response) {
+        errorContent += `错误: ${error.response.status}`;
+        if (error.response.data?.detail) {
+          errorContent += ` - ${error.response.data.detail}`;
+        }
+      } else if (error.request) {
+        errorContent += '请检查网络连接。';
+      } else {
+        errorContent += `请求错误: ${error.message}`;
+      }
+      
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: errorContent,
+        queryType: '错误',
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      message.error('发送失败，请查看错误信息');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 处理键盘事件
@@ -133,11 +186,14 @@ const AIChatPage = () => {
 
   // 快捷问题列表
   const quickQuestions = [
-    "海曙区总共有多少条事件记录？",
-    "三级事件数量统计",
-    "镇街事件数量前5名", 
-    "6月5日月湖街道的三级事件",
-    "包含噪音的事件案例"
+    "海曙区一共有多少记录",
+    "三级事件有多少", 
+    "镇街事件数量前5名",
+    "事件数量最多的街道是哪个",
+    "涉及噪音的事件是哪个",
+    "月湖街道和古林镇的事件数量对比",
+    "按镇街和二级分类交叉统计件数，列出月湖街道TOP3类别",
+    "多少事件已经办结"
   ];
 
   return (
@@ -147,6 +203,100 @@ const AIChatPage = () => {
       flexDirection: 'column',
       background: '#f5f5f5'
     }}>
+      {/* 左侧悬浮快捷问题栏 */}
+      <div style={{
+        position: 'fixed',
+        left: '20px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: '300px',
+        zIndex: 1001,
+        background: '#fff',
+        borderRadius: '16px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        border: '1px solid #e8e8e8',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          padding: '20px',
+          background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+          color: '#fff'
+        }}>
+          <div style={{ 
+            fontSize: '18px', 
+            fontWeight: '600',
+            marginBottom: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            💡 快速开始
+          </div>
+          <div style={{
+            fontSize: '13px',
+            opacity: '0.9'
+          }}>
+            点击下方问题快速查询
+          </div>
+        </div>
+        <div style={{ 
+          padding: '16px',
+          maxHeight: '400px',
+          overflowY: 'auto'
+        }}>
+          {quickQuestions.map((question, index) => (
+            <Button
+              key={index}
+              block
+              disabled={loading}
+              style={{ 
+                marginBottom: '10px',
+                textAlign: 'left',
+                height: 'auto',
+                minHeight: '40px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: loading ? '1px solid #d9d9d9' : '1px solid #e8e8e8',
+                background: loading ? '#f5f5f5' : '#fff',
+                fontSize: '12px',
+                lineHeight: '1.4',
+                color: loading ? '#bfbfbf' : '#333',
+                fontWeight: '400',
+                transition: 'all 0.2s ease',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                boxShadow: loading ? 'none' : '0 2px 4px rgba(0,0,0,0.04)',
+                whiteSpace: 'normal',
+                wordWrap: 'break-word',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.background = '#f8f9ff';
+                  e.target.style.borderColor = '#1890ff';
+                  e.target.style.color = '#1890ff';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(24,144,255,0.15)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.target.style.background = '#fff';
+                  e.target.style.borderColor = '#e8e8e8';
+                  e.target.style.color = '#333';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.04)';
+                }
+              }}
+              onClick={() => !loading && handleQuickQuestion(question)}
+            >
+              {question}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {/* 头部标题 */}
       <div style={{ 
         padding: '16px 24px', 
@@ -157,6 +307,7 @@ const AIChatPage = () => {
         <div style={{ 
           maxWidth: '900px', 
           margin: '0 auto',
+          marginLeft: '340px', // 为更宽的左侧栏留出空间
           display: 'flex',
           alignItems: 'center'
         }}>
@@ -170,9 +321,10 @@ const AIChatPage = () => {
       <div style={{ 
         flex: 1, 
         padding: '16px 24px',
-        paddingBottom: '70px', // 进一步减少底部空间，匹配更紧凑的输入框
+        paddingLeft: '340px', // 为更宽的左侧栏留出空间
+        paddingBottom: '70px',
         overflowY: 'auto',
-        maxHeight: 'calc(100vh - 140px)' // 进一步减少最大高度限制
+        maxHeight: 'calc(100vh - 140px)'
       }}>
         <div style={{ 
           maxWidth: '900px', 
@@ -310,35 +462,6 @@ const AIChatPage = () => {
             </div>
           )}
 
-          {/* 快捷问题 */}
-          {messages.length === 1 && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ 
-                fontSize: '14px', 
-                color: '#666', 
-                marginBottom: '12px',
-                fontWeight: '500'
-              }}>
-                💡 快速开始：
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {quickQuestions.map((question, index) => (
-                  <Button
-                    key={index}
-                    size="small"
-                    style={{ 
-                      borderRadius: '16px',
-                      border: '1px solid #d9d9d9',
-                      background: '#fff'
-                    }}
-                    onClick={() => handleQuickQuestion(question)}
-                  >
-                    {question}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -352,7 +475,8 @@ const AIChatPage = () => {
         right: 0,
         background: '#fff',
         borderTop: '1px solid #e8e8e8',
-        padding: '12px 24px', // 减少垂直padding
+        padding: '12px 24px',
+        paddingLeft: '340px', // 为更宽的左侧栏留出空间
         boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
         zIndex: 1000
       }}>

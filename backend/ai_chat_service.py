@@ -20,8 +20,13 @@ import time
 class AIChatService:
     def __init__(self):
         """初始化AI问答服务"""
+        # 检查API密钥
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        if not api_key or api_key == 'sk-your-api-key-here':
+            raise ValueError("DEEPSEEK_API_KEY未设置或使用默认值。请访问 https://platform.deepseek.com/ 获取API密钥并在config.env中配置")
+        
         self.client = OpenAI(
-            api_key=os.getenv('DEEPSEEK_API_KEY'),
+            api_key=api_key,
             base_url="https://api.deepseek.com"
         )
         self.db_path = os.path.join(os.path.dirname(__file__), '../data/events.db')

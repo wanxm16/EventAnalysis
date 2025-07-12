@@ -9,19 +9,11 @@ import {
   Space,
   Alert,
   Typography,
-  Drawer,
-  Form,
-  Input,
-  Table,
-  Modal,
-  Divider
 } from 'antd';
 import {
   ArrowLeftOutlined,
   ClusterOutlined,
   CalendarOutlined,
-  SearchOutlined,
-  EyeOutlined
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { eventAPI } from '../services/api';
@@ -35,18 +27,6 @@ const EventDetail = () => {
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchDrawerVisible, setSearchDrawerVisible] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [personDetailVisible, setPersonDetailVisible] = useState(false);
-  const [searchForm] = Form.useForm();
-  
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0
-  });
 
   // 获取事件详情
   const fetchEventDetail = async () => {
@@ -69,54 +49,6 @@ const EventDetail = () => {
     }
   }, [eventId]);
   
-  // 人口搜索API调用
-  const searchPeople = async (searchData, page = 1) => {
-    try {
-      setSearchLoading(true);
-      const response = await fetch('http://localhost:8000/api/people/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...searchData,
-          page,
-          page_size: pagination.pageSize
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error('搜索失败');
-      }
-      
-      const data = await response.json();
-      setSearchResults(data.items);
-      setPagination({
-        ...pagination,
-        current: data.page,
-        total: data.total
-      });
-    } catch (error) {
-      message.error('搜索失败: ' + error.message);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-  
-  // 获取人员详情
-  const fetchPersonDetail = async (personId) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/people/${personId}`);
-      if (!response.ok) {
-        throw new Error('获取人员详情失败');
-      }
-      const data = await response.json();
-      setSelectedPerson(data);
-      setPersonDetailVisible(true);
-    } catch (error) {
-      message.error('获取人员详情失败: ' + error.message);
-    }
-  };
   
   // 解析报警人信息
   const parseCallerInfo = (callerInfo) => {
@@ -166,46 +98,8 @@ const EventDetail = () => {
     });
   };
   
-  // 打开搜索抽屉 - 支持报警人和当事人
-  const openSearchDrawer = (personInfo, personType = 'caller') => {
-    let personData = {};
-    
-    if (personType === 'caller') {
-      personData = parseCallerInfo(personInfo)[0] || {};
-    } else if (personType === 'party') {
-      // 如果是当事人信息，personInfo应该是单个当事人的信息
-      personData = personInfo || {};
-    }
-    
-    const searchData = {
-      name: personData.name || '',
-      phone: personData.phone || '',
-      id_card: personData.idCard || ''
-    };
-    
-    searchForm.setFieldsValue(searchData);
-    setSearchDrawerVisible(true);
-    setSearchResults([]);
-    
-    // 自动触发搜索
-    if (searchData.name || searchData.phone || searchData.id_card) {
-      searchPeople(searchData);
-    }
-  };
   
-  // 执行搜索
-  const handleSearch = () => {
-    const searchData = searchForm.getFieldsValue();
-    searchPeople(searchData);
-  };
-  
-  // 分页处理
-  const handleTableChange = (page) => {
-    const searchData = searchForm.getFieldsValue();
-    searchPeople(searchData, page.current);
-  };
-  
-  // 渲染报警人信息（带搜索按钮）
+  // 渲染报警人信息
   const renderCallerInfo = (callerInfo) => {
     if (!callerInfo) return '-';
     
@@ -221,22 +115,13 @@ const EventDetail = () => {
                 return `${labels[key]}: ${value}`;
               }).join(' | ')}
             </span>
-            <Button
-              type="link"
-              size="small"
-              icon={<SearchOutlined />}
-              onClick={() => openSearchDrawer(callerInfo, 'caller')}
-              style={{ marginLeft: 8 }}
-            >
-              搜索
-            </Button>
           </div>
         ))}
       </div>
     );
   };
   
-  // 渲染当事人信息（带搜索按钮）
+  // 渲染当事人信息
   const renderInvolvedPartiesInfo = (partiesInfo) => {
     if (!partiesInfo) return '-';
     
@@ -252,57 +137,12 @@ const EventDetail = () => {
                 return `${labels[key]}: ${value}`;
               }).join(' | ')}
             </span>
-            <Button
-              type="link"
-              size="small"
-              icon={<SearchOutlined />}
-              onClick={() => openSearchDrawer(party, 'party')}
-              style={{ marginLeft: 8 }}
-            >
-              搜索
-            </Button>
           </div>
         ))}
       </div>
     );
   };
   
-  // 搜索结果表格列配置
-  const searchColumns = [
-    {
-      title: '姓名',
-      dataIndex: 'name_cn',
-      key: 'name_cn',
-      width: 100,
-    },
-    {
-      title: '身份证号码',
-      dataIndex: 'id_card_no',
-      key: 'id_card_no',
-      width: 150,
-    },
-    {
-      title: '电话号码',
-      dataIndex: 'mobile_phone',
-      key: 'mobile_phone',
-      width: 130,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 80,
-      render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => fetchPersonDetail(record.person_id)}
-        >
-          详情
-        </Button>
-      ),
-    },
-  ];
 
   // 解析特殊时间格式 (如 "31/5/25 19:47")
   const parseTime = (timeStr) => {
@@ -554,123 +394,6 @@ const EventDetail = () => {
         </Space>
       </Card>
 
-      {/* 搜索抽屉 */}
-      <Drawer
-        title="搜索人员"
-        width={500}
-        open={searchDrawerVisible}
-        onClose={() => {
-          setSearchDrawerVisible(false);
-          searchForm.resetFields();
-        }}
-      >
-        <Form
-          form={searchForm}
-          layout="vertical"
-          onFinish={handleSearch}
-        >
-          <Form.Item
-            label="姓名"
-            name="name"
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label="电话"
-            name="phone"
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            label="身份证号码"
-            name="id_card"
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={searchLoading}>
-              搜索
-            </Button>
-          </Form.Item>
-        </Form>
-
-        {searchLoading && (
-          <div style={{ marginTop: 16 }}>
-            <Spin />
-          </div>
-        )}
-
-        {searchResults.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <Table
-              columns={searchColumns}
-              dataSource={searchResults}
-              rowKey="person_id"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: pagination.total,
-                onChange: handleTableChange
-              }}
-            />
-          </div>
-        )}
-      </Drawer>
-
-      {/* 人员详情弹窗 */}
-      {personDetailVisible && selectedPerson && (
-        <Modal
-          title="人员详情"
-          open={personDetailVisible}
-          onCancel={() => setPersonDetailVisible(false)}
-          footer={null}
-        >
-          <Descriptions column={1} bordered>
-            <Descriptions.Item label="人员ID">
-              {selectedPerson.person_id}
-            </Descriptions.Item>
-            <Descriptions.Item label="姓名">
-              {selectedPerson.name_cn}
-            </Descriptions.Item>
-            <Descriptions.Item label="身份证号码">
-              {selectedPerson.id_card_no}
-            </Descriptions.Item>
-            <Descriptions.Item label="手机号码">
-              {selectedPerson.mobile_phone}
-            </Descriptions.Item>
-            <Descriptions.Item label="性别">
-              {selectedPerson.gender || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="出生日期">
-              {selectedPerson.birth_date || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="户口省份">
-              {selectedPerson.hukou_province || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="户口城市">
-              {selectedPerson.hukou_city || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="户口县区">
-              {selectedPerson.hukou_county || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="居住省份">
-              {selectedPerson.reside_province || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="居住城市">
-              {selectedPerson.reside_city || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="居住县区">
-              {selectedPerson.reside_county || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="最高学历">
-              {selectedPerson.highest_education || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="雇主名称">
-              {selectedPerson.employer_name || '-'}
-            </Descriptions.Item>
-          </Descriptions>
-        </Modal>
-      )}
     </div>
   );
 };
