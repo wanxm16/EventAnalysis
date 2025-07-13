@@ -76,22 +76,29 @@ const AIChatPage = () => {
 
     try {
       const response = await api.post('/chat', {
-        message: inputText,
-        conversation_id: null
+        message: inputText
       });
 
       const assistantMessage = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: response.message,
-        queryType: response.query_type,
-        sql: response.data?.sql,
+        content: response.data?.message || response.message || '无响应内容',
+        queryType: response.data?.query_type || response.query_type,
+        sql: response.data?.data?.sql,
         timestamp: new Date().toLocaleTimeString()
       };
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('发送消息失败:', error);
+      console.error('错误详情:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
       let errorContent = '抱歉，发送失败。';
       
       if (error.response) {
@@ -134,22 +141,29 @@ const AIChatPage = () => {
 
     try {
       const response = await api.post('/chat', {
-        message: question,
-        conversation_id: null
+        message: question
       });
 
       const assistantMessage = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: response.message,
-        queryType: response.query_type,
-        sql: response.data?.sql,
+        content: response.data?.message || response.message || '无响应内容',
+        queryType: response.data?.query_type || response.query_type,
+        sql: response.data?.data?.sql,
         timestamp: new Date().toLocaleTimeString()
       };
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('发送消息失败:', error);
+      console.error('错误详情:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
       let errorContent = '抱歉，发送失败。';
       
       if (error.response) {

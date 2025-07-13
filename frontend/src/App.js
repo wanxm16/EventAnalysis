@@ -24,7 +24,7 @@ function App() {
   return (
     <ConfigProvider locale={zhCN}>
       <AuthProvider>
-        <ServiceMonitor />
+        {/* <ServiceMonitor /> 暂时禁用，避免与AI聊天冲突 */}
         <Router>
           <Routes>
             <Route path="/" element={<RootRoute />} />

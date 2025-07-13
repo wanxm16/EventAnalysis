@@ -150,8 +150,8 @@ const Dashboard = () => {
                   <Button 
                     type="primary" 
                     icon={<ArrowRightOutlined />} 
-                    style={{ width: '100%', marginTop: '10px' }}
-                    size="small"
+                    style={{ width: '100%', marginTop: '10px', height: '40px', fontSize: '14px' }}
+                    size="large"
                   >
                     {item.isExternal ? '打开应用' : '进入模块'}
                   </Button>

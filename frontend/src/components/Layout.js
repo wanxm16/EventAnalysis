@@ -65,8 +65,8 @@ const Layout = ({ children }) => {
           padding: '0 24px',
         }}
       >
-        <Title level={3} style={{ margin: 0, marginRight: 24, color: '#1890ff' }}>
-          海曙区社会治理中心事件分析系统
+        <Title level={4} style={{ margin: 0, marginRight: 24, color: '#1890ff', lineHeight: '1.2', textAlign: 'center', fontSize: '16px' }}>
+          海曙区社会治理中心<br />事件分析系统
         </Title>
         <Menu
           mode="horizontal"

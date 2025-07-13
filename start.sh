@@ -572,6 +572,29 @@ start_backend() {
         export DEBUG=true
     fi
     
+    # 导出AI配置环境变量
+    if [ -n "$AI_PROVIDER" ]; then
+        export AI_PROVIDER
+    fi
+    if [ -n "$AI_API_KEY" ]; then
+        export AI_API_KEY
+    fi
+    if [ -n "$AI_MODEL" ]; then
+        export AI_MODEL
+    fi
+    if [ -n "$AI_BASE_URL" ]; then
+        export AI_BASE_URL
+    fi
+    if [ -n "$AI_MAX_TOKENS" ]; then
+        export AI_MAX_TOKENS
+    fi
+    if [ -n "$AI_TEMPERATURE" ]; then
+        export AI_TEMPERATURE
+    fi
+    if [ -n "$AI_TIMEOUT" ]; then
+        export AI_TIMEOUT
+    fi
+    
     # 启动服务并捕获输出
     print_progress "正在启动后端服务 (端口: $BACKEND_PORT)..."
     

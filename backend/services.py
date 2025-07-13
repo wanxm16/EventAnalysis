@@ -28,7 +28,7 @@ class EventService:
             detail_path = os.path.join(parent_dir, 'data', 'conflict_event_detail.csv')
             cluster_path = os.path.join(parent_dir, 'data', 'conflict_event.csv')
             info_path = os.path.join(parent_dir, 'data', 'info_merge.csv')
-            people_path = os.path.join(parent_dir, 'data', 'people_info_simple.csv')
+            people_path = os.path.join(parent_dir, 'data', 'people_info.csv')
             phone_master_path = os.path.join(parent_dir, 'data', 'phone_master_index.csv')
             raw_conflict_path = os.path.join(parent_dir, 'data', 'raw_conflict.csv')
             
@@ -41,8 +41,8 @@ class EventService:
             # 加载报警人信息数据
             self.info_df = pd.read_csv(info_path)
             
-            # 加载人口信息数据（使用更强的CSV解析参数）
-            self.people_df = pd.read_csv(people_path, sep=',', quotechar='"', quoting=1, engine='python')
+            # 加载人口信息数据
+            self.people_df = pd.read_csv(people_path)
             
             # 加载人员分析数据
             self.phone_master_df = pd.read_csv(phone_master_path)

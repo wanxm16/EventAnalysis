@@ -12,6 +12,10 @@ const useServiceMonitor = () => {
       return;
     }
 
+    // 暂时禁用服务监控，避免与AI聊天请求冲突
+    console.log('服务监控已禁用，避免与AI请求冲突');
+    return;
+
     const checkServiceHealth = async () => {
       if (isCheckingRef.current) return;
       isCheckingRef.current = true;
@@ -50,11 +54,20 @@ const useServiceMonitor = () => {
           }
         }
       } catch (error) {
-        console.warn('服务连接失败，可能服务已停止:', error);
+        console.warn('服务健康检查失败:', error);
         
-        // 服务不可用时自动退出登录
-        message.warning('检测到服务已停止，正在自动退出登录...');
-        logout();
+        // 只有在真正的网络错误时才退出登录，忽略信号中止错误
+        if (error.name === 'AbortError') {
+          console.log('健康检查超时，但这可能是正常的');
+          return;
+        }
+        
+        // 检查是否是网络连接问题
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+          console.warn('网络连接失败，可能服务已停止');
+          message.warning('检测到服务已停止，正在自动退出登录...');
+          logout();
+        }
         
         // 清理定时器
         if (intervalRef.current) {
@@ -67,7 +80,7 @@ const useServiceMonitor = () => {
     };
 
     // 开始监听服务状态
-    intervalRef.current = setInterval(checkServiceHealth, 3000); // 每3秒检查一次
+    intervalRef.current = setInterval(checkServiceHealth, 10000); // 每10秒检查一次，减少干扰
 
     // 页面隐藏/显示时的处理
     const handleVisibilityChange = () => {
