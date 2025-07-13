@@ -74,9 +74,16 @@ async def root():
 @app.get("/api/health", summary="健康检查")
 async def health_check():
     """健康检查端点"""
+    import os
+    
+    # 检查服务状态文件是否存在
+    service_file = "../.service_status"
+    service_active = os.path.exists(service_file)
+    
     return {
-        "status": "healthy",
-        "message": "API is running normally"
+        "status": "healthy" if service_active else "stopping",
+        "service_active": service_active,
+        "message": "API is running normally" if service_active else "Service is stopping"
     }
 
 @app.get("/api/events", response_model=PaginatedResponse, summary="获取事件列表")

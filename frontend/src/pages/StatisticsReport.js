@@ -347,7 +347,7 @@ const StatisticsReport = () => {
       <Card style={{ marginBottom: '24px', textAlign: 'center' }}>
         <Title level={1} style={{ color: '#1890ff', marginBottom: '8px' }}>
           <PieChartOutlined style={{ marginRight: '12px' }} />
-          海曙区事件分析系统 - 数据统计报告
+          海曙区社会治理中心事件分析系统-数据统计报告
         </Title>
         <Text type="secondary" style={{ fontSize: '16px' }}>
           生成时间: {reportData ? reportData.report_date : '加载中...'}
@@ -618,8 +618,9 @@ const StatisticsReport = () => {
         <div style={{ textAlign: 'center', color: '#666' }}>
           <Divider />
           <Space direction="vertical" size="small">
-            <Text><strong>报告生成</strong>: 海曙区事件分析系统</Text>
+            <Text><strong>报告生成</strong>: 海曙区社会治理中心事件分析系统</Text>
             <Text><strong>统计日期</strong>: {reportData ? reportData.report_date : '加载中...'}</Text>
+            <Text style={{ fontSize: '12px', color: '#999' }}>©2025 杭州量之技术支持</Text>
           </Space>
         </div>
       </Card>

@@ -61,7 +61,7 @@ const Dashboard = () => {
       {/* 欢迎区域 */}
       <Card style={{ marginBottom: '24px', textAlign: 'center' }}>
         <Title level={1} style={{ color: '#1890ff', marginBottom: '16px' }}>
-          欢迎使用海曙区事件分析系统
+          欢迎使用海曙区社会治理中心事件分析系统
         </Title>
         <Paragraph style={{ fontSize: '16px', color: '#666', maxWidth: '800px', margin: '0 auto' }}>
           本系统致力于为海曙区提供全面的事件分析和管理服务，通过数据驱动的方式帮助相关部门

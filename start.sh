@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 海曙区事件分析系统一键启动脚本
+# 海曙区社会治理中心事件分析系统一键启动脚本
 # 使用方法: ./start.sh [选项]
 # 选项:
 #   --skip-install        跳过依赖安装
@@ -11,6 +11,7 @@
 #   --port-backend PORT   指定后端端口（默认8000）
 #   --port-frontend PORT  指定前端端口（默认3000）
 #   --init-vector         强制重新初始化向量数据库
+#   --no-browser          不自动打开浏览器
 #   --help               显示帮助信息
 
 set -e  # 出错时立即退出
@@ -32,6 +33,7 @@ FRONTEND_ONLY=false
 DEV_MODE=false
 PROD_MODE=false
 INIT_VECTOR=false
+NO_BROWSER=false
 
 # 颜色定义
 RED='\033[0;31m'
@@ -79,7 +81,7 @@ print_progress() {
 
 # 显示帮助信息
 show_help() {
-    echo "海曙区事件分析系统启动脚本"
+    echo "海曙区社会治理中心事件分析系统启动脚本"
     echo ""
     echo "用法: $0 [选项]"
     echo ""
@@ -92,6 +94,7 @@ show_help() {
     echo "  --port-backend PORT      指定后端端口（默认8000）"
     echo "  --port-frontend PORT     指定前端端口（默认3000）"
     echo "  --init-vector            强制重新初始化向量数据库"
+    echo "  --no-browser             不自动打开浏览器"
     echo "  --status                 快速检查服务状态"
     echo "  --help                   显示此帮助信息"
     echo ""
@@ -105,7 +108,7 @@ show_help() {
 
 # 快速状态检查
 show_quick_status() {
-    echo "海曙区事件分析系统 - 服务状态"
+    echo "海曙区社会治理中心事件分析系统 - 服务状态"
     echo "========================================"
     
     # 检查后端状态
@@ -159,6 +162,10 @@ parse_args() {
                 ;;
             --init-vector)
                 INIT_VECTOR=true
+                shift
+                ;;
+            --no-browser)
+                NO_BROWSER=true
                 shift
                 ;;
             --status)
@@ -388,7 +395,7 @@ advanced_health_check() {
             print_step "检查前端页面..."
             
             # 检查首页加载
-            if curl -s --max-time 5 "http://localhost:$port" | grep -q "海曙区事件分析系统\|React"; then
+            if curl -s --max-time 5 "http://localhost:$port" | grep -q "海曙区社会治理中心事件分析系统\|React"; then
                 print_success "✓ 前端页面加载正常"
                 return 0
             else
@@ -692,6 +699,9 @@ cleanup() {
     pkill -f "npm.*start" 2>/dev/null || true
     pkill -f "yarn.*start" 2>/dev/null || true
     
+    # 删除服务运行标志文件
+    rm -f .service_status
+    
     print_success "服务清理完成"
     exit 0
 }
@@ -709,7 +719,7 @@ main() {
     validate_port $FRONTEND_PORT "前端"
     
     # 打印启动信息
-    print_header "启动海曙区事件分析系统"
+    print_header "启动海曙区社会治理中心事件分析系统"
     echo "========================================"
     
     if [ "$DEV_MODE" = true ]; then
@@ -789,6 +799,9 @@ main() {
     # 设置信号处理
     trap cleanup SIGINT SIGTERM
     
+    # 创建服务运行标志文件
+    echo "running" > .service_status
+    
     # 启动服务
     if [ "$FRONTEND_ONLY" != true ]; then
         start_backend || {
@@ -839,6 +852,36 @@ main() {
     
     print_warning "按 Ctrl+C 停止所有服务"
     echo "========================================"
+    
+    # 自动打开登录页面
+    if [ "$BACKEND_ONLY" != true ] && [ "$NO_BROWSER" != true ]; then
+        print_step "正在打开登录页面..."
+        sleep 3  # 等待3秒确保服务完全启动
+        
+        # 检测操作系统并使用相应的命令打开浏览器
+        case "$(uname -s)" in
+            Darwin)  # macOS
+                open "http://localhost:$FRONTEND_PORT/login" 2>/dev/null || true
+                ;;
+            Linux)   # Linux
+                if command -v xdg-open &> /dev/null; then
+                    xdg-open "http://localhost:$FRONTEND_PORT/login" 2>/dev/null || true
+                elif command -v gnome-open &> /dev/null; then
+                    gnome-open "http://localhost:$FRONTEND_PORT/login" 2>/dev/null || true
+                fi
+                ;;
+            CYGWIN*|MINGW32*|MSYS*|MINGW*)  # Windows
+                start "http://localhost:$FRONTEND_PORT/login" 2>/dev/null || true
+                ;;
+        esac
+        
+        print_success "登录页面已在浏览器中打开"
+        print_info "登录地址: http://localhost:$FRONTEND_PORT/login"
+        print_info "默认用户名: admin, 密码: admin"
+    elif [ "$BACKEND_ONLY" != true ]; then
+        print_info "登录地址: http://localhost:$FRONTEND_PORT/login"
+        print_info "默认用户名: admin, 密码: admin"
+    fi
     
     # 保持脚本运行
     wait

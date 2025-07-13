@@ -4,7 +4,12 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import 'antd/dist/reset.css';
 
+import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import RootRoute from './components/RootRoute';
+import ServiceMonitor from './components/ServiceMonitor';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import EventList from './pages/EventList';
 import EventDetail from './pages/EventDetail';
@@ -18,21 +23,78 @@ import AIChatPage from './pages/AIChatPage';
 function App() {
   return (
     <ConfigProvider locale={zhCN}>
-      <Router>
-        <Layout>
+      <AuthProvider>
+        <ServiceMonitor />
+        <Router>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/events" element={<EventList />} />
-            <Route path="/events/:eventId" element={<EventDetail />} />
-            <Route path="/cluster-list" element={<ClusterList />} />
-            <Route path="/clusters/:eventUID" element={<ClusterDetail />} />
-            <Route path="/person-analysis" element={<PersonAnalysisList />} />
-            <Route path="/person-analysis/:phone" element={<PersonAnalysisDetail />} />
-            <Route path="/ai-chat" element={<AIChatPage />} />
-            <Route path="/statistics-report" element={<StatisticsReport />} />
+            <Route path="/" element={<RootRoute />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/events" element={
+              <ProtectedRoute>
+                <Layout>
+                  <EventList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/events/:eventId" element={
+              <ProtectedRoute>
+                <Layout>
+                  <EventDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/cluster-list" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ClusterList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/clusters/:eventUID" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ClusterDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/person-analysis" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PersonAnalysisList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/person-analysis/:phone" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PersonAnalysisDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/ai-chat" element={
+              <ProtectedRoute>
+                <Layout>
+                  <AIChatPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/statistics-report" element={
+              <ProtectedRoute>
+                <Layout>
+                  <StatisticsReport />
+                </Layout>
+              </ProtectedRoute>
+            } />
           </Routes>
-        </Layout>
-      </Router>
+        </Router>
+      </AuthProvider>
     </ConfigProvider>
   );
 }

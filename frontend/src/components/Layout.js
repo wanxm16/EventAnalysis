@@ -1,7 +1,8 @@
 import React from 'react';
-import { Layout as AntLayout, Menu, Typography } from 'antd';
-import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, QuestionCircleOutlined, BarChartOutlined, CommentOutlined } from '@ant-design/icons';
+import { Layout as AntLayout, Menu, Typography, Button, Space } from 'antd';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, CommentOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Header, Content, Footer } = AntLayout;
 const { Title } = Typography;
@@ -9,10 +10,16 @@ const { Title } = Typography;
 const Layout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { username, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const menuItems = [
     {
-      key: '/',
+      key: '/dashboard',
       icon: <HomeOutlined />,
       label: '首页',
     },
@@ -59,7 +66,7 @@ const Layout = ({ children }) => {
         }}
       >
         <Title level={3} style={{ margin: 0, marginRight: 24, color: '#1890ff' }}>
-          海曙区事件分析系统
+          海曙区社会治理中心事件分析系统
         </Title>
         <Menu
           mode="horizontal"
@@ -68,6 +75,16 @@ const Layout = ({ children }) => {
           onClick={handleMenuClick}
           style={{ flex: 1, border: 'none' }}
         />
+        <Space>
+          <span>欢迎，{username}</span>
+          <Button 
+            type="text" 
+            icon={<LogoutOutlined />} 
+            onClick={handleLogout}
+          >
+            退出
+          </Button>
+        </Space>
       </Header>
       
       <Content style={{ minHeight: 'calc(100vh - 134px)' }}>
@@ -75,7 +92,7 @@ const Layout = ({ children }) => {
       </Content>
       
       <Footer style={{ textAlign: 'center', background: '#f0f2f5' }}>
-        海曙区事件分析系统 ©2024 Created by AI Assistant
+        海曙区社会治理中心事件分析系统 ©2025 杭州量之技术支持
       </Footer>
     </AntLayout>
   );
