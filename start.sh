@@ -22,6 +22,12 @@ load_config() {
         print_info "加载配置文件: config.env"
         source config.env
     fi
+    
+    # 加载AI配置文件（可选）
+    if [ -f "ai_config.env" ]; then
+        print_info "加载AI配置文件: ai_config.env"
+        source ai_config.env
+    fi
 }
 
 # 默认配置

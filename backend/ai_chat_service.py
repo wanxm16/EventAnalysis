@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 AI问答服务
-负责数据处理、DuckDB集成、向量数据库和DeepSeek API调用
+负责数据处理、DuckDB集成、向量数据库和AI API调用
+支持多种AI服务提供商配置
 """
 
 import os
@@ -17,23 +18,35 @@ import logging
 from functools import wraps
 import time
 
+# 导入AI配置管理器
+from ai_config import get_ai_config, is_ai_available, AIProvider
+
 class AIChatService:
     def __init__(self):
         """初始化AI问答服务"""
-        # 检查API密钥
-        api_key = os.getenv('DEEPSEEK_API_KEY')
-        if not api_key or api_key == 'sk-your-api-key-here':
-            raise ValueError("DEEPSEEK_API_KEY未设置或使用默认值。请访问 https://platform.deepseek.com/ 获取API密钥并在config.env中配置")
-        
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url="https://api.deepseek.com"
-        )
-        self.db_path = os.path.join(os.path.dirname(__file__), '../data/events.db')
-        self.collection_name = "event_descriptions"
-        
         # 设置日志
         self.setup_logging()
+        
+        # 检查AI配置
+        if not is_ai_available():
+            raise ValueError("AI服务配置未找到。请检查ai_config.env文件或环境变量配置")
+        
+        # 获取AI配置
+        self.ai_config = get_ai_config()
+        if not self.ai_config:
+            raise ValueError("AI配置获取失败")
+        
+        # 初始化AI客户端
+        self.client = OpenAI(
+            api_key=self.ai_config.api_key,
+            base_url=self.ai_config.base_url,
+            timeout=self.ai_config.timeout
+        )
+        
+        self.logger.info(f"✅ AI服务初始化成功: {self.ai_config.provider.value} - {self.ai_config.model}")
+        
+        self.db_path = os.path.join(os.path.dirname(__file__), '../data/events.db')
+        self.collection_name = "event_descriptions"
         
         # 初始化数据库和向量数据库
         self.init_database()
@@ -364,7 +377,7 @@ result = {{
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=600
@@ -733,7 +746,7 @@ result = {{
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": route_prompt}],
                 temperature=0.1,
                 max_tokens=200
@@ -935,7 +948,7 @@ DuckDB特殊语法：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"用户查询：{query}"}
@@ -1057,7 +1070,7 @@ SQL：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=800
@@ -1431,10 +1444,10 @@ SQL：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=1000
+                max_tokens=self.ai_config.max_tokens
             )
             
             return response.choices[0].message.content
@@ -1465,7 +1478,7 @@ SQL查询结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=1200
@@ -1511,7 +1524,7 @@ SQL查询结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=800
@@ -1637,7 +1650,7 @@ SQL查询结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=1200
@@ -1673,7 +1686,7 @@ Function Calling结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=1500
@@ -1740,10 +1753,10 @@ Function Calling结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=1000
+                max_tokens=self.ai_config.max_tokens
             )
             
             return response.choices[0].message.content
@@ -1779,10 +1792,10 @@ Function Calling结果：
 """
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.ai_config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=1000
+                max_tokens=self.ai_config.max_tokens
             )
             
             return response.choices[0].message.content

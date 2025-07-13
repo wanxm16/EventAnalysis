@@ -149,4 +149,11 @@ logs/
 .env
 .env.*
 !.env.example
-!config.env.example 
+!config.env.example
+
+# AI配置文件
+ai_config.env
+!ai_config.env.example
+
+# 服务状态文件
+.service_status 

@@ -170,6 +170,25 @@ chmod +x start.sh
 - **用户名**: `admin`
 - **密码**: `admin`
 
+### 🤖 AI服务配置
+系统支持多种AI服务提供商，部署前需要配置：
+
+```bash
+# 1. 复制AI配置文件
+cp ai_config.env.example ai_config.env
+
+# 2. 编辑配置文件
+vim ai_config.env
+
+# 3. 填入您的API配置
+AI_PROVIDER=deepseek  # 选择提供商: openai/deepseek/qwen/zhipu
+AI_API_KEY=sk-your-api-key-here  # 填入API密钥
+```
+
+支持的AI服务商：**OpenAI** | **DeepSeek** | **通义千问** | **智谱AI** | **自定义API**
+
+详细配置请参考：[部署配置指南](DEPLOYMENT.md)
+
 ### 🌐 访问地址
 启动成功后，系统会自动打开浏览器访问登录页面：
 - **前端应用**: http://localhost:3000/login
