@@ -58,11 +58,17 @@ const Layout = ({ children }) => {
     <AntLayout>
       <Header
         style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
           display: 'flex',
           alignItems: 'center',
           background: '#fff',
           borderBottom: '1px solid #f0f0f0',
           padding: '0 24px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
         }}
       >
         <Title level={4} style={{ margin: 0, marginRight: 24, color: '#1890ff', lineHeight: '1.2', textAlign: 'center', fontSize: '16px' }}>
@@ -87,7 +93,9 @@ const Layout = ({ children }) => {
         </Space>
       </Header>
       
-      <Content style={{ minHeight: 'calc(100vh - 134px)' }}>
+      <Content style={{ 
+        paddingTop: '64px'
+      }}>
         {children}
       </Content>
       
