@@ -15,8 +15,9 @@ from openai import OpenAI
 from datetime import datetime
 import json
 import logging
-from functools import wraps
+from functools import wraps, lru_cache
 import time
+import hashlib
 
 # 导入AI配置管理器
 from ai_config import get_ai_config, is_ai_available, AIProvider
@@ -47,6 +48,10 @@ class AIChatService:
         
         self.db_path = os.path.join(os.path.dirname(__file__), '../data/events.db')
         self.collection_name = "event_descriptions"
+        
+        # 初始化缓存
+        self.query_cache = {}
+        self.cache_max_size = 100
         
         # 初始化数据库和向量数据库
         self.init_database()
@@ -907,12 +912,16 @@ result = {{
             
         return None
     
-    def generate_sql_with_function_calling(self, query):
-        """使用Function Calling生成高质量SQL"""
+    def generate_optimized_function_calling(self, query):
+        """优化的Function Calling - 一次性完成路由+执行"""
         try:
-            # 构建更详细的系统提示
+            # 构建优化的系统提示 - 一次性完成所有操作
             system_prompt = f"""
-你是海曙区事件分析系统的SQL专家。你需要根据用户查询，使用Function Calling来执行查询。
+你是海曙区事件分析系统的AI专家。请直接完成以下任务：
+1. 分析用户查询意图
+2. 选择最适合的函数
+3. 生成准确的参数
+4. 一次性返回完整结果
 
 数据表结构：
 {json.dumps(self.metadata["table_schema"], ensure_ascii=False, indent=2)}
@@ -923,28 +932,22 @@ result = {{
 业务规则：
 {json.dumps(self.metadata["business_rules"], ensure_ascii=False, indent=2)}
 
-**重要：函数选择规则**
-1. **具体事件编号查询** → 必须使用 execute_sql_query
-   - 用户提供了完整事件编号（如DQIW202505240002、YHW202505060301等）
-   - SQL格式：SELECT * FROM events WHERE 事件编号 = '具体编号'
-
-2. **统计分析查询** → 使用 execute_sql_query  
+**函数选择规则**
+1. **事件编号查询** → execute_sql_query
+   - 格式：SELECT * FROM events WHERE 事件编号 = '具体编号'
+2. **统计分析查询** → execute_sql_query  
    - 数量统计、排名、占比、平均值等
-
-3. **时间相关分析** → 使用 analyze_time_data
+3. **时间相关分析** → analyze_time_data
    - 处理时长、逾期分析、趋势分析
-
-4. **文本内容搜索** → 使用 search_events_semantic
+4. **文本内容搜索** → search_events_semantic
    - 查找包含特定内容的事件案例
 
-DuckDB特殊语法：
-1. 时间函数：strftime('%Y-%m', 日期字段)
-2. 窗口函数：ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
-3. 百分位数：PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 字段)
-4. 时间差：EXTRACT(EPOCH FROM (时间2 - 时间1))/3600 AS 小时差
-5. 当前时间：CURRENT_TIMESTAMP
+**优化要求**
+- 直接选择最合适的函数，不要多轮对话
+- 生成高质量的SQL或参数
+- 优先使用快速查询模板
 
-请根据用户查询选择正确的函数并提供准确的参数。
+请根据用户查询直接选择函数并提供参数。
 """
 
             response = self.client.chat.completions.create(
@@ -961,7 +964,7 @@ DuckDB特殊语法：
             return response
             
         except Exception as e:
-            self.logger.error(f"Function Calling SQL生成失败: {e}")
+            self.logger.error(f"优化Function Calling失败: {e}")
             return None
     
     def generate_advanced_sql(self, query):
@@ -1103,6 +1106,11 @@ SQL：
                 self.logger.info(f"检测到事件编号: {event_id}")
                 return f"SELECT * FROM events WHERE 事件编号 = '{event_id}'"
         
+        # 检查事件分类查询
+        category_sql = self.get_category_query_sql(query)
+        if category_sql:
+            return category_sql
+        
         # 更多的快速SQL模板
         templates = {
             # 基础统计
@@ -1182,9 +1190,144 @@ SQL：
         
         return None
     
+    def get_category_query_sql(self, query):
+        """事件分类查询SQL生成"""
+        # 事件分类映射表
+        category_mapping = {
+            # 精确匹配
+            '劳动纠纷': '劳动人事（就业）纠纷',
+            '劳动人事纠纷': '劳动人事（就业）纠纷',
+            '劳资纠纷': '劳动人事（就业）纠纷',
+            '就业纠纷': '劳动人事（就业）纠纷',
+            '消费纠纷': '消费纠纷',
+            '经济纠纷': '经济纠纷',
+            '邻里纠纷': '邻里纠纷',
+            '物业纠纷': '物业管理纠纷',
+            '物业管理纠纷': '物业管理纠纷',
+            '债务纠纷': '债务纠纷',
+            '公共秩序纠纷': '公共秩序纠纷',
+            '家庭纠纷': '家庭婚姻纠纷',
+            '婚姻纠纷': '家庭婚姻纠纷',
+            '家庭婚姻纠纷': '家庭婚姻纠纷',
+            '治安纠纷': '治安隐患纠纷',
+            '治安隐患纠纷': '治安隐患纠纷',
+            '其他纠纷': '其他纠纷'
+        }
+        
+        # 检查是否包含数量查询关键词
+        count_keywords = ['多少', '数量', '统计', '总数', '有多少']
+        has_count_query = any(keyword in query for keyword in count_keywords)
+        
+        if not has_count_query:
+            return None
+        
+        # 尝试匹配分类
+        for query_key, db_category in category_mapping.items():
+            if query_key in query:
+                self.logger.info(f"匹配到事件分类查询: {query_key} -> {db_category}")
+                return f"SELECT COUNT(*) as {query_key}数量 FROM events WHERE 二级分类 = '{db_category}'"
+        
+        # 模糊匹配
+        if '纠纷' in query:
+            # 检查是否有更具体的关键词
+            for query_key, db_category in category_mapping.items():
+                if any(word in query for word in query_key.replace('纠纷', '').split()):
+                    if query_key.replace('纠纷', '') in query:
+                        self.logger.info(f"模糊匹配到事件分类: {query_key} -> {db_category}")
+                        return f"SELECT COUNT(*) as {query_key}数量 FROM events WHERE 二级分类 = '{db_category}'"
+        
+        return None
+    
+    def get_category_query_sql(self, query):
+        """事件分类查询SQL生成"""
+        # 事件分类映射表
+        category_mapping = {
+            # 精确匹配
+            '劳动纠纷': '劳动人事（就业）纠纷',
+            '劳动人事纠纷': '劳动人事（就业）纠纷',
+            '劳资纠纷': '劳动人事（就业）纠纷',
+            '就业纠纷': '劳动人事（就业）纠纷',
+            '消费纠纷': '消费纠纷',
+            '经济纠纷': '经济纠纷',
+            '邻里纠纷': '邻里纠纷',
+            '物业纠纷': '物业管理纠纷',
+            '物业管理纠纷': '物业管理纠纷',
+            '债务纠纷': '债务纠纷',
+            '公共秩序纠纷': '公共秩序纠纷',
+            '家庭纠纷': '家庭婚姻纠纷',
+            '婚姻纠纷': '家庭婚姻纠纷',
+            '家庭婚姻纠纷': '家庭婚姻纠纷',
+            '治安纠纷': '治安隐患纠纷',
+            '治安隐患纠纷': '治安隐患纠纷',
+            '其他纠纷': '其他纠纷'
+        }
+        
+        # 检查是否包含数量查询关键词
+        count_keywords = ['多少', '数量', '统计', '总数', '有多少']
+        has_count_query = any(keyword in query for keyword in count_keywords)
+        
+        if not has_count_query:
+            return None
+        
+        # 尝试匹配分类
+        for query_key, db_category in category_mapping.items():
+            if query_key in query:
+                self.logger.info(f"匹配到事件分类查询: {query_key} -> {db_category}")
+                return f"SELECT COUNT(*) as {query_key}数量 FROM events WHERE 二级分类 = '{db_category}'"
+        
+        # 模糊匹配
+        if '纠纷' in query:
+            # 检查是否有更具体的关键词
+            for query_key, db_category in category_mapping.items():
+                if any(word in query for word in query_key.replace('纠纷', '').split()):
+                    if query_key.replace('纠纷', '') in query:
+                        self.logger.info(f"模糊匹配到事件分类: {query_key} -> {db_category}")
+                        return f"SELECT COUNT(*) as {query_key}数量 FROM events WHERE 二级分类 = '{db_category}'"
+        
+        return None
+    
+    def get_cache_key(self, query_type, query_content):
+        """生成缓存键"""
+        content = f"{query_type}:{query_content}"
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
+    
+    def get_cached_result(self, cache_key):
+        """获取缓存结果"""
+        if cache_key in self.query_cache:
+            cached_data = self.query_cache[cache_key]
+            # 检查缓存是否过期（10分钟）
+            if time.time() - cached_data['timestamp'] < 600:
+                self.logger.info(f"🎯 缓存命中: {cache_key[:8]}...")
+                return cached_data['result']
+            else:
+                # 清理过期缓存
+                del self.query_cache[cache_key]
+        return None
+    
+    def set_cached_result(self, cache_key, result):
+        """设置缓存结果"""
+        # 限制缓存大小
+        if len(self.query_cache) >= self.cache_max_size:
+            # 删除最老的缓存
+            oldest_key = min(self.query_cache.keys(), 
+                           key=lambda k: self.query_cache[k]['timestamp'])
+            del self.query_cache[oldest_key]
+        
+        self.query_cache[cache_key] = {
+            'result': result,
+            'timestamp': time.time()
+        }
+        self.logger.info(f"💾 缓存保存: {cache_key[:8]}...")
+    
     def execute_sql(self, sql):
-        """执行SQL查询"""
+        """执行SQL查询（带缓存）"""
         try:
+            # 检查缓存
+            cache_key = self.get_cache_key('sql', sql)
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result['result'], cached_result['columns']
+            
             conn = duckdb.connect(self.db_path)
             
             # 安全检查：只允许SELECT查询
@@ -1203,6 +1346,9 @@ SQL：
             columns = [desc[0] for desc in conn.description]
             
             conn.close()
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, {'result': result, 'columns': columns})
             
             return result, columns
             
@@ -1536,39 +1682,72 @@ SQL查询结果：
             return f"结果解释失败: {str(e)}"
     
     def chat(self, query):
-        """增强的聊天接口"""
+        """优化的聊天接口 - 高质量展示 + 性能优化"""
         try:
             start_time = time.time()
             
-            # 智能查询路由
-            route = self.route_query(query)
+            # 检查完整查询缓存
+            cache_key = self.get_cache_key('chat', query)
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                elapsed_time = time.time() - start_time
+                cached_result['elapsed_time'] = elapsed_time
+                cached_result['cached'] = True
+                return cached_result
+            
+            # 先尝试快速查询匹配（但使用高质量展示）
+            fast_result = self.try_fast_query_match(query)
+            if fast_result:
+                elapsed_time = time.time() - start_time
+                result = {
+                    "answer": fast_result,
+                    "query_type": "快速查询",
+                    "route": "fast",
+                    "elapsed_time": elapsed_time,
+                    "data": getattr(self, '_last_sql_data', None)
+                }
+                self.set_cached_result(cache_key, result)
+                return result
+            
+            # 使用规则路由（更快）
+            route = self.rule_based_route(query)
             self.logger.info(f"🎯 查询路由: {route}")
             
             # 根据路由执行不同的处理链
             if route == 'function_calling':
-                result = self.process_function_calling_chain(query)
-                query_type = "Function Calling"
+                # 判断是否需要高质量解释
+                if self.needs_quality_explanation(query):
+                    result = self.process_optimized_function_calling(query)
+                    query_type = "优化Function Calling"
+                else:
+                    result = self.process_optimized_function_calling(query)
+                    query_type = "优化Function Calling"
             elif route == 'vector':
-                result = self.process_enhanced_vector_chain(query)
+                result = self.process_cached_vector_search(query)
                 query_type = "增强语义搜索"
             elif route == 'hybrid':
-                result = self.process_enhanced_hybrid_chain(query)
-                query_type = "增强混合查询"
+                result = self.process_optimized_hybrid_chain(query)
+                query_type = "优化混合查询"
             else:
-                # 备用：使用原来的SQL链
-                result = self.process_sql_chain(query)
-                query_type = "SQL查询"
+                # 备用：使用增强SQL查询
+                result = self.process_enhanced_sql_chain(query)
+                query_type = "增强SQL查询"
             
             elapsed_time = time.time() - start_time
             self.logger.info(f"查询处理完成，耗时: {elapsed_time:.2f}s")
             
-            return {
+            final_result = {
                 "answer": result,
                 "query_type": query_type,
                 "route": route,
                 "elapsed_time": elapsed_time,
                 "data": getattr(self, '_last_sql_data', None)
             }
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, final_result)
+            
+            return final_result
             
         except Exception as e:
             self.logger.error(f"聊天接口错误: {e}")
@@ -1578,15 +1757,45 @@ SQL查询结果：
                 "route": "error"
             }
     
-    def process_function_calling_chain(self, query):
-        """处理Function Calling查询链"""
+    def needs_quality_explanation(self, query):
+        """判断是否需要高质量解释"""
+        # 复杂查询需要高质量解释
+        complex_keywords = [
+            '分析', '对比', '趋势', '变化', '增长', '下降',
+            '原因', '建议', '推荐', '解释', '说明',
+            '为什么', '怎么办', '如何', '怎么样'
+        ]
+        
+        # 单纯的数量查询不需要复杂解释
+        simple_keywords = [
+            '多少', '数量', '总数', '统计', '排名'
+        ]
+        
+        has_complex = any(keyword in query for keyword in complex_keywords)
+        has_simple = any(keyword in query for keyword in simple_keywords)
+        
+        # 如果只有简单关键词没有复杂关键词，则不需要复杂解释
+        if has_simple and not has_complex:
+            return False
+        
+        # 其他情况需要高质量解释
+        return True
+    
+    def process_optimized_function_calling(self, query):
+        """优化的Function Calling处理 - 合并API调用"""
         try:
-            # 使用Function Calling生成响应
-            response = self.generate_sql_with_function_calling(query)
+            # 检查缓存
+            cache_key = self.get_cache_key('function_calling', query)
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result
+            
+            # 使用优化的Function Calling
+            response = self.generate_optimized_function_calling(query)
             
             if not response or not response.choices[0].message.tool_calls:
-                # 如果没有工具调用，使用增强SQL生成
-                return self.process_enhanced_sql_chain(query)
+                # 如果没有工具调用，使用快速SQL查询
+                return self.process_fast_sql_query(query)
             
             # 执行函数调用
             tool_call = response.choices[0].message.tool_calls[0]
@@ -1610,14 +1819,17 @@ SQL查询结果：
             if "error" in func_result:
                 return f"函数执行失败: {func_result['error']}"
             
-            # 使用DeepSeek解释结果
-            explanation = self.explain_function_result(query, function_name, func_result)
+            # 使用快速结果解释
+            explanation = self.explain_function_result_fast(query, function_name, func_result)
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, explanation)
             
             return explanation
             
         except Exception as e:
-            self.logger.error(f"Function Calling处理失败: {e}")
-            return f"Function Calling处理失败: {str(e)}"
+            self.logger.error(f"优化Function Calling处理失败: {e}")
+            return f"优化Function Calling处理失败: {str(e)}"
     
     def process_enhanced_vector_chain(self, query):
         """处理增强语义搜索链"""
@@ -1819,6 +2031,347 @@ Function Calling结果：
 """)
         
         return "\n".join(context_parts)
+    
+    def try_fast_query_match(self, query):
+        """尝试快速查询匹配 - 无需API调用"""
+        try:
+            # 检查快速SQL模板
+            quick_sql = self.get_enhanced_quick_sql(query)
+            if quick_sql:
+                self.logger.info(f"🚀 快速查询匹配: {query}")
+                result, columns = self.execute_sql(quick_sql)
+                if result is not None:
+                    # 简单格式化结果
+                    return self.format_quick_result(result, columns, query)
+            return None
+        except Exception as e:
+            self.logger.error(f"快速查询匹配失败: {e}")
+            return None
+    
+    def format_quick_result(self, result, columns, query):
+        """快速格式化结果 - 高质量展示"""
+        if not result:
+            return "查询未返回结果。"
+        
+        # 单个数值结果的高质量展示
+        if len(columns) == 1 and len(result) == 1:
+            value = result[0][0]
+            if '总数' in query or '多少' in query:
+                # 提取查询主题
+                subject = query.replace('多少', '').replace('总数', '').replace('？', '').replace('?', '').strip()
+                return f"根据系统统计，{subject}共有 **{value:,}** 条事件记录。"
+            elif '三级事件' in query:
+                return f"根据系统统计，三级事件共有 **{value:,}** 条记录。"
+            elif '二级事件' in query:
+                return f"根据系统统计，二级事件共有 **{value:,}** 条记录。"
+            elif '一级事件' in query:
+                return f"根据系统统计，一级事件共有 **{value:,}** 条记录。"
+            elif '四级事件' in query:
+                return f"根据系统统计，四级事件共有 **{value:,}** 条记录。"
+            else:
+                return f"查询结果：**{value:,}**。"
+        
+        # 多行结果的高质量展示
+        if '排名' in query or '前' in query:
+            lines = []
+            total_count = sum(row[1] for row in result if len(row) >= 2)
+            
+            if '镇街' in query:
+                lines.append(f"根据系统统计，镇街事件数量排名情况如下：\n")
+            else:
+                lines.append(f"根据系统统计，排名情况如下：\n")
+            
+            for i, row in enumerate(result[:5], 1):
+                if len(row) >= 2:
+                    count = row[1]
+                    percentage = (count / total_count * 100) if total_count > 0 else 0
+                    lines.append(f"{i}. **{row[0]}**: {count:,} 条 ({percentage:.1f}%)")
+            
+            if len(result) > 5:
+                lines.append(f"\n... 还有 {len(result) - 5} 个项目")
+            
+            return "\n".join(lines)
+        
+        # 默认格式化 - 使用更好的表格展示
+        return self.format_enhanced_sql_result(result, columns)
+    
+    def format_enhanced_sql_result(self, result, columns):
+        """增强的SQL结果格式化"""
+        if not result:
+            return "查询未返回结果。"
+        
+        # 单列结果
+        if len(columns) == 1:
+            lines = [f"**{columns[0]}**"]
+            for i, row in enumerate(result[:10], 1):
+                lines.append(f"{i}. {row[0]}")
+            return "\n".join(lines)
+        
+        # 双列结果
+        if len(columns) == 2:
+            lines = [f"**{columns[0]} - {columns[1]}**\n"]
+            for i, row in enumerate(result[:10], 1):
+                lines.append(f"{i}. **{row[0]}**: {row[1]}")
+            return "\n".join(lines)
+        
+        # 多列结果 - 使用表格格式
+        lines = []
+        lines.append(" | ".join([f"**{col}**" for col in columns]))
+        lines.append("-" * (len(" | ".join(columns)) + 10))
+        
+        for row in result[:10]:
+            lines.append(" | ".join([str(cell) for cell in row]))
+        
+        if len(result) > 10:
+            lines.append(f"\n... 还有 {len(result) - 10} 行数据")
+        
+        return "\n".join(lines)
+    
+    def process_fast_sql_query(self, query):
+        """快速SQL查询处理"""
+        try:
+            # 尝试快速查询
+            fast_result = self.try_fast_query_match(query)
+            if fast_result:
+                return fast_result
+            
+            # 使用增强SQL生成
+            sql = self.generate_enhanced_sql(query)
+            if not sql:
+                return "抱歉，无法生成SQL查询。"
+            
+            result, columns = self.execute_sql(sql)
+            if result is None:
+                return f"查询执行失败: {columns}"
+            
+            if not result:
+                return "查询未返回结果。"
+            
+            # 简化结果解释
+            return self.format_quick_result(result, columns, query)
+            
+        except Exception as e:
+            return f"快速SQL查询处理失败: {str(e)}"
+    
+    def process_cached_vector_search(self, query):
+        """缓存语义搜索处理 - 高质量展示"""
+        try:
+            # 检查缓存
+            cache_key = self.get_cache_key('vector', query)
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result
+            
+            # 执行向量搜索
+            search_results = self.enhanced_vector_search(query, n_results=5)
+            if not search_results or not search_results['documents'][0]:
+                return "未找到相关事件记录。"
+            
+            # 高质量结果处理
+            documents = search_results['documents'][0]
+            metadatas = search_results['metadatas'][0]
+            distances = search_results['distances'][0]
+            
+            result_lines = [f"根据语义搜索，找到 **{len(documents)}** 个相关事件：\n"]
+            
+            for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances), 1):
+                event_id = meta.get('事件编号', '')
+                town = meta.get('镇街名称', '')
+                level = meta.get('事件级别', '')
+                similarity = (1 - dist) * 100
+                
+                # 提取事件描述
+                desc_start = doc.find('事件描述：')
+                if desc_start != -1:
+                    desc_end = doc.find('\n', desc_start)
+                    if desc_end == -1:
+                        desc_end = desc_start + 150
+                    description = doc[desc_start + 5:desc_end].strip()
+                else:
+                    description = doc[:120] + "..."
+                
+                # 提取处置结果
+                result_start = doc.find('处置结果：')
+                if result_start != -1:
+                    result_end = doc.find('\n', result_start)
+                    if result_end == -1:
+                        result_end = result_start + 100
+                    disposal_result = doc[result_start + 5:result_end].strip()
+                    if disposal_result and disposal_result != '':
+                        disposal_info = f"\n   处置结果: {disposal_result}"
+                    else:
+                        disposal_info = ""
+                else:
+                    disposal_info = ""
+                
+                result_lines.append(f"**{i}. 事件编号: {event_id}** (相似度: {similarity:.1f}%)")
+                result_lines.append(f"   地点: {town} | 级别: {level}")
+                result_lines.append(f"   描述: {description}{disposal_info}")
+                result_lines.append("")
+            
+            result = "\n".join(result_lines)
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, result)
+            
+            return result
+            
+        except Exception as e:
+            return f"语义搜索处理失败: {str(e)}"
+    
+    def process_optimized_hybrid_chain(self, query):
+        """优化的混合查询处理"""
+        try:
+            # 检查缓存
+            cache_key = self.get_cache_key('hybrid', query)
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result
+            
+            # 先试快速查询
+            fast_result = self.try_fast_query_match(query)
+            if fast_result:
+                return fast_result
+            
+            # 执行优化的Function Calling
+            func_result = self.process_optimized_function_calling(query)
+            
+            # 如果需要补充信息，执行向量搜索
+            if any(keyword in query for keyword in ['案例', '举例', '具体', '包含']):
+                vector_result = self.process_cached_vector_search(query)
+                result = f"{func_result}\n\n相关案例：\n{vector_result}"
+            else:
+                result = func_result
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, result)
+            
+            return result
+            
+        except Exception as e:
+            return f"优化混合查询处理失败: {str(e)}"
+    
+    def explain_function_result_fast(self, query, function_name, func_result):
+        """快速函数结果解释 - 保持高质量展示"""
+        try:
+            # 检查缓存
+            cache_key = self.get_cache_key('explain', f"{function_name}:{query}:{str(func_result)[:100]}")
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result
+            
+            # 对于简单的单数值结果，使用快速处理
+            if function_name == "execute_sql_query":
+                data = func_result.get('data', [])
+                columns = func_result.get('columns', [])
+                
+                if not data:
+                    return "查询未返回结果。"
+                
+                # 单个数值结果的简单处理
+                if len(columns) == 1 and len(data) == 1:
+                    value = data[0][0]
+                    if '总数' in query or '多少' in query:
+                        result = f"根据系统统计，{query.replace('多少', '').replace('总数', '').replace('？', '').replace('?', '').strip()}共有 **{value}** 条事件记录。"
+                    else:
+                        result = f"查询结果：{value}。"
+                    
+                    self.set_cached_result(cache_key, result)
+                    return result
+                
+                # 对于复杂结果，使用AI生成高质量解释
+                return self.generate_quality_explanation(query, function_name, func_result)
+            
+            # 其他函数类型使用高质量解释
+            return self.generate_quality_explanation(query, function_name, func_result)
+            
+        except Exception as e:
+            return f"结果解释失败: {str(e)}"    
+    
+    def generate_quality_explanation(self, query, function_name, func_result):
+        """生成高质量的结果解释"""
+        try:
+            # 检查缓存
+            cache_key = self.get_cache_key('quality_explain', f"{function_name}:{query}:{str(func_result)[:100]}")
+            cached_result = self.get_cached_result(cache_key)
+            if cached_result:
+                return cached_result
+            
+            # 构建优化的提示词
+            prompt = f"""
+你是海曙区事件分析系统的专业分析师。请根据以下信息提供专业、准确的分析报告。
+
+**用户查询**：{query}
+**执行函数**：{function_name}
+**数据结果**：{json.dumps(func_result, ensure_ascii=False, indent=2)}
+
+**回答要求**：
+1. 直接回答用户的问题
+2. 突出关键数据和发现（使用**粗体**标记重要数字）
+3. 提供简洁的分析解释
+4. 如果有排名数据，请按列表形式展示
+5. 语言专业简洁，强调数据来源可靠
+
+**示例格式**：
+根据系统统计，海曙区事件数量排名前5名的镇街如下：
+
+1. **月湖街道**: 1,245条事件
+2. **江厦街道**: 1,123条事件
+3. **南门街道**: 987条事件
+
+请提供类似的专业分析：
+"""
+
+            response = self.client.chat.completions.create(
+                model=self.ai_config.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=self.ai_config.max_tokens
+            )
+            
+            result = response.choices[0].message.content
+            
+            # 缓存结果
+            self.set_cached_result(cache_key, result)
+            
+            return result
+            
+        except Exception as e:
+            # 如果AI解释失败，使用基本格式化
+            self.logger.error(f"高质量解释失败: {e}")
+            return self.fallback_format_result(query, function_name, func_result)
+    
+    def fallback_format_result(self, query, function_name, func_result):
+        """备用的结果格式化"""
+        try:
+            if function_name == "execute_sql_query":
+                data = func_result.get('data', [])
+                columns = func_result.get('columns', [])
+                
+                if not data:
+                    return "查询未返回结果。"
+                
+                # 单个数值结果
+                if len(columns) == 1 and len(data) == 1:
+                    value = data[0][0]
+                    return f"根据系统统计，结果为：**{value}**。"
+                
+                # 多行结果
+                if '排名' in query or '前' in query:
+                    lines = [f"根据系统统计，结果如下：\n"]
+                    for i, row in enumerate(data[:10], 1):
+                        if len(row) >= 2:
+                            lines.append(f"{i}. **{row[0]}**: {row[1]} 条")
+                    return "\n".join(lines)
+                
+                # 默认格式化
+                return self.format_sql_result(data, columns)
+            
+            # 其他函数类型
+            return json.dumps(func_result, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            return f"结果格式化失败: {str(e)}"
     
     def get_statistics(self):
         """获取数据统计信息"""

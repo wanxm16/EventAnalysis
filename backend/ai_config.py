@@ -74,9 +74,56 @@ class AIConfigManager:
         self.config: Optional[AIConfig] = None
         self._load_config()
     
+    def _load_env_file(self):
+        """加载配置文件到环境变量"""
+        # 查找配置文件路径
+        config_paths = [
+            "ai_config.env",  # 当前目录
+            "../ai_config.env",  # 上级目录
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "ai_config.env")  # 项目根目录
+        ]
+        
+        config_file = None
+        for path in config_paths:
+            if os.path.exists(path):
+                config_file = path
+                break
+        
+        if not config_file:
+            print("⚠️ 未找到 ai_config.env 配置文件")
+            return
+        
+        print(f"📁 正在加载配置文件: {config_file}")
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    # 跳过注释和空行
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # 解析环境变量
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        
+                        # 只有当环境变量未设置时才从文件加载
+                        if not os.getenv(key):
+                            os.environ[key] = value
+                            
+            print(f"✅ 配置文件加载完成")
+            
+        except Exception as e:
+            print(f"❌ 配置文件加载失败: {e}")
+    
     def _load_config(self):
         """从环境变量和配置文件加载配置"""
-        # 优先从环境变量读取
+        # 首先尝试加载配置文件
+        self._load_env_file()
+        
+        # 从环境变量读取配置
         provider_name = os.getenv("AI_PROVIDER", "openai").lower()
         
         try:

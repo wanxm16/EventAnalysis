@@ -1,25 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Table,
   Card,
   Input,
   Button,
-  Form,
   Select,
   Space,
   message,
   Tag,
   Pagination,
-  InputNumber,
-  Row,
-  Col,
+  Tooltip,
+  DatePicker,
 } from 'antd';
 import {
   SearchOutlined,
-  ReloadOutlined,
   EyeOutlined,
   ClusterOutlined,
+  FilterOutlined,
 } from '@ant-design/icons';
+import Highlighter from 'react-highlight-words';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { eventAPI } from '../services/api';
 
@@ -36,12 +35,345 @@ const ClusterList = () => {
     pageSize: parseInt(searchParams.get('page_size')) || 20,
     total: 0,
   });
-  const [filterOptions, setFilterOptions] = useState({
-    event_count_ranges: [],
-    duration_ranges: [],
-  });
   
-  const [form] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
+  const [searchedColumn, setSearchedColumn] = useState('');
+  const searchInput = useRef(null);
+  const [columnFilters, setColumnFilters] = useState({});
+
+  // 获取列搜索属性
+  const getColumnSearchProps = (dataIndex, placeholder, apiParam) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={searchInput}
+          placeholder={placeholder}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            搜索
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <SearchOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
+    ),
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) {
+        setTimeout(() => searchInput.current?.select(), 100);
+      }
+    },
+    render: (text) =>
+      searchedColumn === dataIndex ? (
+        <Highlighter
+          highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+          searchWords={[searchText]}
+          autoEscape
+          textToHighlight={text ? text.toString() : ''}
+        />
+      ) : (
+        text
+      ),
+  });
+
+  // 获取事件数量筛选属性
+  const getEventCountFilterProps = () => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <Select
+          placeholder="选择事件数量范围"
+          value={selectedKeys[0]}
+          onChange={(value) => setSelectedKeys(value ? [value] : [])}
+          style={{ width: 200, marginBottom: 8, display: 'block' }}
+          allowClear
+        >
+          <Option value="2">2个</Option>
+          <Option value="3-5">3-5个</Option>
+          <Option value="6-10">6-10个</Option>
+          <Option value="10+">10个以上</Option>
+        </Select>
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleColumnFilter(selectedKeys, confirm, 'event_count_range')}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, 'event_count_range')}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: columnFilters['event_count_range'] ? '#1890ff' : undefined }} />
+    ),
+  });
+
+  // 获取持续时间筛选属性
+  const getDurationFilterProps = () => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <Select
+          placeholder="选择持续时间范围"
+          value={selectedKeys[0]}
+          onChange={(value) => setSelectedKeys(value ? [value] : [])}
+          style={{ width: 200, marginBottom: 8, display: 'block' }}
+          allowClear
+        >
+          <Option value="0-1天">0-1天</Option>
+          <Option value="1-7天">1-7天</Option>
+          <Option value="7-30天">7-30天</Option>
+          <Option value="30天以上">30天以上</Option>
+        </Select>
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleColumnFilter(selectedKeys, confirm, 'duration_range')}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, 'duration_range')}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: columnFilters['duration_range'] ? '#1890ff' : undefined }} />
+    ),
+  });
+
+  // 获取日期筛选属性
+  const getDateFilterProps = (dataIndex, apiParam) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <DatePicker.RangePicker
+          value={selectedKeys[0]}
+          onChange={(dates) => setSelectedKeys(dates ? [dates] : [])}
+          style={{ marginBottom: 8, display: 'block' }}
+          placeholder={['开始日期', '结束日期']}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleDateFilter(selectedKeys, confirm, apiParam)}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
+    ),
+  });
+
+  // 处理列搜索筛选
+  const handleColumnSearchFilter = (selectedKeys, confirm, dataIndex, apiParam) => {
+    confirm();
+    const value = selectedKeys[0];
+    setSearchText(value);
+    setSearchedColumn(dataIndex);
+    
+    // 更新列筛选状态
+    const newColumnFilters = { ...columnFilters };
+    if (value) {
+      newColumnFilters[apiParam] = value;
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+    
+    // 更新搜索参数并重新加载数据
+    const newParams = { ...Object.fromEntries(searchParams), ...newColumnFilters };
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadClusters({ page: 1, ...newParams });
+  };
+
+  // 处理列筛选
+  const handleColumnFilter = (selectedKeys, confirm, apiParam) => {
+    confirm();
+    const value = selectedKeys[0];
+    
+    // 更新列筛选状态
+    const newColumnFilters = { ...columnFilters };
+    if (value) {
+      newColumnFilters[apiParam] = value;
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+    
+    // 转换为API参数
+    const newParams = { ...Object.fromEntries(searchParams) };
+    
+    if (apiParam === 'event_count_range') {
+      // 清除之前的事件数量筛选
+      delete newParams.min_event_count;
+      delete newParams.max_event_count;
+      
+      if (value === "2") {
+        newParams.min_event_count = 2;
+        newParams.max_event_count = 2;
+      } else if (value === "3-5") {
+        newParams.min_event_count = 3;
+        newParams.max_event_count = 5;
+      } else if (value === "6-10") {
+        newParams.min_event_count = 6;
+        newParams.max_event_count = 10;
+      } else if (value === "10+") {
+        newParams.min_event_count = 11;
+      }
+    } else if (apiParam === 'duration_range') {
+      // 清除之前的持续时间筛选
+      delete newParams.min_duration;
+      delete newParams.max_duration;
+      
+      if (value === "0-1天") {
+        newParams.min_duration = 0;
+        newParams.max_duration = 1;
+      } else if (value === "1-7天") {
+        newParams.min_duration = 1;
+        newParams.max_duration = 7;
+      } else if (value === "7-30天") {
+        newParams.min_duration = 7;
+        newParams.max_duration = 30;
+      } else if (value === "30天以上") {
+        newParams.min_duration = 30;
+      }
+    }
+    
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadClusters({ page: 1, ...newParams });
+  };
+
+  // 处理日期筛选
+  const handleDateFilter = (selectedKeys, confirm, apiParam) => {
+    confirm();
+    const dateRange = selectedKeys[0];
+    
+    // 更新列筛选状态
+    const newColumnFilters = { ...columnFilters };
+    if (dateRange && dateRange.length === 2) {
+      newColumnFilters[apiParam] = dateRange; // 保存原始日期范围用于显示
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+    
+    // 更新搜索参数并重新加载数据
+    const newParams = { ...Object.fromEntries(searchParams) };
+    
+    // 清除之前的日期筛选参数
+    delete newParams[`${apiParam}_start`];
+    delete newParams[`${apiParam}_end`];
+    delete newParams['first_report_time_start'];
+    delete newParams['first_report_time_end'];
+    delete newParams['last_report_time_start'];
+    delete newParams['last_report_time_end'];
+    
+    if (dateRange && dateRange.length === 2) {
+      // 根据API参数类型设置正确的参数名
+      if (apiParam === 'first_report_time') {
+        newParams['first_report_time_start'] = dateRange[0].format('YYYY-MM-DD');
+        newParams['first_report_time_end'] = dateRange[1].format('YYYY-MM-DD');
+      } else if (apiParam === 'last_report_time') {
+        newParams['last_report_time_start'] = dateRange[0].format('YYYY-MM-DD');
+        newParams['last_report_time_end'] = dateRange[1].format('YYYY-MM-DD');
+      } else {
+        newParams[`${apiParam}_start`] = dateRange[0].format('YYYY-MM-DD');
+        newParams[`${apiParam}_end`] = dateRange[1].format('YYYY-MM-DD');
+      }
+    }
+    
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadClusters({ page: 1, ...newParams });
+  };
+
+  // 处理列筛选重置
+  const handleColumnFilterReset = (clearFilters, apiParam) => {
+    clearFilters();
+    
+    // 更新列筛选状态
+    const newColumnFilters = { ...columnFilters };
+    delete newColumnFilters[apiParam];
+    setColumnFilters(newColumnFilters);
+    
+    // 更新搜索参数并重新加载数据
+    const newParams = { ...Object.fromEntries(searchParams) };
+    
+    if (apiParam === 'search') {
+      delete newParams.search;
+      setSearchText('');
+      setSearchedColumn('');
+    } else if (apiParam === 'event_count_range') {
+      delete newParams.min_event_count;
+      delete newParams.max_event_count;
+    } else if (apiParam === 'duration_range') {
+      delete newParams.min_duration;
+      delete newParams.max_duration;
+    } else if (apiParam === 'first_report_time') {
+      delete newParams.first_report_time_start;
+      delete newParams.first_report_time_end;
+    } else if (apiParam === 'last_report_time') {
+      delete newParams.last_report_time_start;
+      delete newParams.last_report_time_end;
+    } else {
+      delete newParams[apiParam];
+      delete newParams[`${apiParam}_start`];
+      delete newParams[`${apiParam}_end`];
+    }
+    
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadClusters({ page: 1, ...newParams });
+  };
 
   // 加载聚合事件列表
   const loadClusters = async (params = {}) => {
@@ -67,85 +399,7 @@ const ClusterList = () => {
     }
   };
 
-  // 加载筛选选项
-  const loadFilterOptions = async () => {
-    try {
-      const options = await eventAPI.getClusterFilterOptions();
-      setFilterOptions(options);
-    } catch (error) {
-      message.error('加载筛选选项失败: ' + error.message);
-    }
-  };
 
-  // 处理搜索
-  const handleSearch = (values) => {
-    const params = {};
-    
-    // 搜索参数
-    if (values.search) {
-      params.search = values.search;
-    }
-    
-    // 事件数量筛选
-    if (values.event_count_range) {
-      if (values.event_count_range === "2") {
-        params.min_event_count = 2;
-        params.max_event_count = 2;
-      } else if (values.event_count_range === "3-5") {
-        params.min_event_count = 3;
-        params.max_event_count = 5;
-      } else if (values.event_count_range === "6-10") {
-        params.min_event_count = 6;
-        params.max_event_count = 10;
-      } else if (values.event_count_range === "10+") {
-        params.min_event_count = 11;
-      }
-    }
-    
-    // 自定义事件数量筛选
-    if (values.min_event_count) {
-      params.min_event_count = values.min_event_count;
-    }
-    if (values.max_event_count) {
-      params.max_event_count = values.max_event_count;
-    }
-    
-    // 持续时间筛选
-    if (values.duration_range) {
-      if (values.duration_range === "0-1天") {
-        params.min_duration = 0;
-        params.max_duration = 1;
-      } else if (values.duration_range === "1-7天") {
-        params.min_duration = 1;
-        params.max_duration = 7;
-      } else if (values.duration_range === "7-30天") {
-        params.min_duration = 7;
-        params.max_duration = 30;
-      } else if (values.duration_range === "30天以上") {
-        params.min_duration = 30;
-      }
-    }
-    
-    // 自定义持续时间筛选
-    if (values.min_duration !== undefined && values.min_duration !== null) {
-      params.min_duration = values.min_duration;
-    }
-    if (values.max_duration !== undefined && values.max_duration !== null) {
-      params.max_duration = values.max_duration;
-    }
-    
-    setSearchParams(params);
-    setPagination(prev => ({ ...prev, current: 1 }));
-    loadClusters({ page: 1, ...params });
-  };
-
-  // 重置搜索
-  const handleReset = () => {
-    form.resetFields();
-    setSearchParams({});
-    setPagination(prev => ({ ...prev, current: 1 }));
-    loadClusters({ page: 1 });
-  };
 
   // 分页处理
   const handleTableChange = (page, pageSize) => {
@@ -198,14 +452,27 @@ const ClusterList = () => {
       title: '描述',
       dataIndex: 'cluster_description',
       key: 'cluster_description',
+      ...getColumnSearchProps('cluster_description', '搜索描述', 'search'),
       ellipsis: {
         showTitle: false,
       },
-      render: (text) => (
-        <span title={text} style={{ fontSize: '13px' }}>
-          {text}
-        </span>
-      ),
+      render: (text) => 
+        searchedColumn === 'cluster_description' ? (
+          <Tooltip title={text}>
+            <Highlighter
+              highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+              searchWords={[searchText]}
+              autoEscape
+              textToHighlight={text ? text.toString() : ''}
+            />
+          </Tooltip>
+        ) : (
+          <Tooltip title={text}>
+            <span style={{ fontSize: '13px' }}>
+              {text}
+            </span>
+          </Tooltip>
+        ),
     },
     {
       title: '事件数量',
@@ -213,6 +480,7 @@ const ClusterList = () => {
       key: 'record_count',
       width: 100,
       align: 'center',
+      ...getEventCountFilterProps(),
       render: (count) => (
         <Tag color="green" style={{ fontWeight: 'bold' }}>
           {count}个
@@ -225,6 +493,7 @@ const ClusterList = () => {
       key: 'duration_days',
       width: 100,
       align: 'center',
+      ...getDurationFilterProps(),
       render: (days) => (
         <Tag color="orange">
           {formatDuration(days)}
@@ -236,6 +505,7 @@ const ClusterList = () => {
       dataIndex: 'first_report_time',
       key: 'first_report_time',
       width: 120,
+      ...getDateFilterProps('first_report_time', 'first_report_time'),
       render: formatTime,
     },
     {
@@ -243,6 +513,7 @@ const ClusterList = () => {
       dataIndex: 'last_report_time',
       key: 'last_report_time',
       width: 120,
+      ...getDateFilterProps('last_report_time', 'last_report_time'),
       render: formatTime,
     },
     {
@@ -264,11 +535,8 @@ const ClusterList = () => {
   ];
 
   useEffect(() => {
-    loadFilterOptions();
-    
-    // 从URL参数初始化表单
+    // 从URL参数加载数据
     const params = Object.fromEntries(searchParams);
-    form.setFieldsValue(params);
     
     loadClusters(params);
   }, []);
@@ -283,88 +551,6 @@ const ClusterList = () => {
         </h1>
       </div>
 
-      {/* 搜索筛选表单 */}
-      <Card className="search-card" style={{ marginBottom: 16 }}>
-        <Form
-          form={form}
-          layout="inline"
-          onFinish={handleSearch}
-          style={{ width: '100%' }}
-        >
-          <Row gutter={[16, 16]} style={{ width: '100%' }}>
-            <Col span={24} md={6}>
-              <Form.Item name="search" style={{ marginBottom: 16, width: '100%' }}>
-                <Input
-                  placeholder="搜索描述关键词..."
-                  prefix={<SearchOutlined />}
-                  allowClear
-                />
-              </Form.Item>
-            </Col>
-            
-            <Col span={24} md={4}>
-              <Form.Item name="event_count_range" style={{ marginBottom: 16, width: '100%' }}>
-                <Select
-                  placeholder="事件数量"
-                  allowClear
-                >
-                  {filterOptions.event_count_ranges.map(range => (
-                    <Option key={range} value={range}>
-                      {range === '10+' ? '10个以上' : `${range}个`}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            
-            <Col span={24} md={4}>
-              <Form.Item name="duration_range" style={{ marginBottom: 16, width: '100%' }}>
-                <Select
-                  placeholder="持续时间"
-                  allowClear
-                >
-                  {filterOptions.duration_ranges.map(range => (
-                    <Option key={range} value={range}>{range}</Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            
-            <Col span={24} md={3}>
-              <Form.Item name="min_event_count" style={{ marginBottom: 16, width: '100%' }}>
-                <InputNumber
-                  placeholder="最小事件数"
-                  min={2}
-                  style={{ width: '100%' }}
-                />
-              </Form.Item>
-            </Col>
-            
-            <Col span={24} md={3}>
-              <Form.Item name="max_event_count" style={{ marginBottom: 16, width: '100%' }}>
-                <InputNumber
-                  placeholder="最大事件数"
-                  min={2}
-                  style={{ width: '100%' }}
-                />
-              </Form.Item>
-            </Col>
-            
-            <Col span={24} md={4}>
-              <Form.Item style={{ marginBottom: 16 }}>
-                <Space>
-                  <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
-                    搜索
-                  </Button>
-                  <Button onClick={handleReset} icon={<ReloadOutlined />}>
-                    重置
-                  </Button>
-                </Space>
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Card>
 
       {/* 聚合事件表格 */}
       <Card>

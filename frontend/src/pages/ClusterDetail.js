@@ -12,12 +12,13 @@ import {
   Row,
   Col,
   Statistic,
-  Divider,
-  Drawer,
   Form,
   Input,
   Table,
   Modal,
+  Popconfirm,
+  Select,
+  Tooltip,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -26,8 +27,11 @@ import {
   UserOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
-  SearchOutlined,
-  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  UndoOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { eventAPI } from '../services/api';
@@ -39,13 +43,13 @@ const ClusterDetail = () => {
   const [loading, setLoading] = useState(false);
   const [clusterDetail, setClusterDetail] = useState(null);
   
-  // 人口搜索相关状态
-  const [searchDrawerVisible, setSearchDrawerVisible] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [personDetailVisible, setPersonDetailVisible] = useState(false);
-  const [searchForm] = Form.useForm();
+  // Cluster编辑相关状态
+  const [editMode, setEditMode] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [addEventModalVisible, setAddEventModalVisible] = useState(false);
+  const [addEventForm] = Form.useForm();
+  const [availableClusters, setAvailableClusters] = useState([]);
+  const [operations, setOperations] = useState([]);
   
   const [pagination, setPagination] = useState({
     current: 1,
@@ -66,134 +70,193 @@ const ClusterDetail = () => {
     }
   };
 
-  // 人口搜索API调用
-  const searchPeople = async (searchData, page = 1) => {
+  // ============ Cluster编辑相关方法 ============
+  
+  // 获取事件所属cluster信息
+  const getEventClusterInfo = async (eventId) => {
     try {
-      setSearchLoading(true);
-      const response = await fetch('http://localhost:8000/api/people/search', {
+      const response = await fetch(`http://localhost:8000/api/events/${eventId}/cluster`);
+      if (!response.ok) {
+        throw new Error('获取事件cluster信息失败');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('获取事件cluster信息失败:', error);
+      return null;
+    }
+  };
+
+  // 从cluster中删除事件
+  const removeEventFromCluster = async (eventId) => {
+    setEditLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/clusters/${eventUID}/edit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...searchData,
-          page,
-          page_size: pagination.pageSize
+          operation: 'remove_event',
+          event_id: eventId,
+          operator: '管理员' // 这里应该从用户上下文获取
         })
       });
+
+      const result = await response.json();
       
-      if (!response.ok) {
-        throw new Error('搜索失败');
+      if (result.success) {
+        message.success(result.message);
+        // 重新加载cluster详情和操作记录
+        await loadClusterDetail();
+        await loadOperations();
+      } else {
+        message.error(result.message);
       }
-      
-      const data = await response.json();
-      setSearchResults(data.items);
-      setPagination({
-        ...pagination,
-        current: data.page,
-        total: data.total
-      });
     } catch (error) {
-      message.error('搜索失败: ' + error.message);
+      message.error('删除事件失败: ' + error.message);
     } finally {
-      setSearchLoading(false);
+      setEditLoading(false);
     }
   };
-  
-  // 获取人员详情
-  const fetchPersonDetail = async (personId) => {
+
+  // 添加事件到cluster
+  const addEventToCluster = async (eventId, targetCluster) => {
+    setEditLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/people/${personId}`);
-      if (!response.ok) {
-        throw new Error('获取人员详情失败');
+      const response = await fetch(`http://localhost:8000/api/clusters/${targetCluster}/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operation: 'add_event',
+          event_id: eventId,
+          operator: '管理员',
+          target_cluster: targetCluster
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        message.success(result.message);
+        // 重新加载cluster详情和操作记录
+        await loadClusterDetail();
+        await loadOperations();
+      } else {
+        message.error(result.message);
       }
-      const data = await response.json();
-      setSelectedPerson(data);
-      setPersonDetailVisible(true);
     } catch (error) {
-      message.error('获取人员详情失败: ' + error.message);
+      message.error('添加事件失败: ' + error.message);
+    } finally {
+      setEditLoading(false);
     }
   };
-  
-  // 解析报警人信息
-  const parseCallerInfo = (callerInfo) => {
-    if (!callerInfo) return {};
-    
-    const parts = callerInfo.split('|').map(part => part.trim());
-    const info = {};
-    
-    parts.forEach(part => {
-      if (part.includes('姓名:')) {
-        info.name = part.split('姓名:')[1].trim();
-      } else if (part.includes('电话:')) {
-        info.phone = part.split('电话:')[1].trim();
-      } else if (part.includes('身份证:')) {
-        info.idCard = part.split('身份证:')[1].trim();
+
+  // 撤销操作
+  const undoOperation = async (operationId) => {
+    setEditLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/clusters/undo/${operationId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operator: '管理员'
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        message.success('操作已撤销');
+        // 重新加载cluster详情和操作记录
+        await loadClusterDetail();
+        await loadOperations();
+      } else {
+        message.error(result.message);
       }
-    });
-    
-    return info;
+    } catch (error) {
+      message.error('撤销操作失败: ' + error.message);
+    } finally {
+      setEditLoading(false);
+    }
   };
-  
-  // 解析当事人信息
-  const parseInvolvedPartiesInfo = (partiesInfo) => {
-    if (!partiesInfo) return {};
-    
-    const parts = partiesInfo.split('|').map(part => part.trim());
-    const info = {};
-    
-    parts.forEach(part => {
-      if (part.includes('角色:')) {
-        info.role = part.split('角色:')[1].trim();
-      } else if (part.includes('姓名:')) {
-        info.name = part.split('姓名:')[1].trim();
-      } else if (part.includes('电话:')) {
-        info.phone = part.split('电话:')[1].trim();
-      } else if (part.includes('身份证:')) {
-        info.idCard = part.split('身份证:')[1].trim();
+
+  // 加载可用的clusters列表
+  const loadAvailableClusters = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/clusters?page_size=1000');
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableClusters(data.items || []);
       }
-    });
-    
-    return info;
-  };
-  
-  // 打开搜索抽屉
-  const openSearchDrawer = (personInfo, personType = 'caller') => {
-    let personData = {};
-    
-    if (personType === 'caller') {
-      personData = parseCallerInfo(personInfo);
-    } else if (personType === 'party') {
-      personData = parseInvolvedPartiesInfo(personInfo);
-    }
-    
-    const searchData = {
-      name: personData.name || '',
-      phone: personData.phone || '',
-      id_card: personData.idCard || ''
-    };
-    
-    searchForm.setFieldsValue(searchData);
-    setSearchDrawerVisible(true);
-    setSearchResults([]);
-    
-    // 自动触发搜索
-    if (searchData.name || searchData.phone || searchData.id_card) {
-      searchPeople(searchData);
+    } catch (error) {
+      console.error('加载clusters列表失败:', error);
     }
   };
-  
-  // 执行搜索
-  const handleSearch = () => {
-    const searchData = searchForm.getFieldsValue();
-    searchPeople(searchData);
+
+  // 加载操作记录
+  const loadOperations = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/clusters/${eventUID}/operations`);
+      if (response.ok) {
+        const data = await response.json();
+        setOperations(data.operations || []);
+      }
+    } catch (error) {
+      console.error('加载操作记录失败:', error);
+    }
   };
-  
-  // 分页处理
-  const handleTableChange = (page) => {
-    const searchData = searchForm.getFieldsValue();
-    searchPeople(searchData, page.current);
+
+  // 处理添加事件
+  const handleAddEvent = async () => {
+    try {
+      const values = await addEventForm.validateFields();
+      const { event_id, target_cluster } = values;
+      
+      // 检查事件当前所属cluster
+      const clusterInfo = await getEventClusterInfo(event_id);
+      
+      if (clusterInfo && clusterInfo.cluster_id) {
+        // 显示提示信息
+        Modal.confirm({
+          title: '事件归属提示',
+          icon: <ExclamationCircleOutlined />,
+          content: (
+            <div>
+              <p>该事件当前属于cluster: <strong>{clusterInfo.cluster_id}</strong></p>
+              {clusterInfo.cluster_description && (
+                <p>描述: {clusterInfo.cluster_description}</p>
+              )}
+              {clusterInfo.cluster_url && (
+                <p>
+                  <a href={clusterInfo.cluster_url} target="_blank" rel="noopener noreferrer">
+                    查看原cluster详情
+                  </a>
+                </p>
+              )}
+              <p>确认要将此事件移动到当前cluster吗？</p>
+            </div>
+          ),
+          onOk: async () => {
+            await addEventToCluster(event_id, target_cluster || eventUID);
+            setAddEventModalVisible(false);
+            addEventForm.resetFields();
+          }
+        });
+      } else {
+        // 事件不属于任何cluster，直接添加
+        await addEventToCluster(event_id, target_cluster || eventUID);
+        setAddEventModalVisible(false);
+        addEventForm.resetFields();
+      }
+    } catch (error) {
+      console.error('添加事件失败:', error);
+    }
   };
+
 
   // 解析特殊时间格式 (如 "26/5/25 8:20")
   const parseTime = (timeStr) => {
@@ -299,6 +362,26 @@ const ClusterDetail = () => {
               >
                 {item.办结时间 ? '已办结' : '处理中'}
               </Tag>
+              {editMode && (
+                <Tooltip title="从此cluster中删除事件">
+                  <Popconfirm
+                    title="确认删除"
+                    description="确定要从此cluster中删除该事件吗？删除后将创建新的独立cluster。"
+                    onConfirm={() => removeEventFromCluster(item.事件编号)}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      style={{ marginLeft: 8 }}
+                      loading={editLoading}
+                    />
+                  </Popconfirm>
+                </Tooltip>
+              )}
             </div>
             <div style={{ fontSize: '12px', color: '#666' }}>
               {formatShortTime(item.上报时间)}
@@ -311,39 +394,15 @@ const ClusterDetail = () => {
           
           {/* 报警人信息 */}
           {item.报警人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
-              </div>
-              <Button
-                type="link"
-                size="small"
-                icon={<SearchOutlined />}
-                onClick={() => openSearchDrawer(item.报警人信息, 'caller')}
-                style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}
-                title="搜索报警人信息"
-              >
-                搜索
-              </Button>
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4 }}>
+              <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
             </div>
           )}
           
           {/* 当事人信息 */}
           {item.当事人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
-              </div>
-              <Button
-                type="link"
-                size="small"
-                icon={<SearchOutlined />}
-                onClick={() => openSearchDrawer(item.当事人信息, 'party')}
-                style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}
-                title="搜索当事人信息"
-              >
-                搜索
-              </Button>
+            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4 }}>
+              <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
             </div>
           )}
           
@@ -366,6 +425,8 @@ const ClusterDetail = () => {
   useEffect(() => {
     if (eventUID) {
       loadClusterDetail();
+      loadAvailableClusters();
+      loadOperations();
     }
   }, [eventUID]);
 
@@ -510,10 +571,48 @@ const ClusterDetail = () => {
       {/* 事件时间线 */}
       <Card
         title={
-          <Space>
-            <CalendarOutlined />
-            事件时间线
-          </Space>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space>
+              <CalendarOutlined />
+              事件时间线
+              {editMode && <Tag color="orange">编辑模式</Tag>}
+            </Space>
+            
+            <Space>
+              <Button
+                type={editMode ? "default" : "primary"}
+                icon={<EditOutlined />}
+                onClick={() => setEditMode(!editMode)}
+                size="small"
+              >
+                {editMode ? '退出编辑' : '编辑Cluster'}
+              </Button>
+              
+              {editMode && (
+                <>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => setAddEventModalVisible(true)}
+                    size="small"
+                  >
+                    添加事件
+                  </Button>
+                  
+                  {operations.length > 0 && (
+                    <Button
+                      icon={<UndoOutlined />}
+                      onClick={() => undoOperation(operations[0].id)}
+                      loading={editLoading}
+                      size="small"
+                    >
+                      撤销上次操作
+                    </Button>
+                  )}
+                </>
+              )}
+            </Space>
+          </div>
         }
         className="detail-card"
       >
@@ -531,156 +630,113 @@ const ClusterDetail = () => {
         )}
       </Card>
 
-      {/* 操作按钮 */}
-      <Card>
-        <Space>
-          <Button onClick={handleBack}>
-            返回列表
-          </Button>
-          <Button 
-            type="primary" 
-            onClick={() => window.print()}
-            disabled={!clusterDetail}
-          >
-            打印报告
-          </Button>
-        </Space>
-      </Card>
-
-      {/* 人口搜索抽屉 */}
-      <Drawer
-        title="人口信息搜索"
-        placement="right"
-        width={800}
-        onClose={() => setSearchDrawerVisible(false)}
-        open={searchDrawerVisible}
-      >
-        <Form
-          form={searchForm}
-          layout="vertical"
-          style={{ marginBottom: 16 }}
+      {/* 操作历史 */}
+      {editMode && operations.length > 0 && (
+        <Card
+          title="操作历史"
+          className="detail-card"
         >
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="name" label="姓名">
-                <Input placeholder="请输入姓名" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="phone" label="电话号码">
-                <Input placeholder="请输入电话号码" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="id_card" label="身份证号">
-                <Input placeholder="请输入身份证号" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item>
-            <Button type="primary" onClick={handleSearch} loading={searchLoading}>
-              搜索
-            </Button>
-          </Form.Item>
-        </Form>
+          <Table
+            dataSource={operations}
+            columns={[
+              {
+                title: '操作类型',
+                dataIndex: 'type',
+                key: 'type',
+                width: 100,
+                render: (type) => (
+                  <Tag color={type === '删除' ? 'red' : 'blue'}>{type}</Tag>
+                )
+              },
+              {
+                title: '事件ID',
+                dataIndex: 'eventId',
+                key: 'eventId',
+                width: 150,
+              },
+              {
+                title: '操作时间',
+                dataIndex: 'timestamp',
+                key: 'timestamp',
+                width: 180,
+              },
+              {
+                title: '描述',
+                dataIndex: 'description',
+                key: 'description',
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 100,
+                render: (_, record) => (
+                  <Button
+                    size="small"
+                    icon={<UndoOutlined />}
+                    onClick={() => undoOperation(record.id)}
+                    loading={editLoading}
+                  >
+                    撤销
+                  </Button>
+                )
+              }
+            ]}
+            pagination={false}
+            size="small"
+            rowKey="id"
+          />
+        </Card>
+      )}
 
-        <Table
-          columns={[
-            {
-              title: '姓名',
-              dataIndex: 'name_cn',
-              key: 'name_cn',
-              width: 120,
-            },
-            {
-              title: '身份证号码',
-              dataIndex: 'id_card_no',
-              key: 'id_card_no',
-              width: 180,
-            },
-            {
-              title: '电话号码',
-              dataIndex: 'mobile_phone',
-              key: 'mobile_phone',
-              width: 150,
-            },
-            {
-              title: '性别',
-              dataIndex: 'gender',
-              key: 'gender',
-              width: 80,
-            },
-            {
-              title: '出生日期',
-              dataIndex: 'birth_date',
-              key: 'birth_date',
-              width: 120,
-            },
-            {
-              title: '操作',
-              key: 'action',
-              width: 80,
-              render: (_, record) => (
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => fetchPersonDetail(record.person_id)}
-                >
-                  详情
-                </Button>
-              ),
-            },
-          ]}
-          dataSource={searchResults}
-          loading={searchLoading}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条记录`,
-          }}
-          onChange={handleTableChange}
-          rowKey="person_id"
-          size="small"
-          scroll={{ x: 700 }}
-        />
-      </Drawer>
 
-      {/* 人员详情弹窗 */}
+
+      {/* 添加事件模态框 */}
       <Modal
-        title="人员详情"
-        open={personDetailVisible}
-        onCancel={() => setPersonDetailVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setPersonDetailVisible(false)}>
-            关闭
-          </Button>
-        ]}
+        title="添加事件到Cluster"
+        open={addEventModalVisible}
+        onOk={handleAddEvent}
+        onCancel={() => {
+          setAddEventModalVisible(false);
+          addEventForm.resetFields();
+        }}
+        confirmLoading={editLoading}
         width={600}
       >
-        {selectedPerson && (
-          <Descriptions column={2} bordered>
-            <Descriptions.Item label="姓名" span={2}>
-              {selectedPerson.name_cn}
-            </Descriptions.Item>
-            <Descriptions.Item label="身份证号码" span={2}>
-              {selectedPerson.id_card_no}
-            </Descriptions.Item>
-            <Descriptions.Item label="电话号码">
-              {selectedPerson.mobile_phone}
-            </Descriptions.Item>
-            <Descriptions.Item label="性别">
-              {selectedPerson.gender}
-            </Descriptions.Item>
-            <Descriptions.Item label="出生日期">
-              {selectedPerson.birth_date}
-            </Descriptions.Item>
-            <Descriptions.Item label="人员ID">
-              {selectedPerson.person_id}
-            </Descriptions.Item>
-          </Descriptions>
-        )}
+        <Form
+          form={addEventForm}
+          layout="vertical"
+        >
+          <Form.Item
+            name="event_id"
+            label="事件ID"
+            rules={[{ required: true, message: '请输入事件ID' }]}
+          >
+            <Input placeholder="请输入要添加的事件ID" />
+          </Form.Item>
+          
+          <Form.Item
+            name="target_cluster"
+            label="目标Cluster"
+            initialValue={eventUID}
+            rules={[{ required: true, message: '请选择目标cluster' }]}
+          >
+            <Select placeholder="请选择目标cluster">
+              {availableClusters.map(cluster => (
+                <Select.Option key={cluster.EventUID} value={cluster.EventUID}>
+                  {cluster.EventUID} - {cluster.cluster_description}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+        
+        <Alert
+          message="提示"
+          description="如果事件当前属于其他cluster，系统会先显示确认对话框，告知事件的当前归属信息。"
+          type="info"
+          showIcon
+          style={{ marginTop: 16 }}
+        />
       </Modal>
     </div>
   );

@@ -1,0 +1,10 @@
+operation_id,event_id,operation_type,timestamp,operator,source_cluster,target_cluster,description
+cec20051-7bf3-48cd-9540-ad3866e7289e,ZHSW202505200205,delete,2025-07-14T14:19:50.307570,管理员,cluster_3736,cluster_7f596d96,事件 ZHSW202505200205 从cluster cluster_3736 中删除，创建新cluster cluster_7f596d96
+d88b073e-0151-4240-a16a-d88180b65821,XMEW202505010101,add,2025-07-14T15:18:06.547839,管理员,cluster_bb37b031,cluster_3961,事件 XMEW202505010101 添加到cluster cluster_3961（从cluster cluster_bb37b031 移动）
+1fefabf7-e80c-4828-8661-0fc789ec9df6,XMEW202505010101,add,2025-07-14T16:11:31.748281,管理员,cluster_3961,cluster_bb37b031,事件 XMEW202505010101 添加到cluster cluster_bb37b031（从cluster cluster_3961 移动）
+5d58a57d-6dfd-4cbe-991d-e8a8bef168f2,SQW202505310510,add,2025-07-14T16:13:20.992969,管理员,,cluster_3961,事件 SQW202505310510 添加到cluster cluster_3961（原本不属于任何cluster）
+4204a76e-3d2b-4ca2-9e9d-b744f0f3fff8,SQW202505310510,add,2025-07-14T16:23:48.564079,测试用户,,cluster_3961,事件 SQW202505310510 添加到cluster cluster_3961（原本不属于任何cluster）
+c25cf4a7-1d64-467d-a547-1d6731e511c6,SQW202505310510,delete,2025-07-14T16:24:17.120929,测试用户,cluster_3961,cluster_b090c617,事件 SQW202505310510 从cluster cluster_3961 中删除，创建新cluster cluster_b090c617
+8094bbe5-fb4d-4f7a-8a72-d2b90491c255,XMEW202505010101,add,2025-07-14T16:25:22.422769,管理员,cluster_bb37b031,cluster_3961,事件 XMEW202505010101 添加到cluster cluster_3961（从cluster cluster_bb37b031 移动）
+2c936ecc-f55a-4254-bd2f-34d7bef68c56,JXIW202505090011,delete,2025-07-14T18:37:17.920000,管理员,cluster_3937,cluster_7563234e,事件 JXIW202505090011 从cluster cluster_3937 中删除，创建新cluster cluster_7563234e
+92a7c028-d012-4817-a993-19641782cb17,JXIW202505090011,add,2025-07-14T18:37:28.345305,管理员,cluster_7563234e,cluster_3937,事件 JXIW202505090011 添加到cluster cluster_3937（从cluster cluster_7563234e 移动）

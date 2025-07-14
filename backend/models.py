@@ -209,3 +209,78 @@ class ChatStatistics(BaseModel):
     by_town: List[Dict[str, Any]]
     by_level: List[Dict[str, Any]]  
     by_category: List[Dict[str, Any]]
+
+# Cluster编辑相关模型
+class ClusterEditOperation(BaseModel):
+    """Cluster编辑操作记录模型"""
+    operation_id: str
+    operation_type: str  # "add" | "delete"
+    event_id: str
+    source_cluster: Optional[str] = None
+    target_cluster: str
+    operator: str
+    timestamp: datetime
+    description: Optional[str] = None
+
+class ClusterEditRequest(BaseModel):
+    """Cluster编辑请求模型"""
+    operation: str  # "add_event" | "remove_event"
+    event_id: str
+    operator: str
+    target_cluster: Optional[str] = None  # 添加事件时需要
+
+class UndoRequest(BaseModel):
+    """撤销操作请求模型"""
+    operation_id: Optional[str] = None
+    operator: str = "管理员"
+
+class EventClusterInfo(BaseModel):
+    """事件所属Cluster信息模型"""
+    event_id: str
+    cluster_id: Optional[str] = None
+    cluster_description: Optional[str] = None
+    cluster_url: Optional[str] = None
+
+class ClusterEditResponse(BaseModel):
+    """Cluster编辑操作响应模型"""
+    success: bool
+    message: str
+    operation_id: Optional[str] = None
+    new_cluster_id: Optional[str] = None  # 删除事件时创建的新cluster ID
+
+# 订阅相关模型
+class SubscriptionTag(BaseModel):
+    """订阅筛选标签模型"""
+    key: str
+    label: str
+    value: str
+    color: str
+
+class Subscription(BaseModel):
+    """订阅模型"""
+    id: str
+    name: str
+    description: str
+    filters: Dict[str, Any]
+    searchParams: Dict[str, Any]
+    tags: List[SubscriptionTag]
+    createTime: str
+    enabled: bool
+
+class SubscriptionCreateRequest(BaseModel):
+    """创建订阅请求模型"""
+    name: str
+    description: Optional[str] = None
+    filters: Dict[str, Any]
+    searchParams: Dict[str, Any]
+    tags: List[SubscriptionTag]
+
+class SubscriptionUpdateRequest(BaseModel):
+    """更新订阅请求模型"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    enabled: Optional[bool] = None
+
+class SubscriptionListResponse(BaseModel):
+    """订阅列表响应模型"""
+    subscriptions: List[Subscription]

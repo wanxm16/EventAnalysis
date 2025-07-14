@@ -15,10 +15,18 @@
 
 ## 核心功能
 
+### 📬 事件查询订阅系统 (v2.1.0)
+- **智能订阅** - 将常用搜索条件保存为订阅，一键快速应用
+- **筛选标签** - 彩色标签直观显示当前激活的筛选条件
+- **订阅管理** - 启用/禁用/删除已保存的订阅配置
+- **状态监控** - 实时显示当前活跃订阅数量和状态
+- **本地存储** - 订阅配置本地持久化存储
+
 ### 🔐 用户认证系统
 - **安全登录** - 用户名密码认证，支持记住登录状态
 - **会话管理** - 自动检测服务状态，服务停止时自动退出登录
 - **权限控制** - 未登录用户自动跳转到登录页面
+- **固定导航** - 导航栏固定悬浮效果，提升用户体验
 
 ### 📋 事件列表管理
 - **数据展示** - 事件编号、描述、镇街名称、级别、分类、时间等关键信息
@@ -32,11 +40,12 @@
 - **时间轴展示** - 清晰的事件处理时间线
 - **参与人统计** - 事件参与人员数量和信息分析
 
-### 🔗 聚类事件分析
+### 🔗 聚类事件分析 (v2.1.0)
 - **事件聚类** - 智能识别和展示关联事件群组
 - **时间线视图** - 聚类事件的完整时间发展过程
 - **持续时间计算** - 自动计算聚类事件的持续时间
 - **参与人分析** - 聚类事件中的人员参与情况
+- **操作审计** - 完整记录聚类操作历史和用户行为
 
 ### 👥 人员分析系统
 - **人员画像** - 基于事件参与情况的人员行为分析
@@ -44,7 +53,9 @@
 - **关联事件** - 展示个人参与的所有相关事件
 - **统计分析** - 人员参与事件的统计数据和趋势
 
-### 🤖 AI智能问答
+### 🤖 AI智能问答 (v2.1.0)
+- **多服务商支持** - 支持OpenAI、DeepSeek、通义千问、智谱AI等多种AI服务
+- **统一配置管理** - 环境变量配置，支持自定义API端点
 - **智能对话** - 基于事件数据的自然语言问答
 - **数据洞察** - AI驱动的数据分析和趋势识别
 - **决策支持** - 为管理决策提供智能建议
@@ -88,13 +99,17 @@
 │   ├── 📄 conflict_event.csv         # 聚类事件数据
 │   ├── 📄 people_info.csv            # 人口信息数据
 │   ├── 📄 raw_conflict.csv           # 原始冲突数据
+│   ├── 📄 cluster_operations.csv     # 聚类操作审计记录
+│   ├── 📄 subscriptions.json         # 用户订阅配置数据
 │   └── 📁 chroma_db/                 # 向量数据库文件
 ├── 📁 backend/                     # 后端服务
 │   ├── 🐍 main.py                   # FastAPI 主应用
 │   ├── 🐍 models.py                 # 数据模型定义
 │   ├── 🐍 services.py               # 业务逻辑服务
 │   ├── 🐍 ai_chat_service.py        # AI聊天服务
+│   ├── 🐍 ai_config.py              # AI服务配置管理
 │   ├── 🐍 manage_vector_db.py       # 向量数据库管理
+│   ├── 🐍 test_labor_dispute_query.py # 劳动争议查询测试
 │   └── 📄 requirements.txt          # Python依赖包
 ├── 📁 frontend/                    # 前端应用
 │   ├── 📁 src/
@@ -114,6 +129,8 @@
 │   │   ├── 📁 contexts/            # React Context
 │   │   ├── 📁 hooks/               # 自定义Hooks
 │   │   ├── 📁 services/            # API服务
+│   │   ├── 📁 test/                # 测试文件目录
+│   │   │   └── 🧪 subscription.test.js # 订阅功能测试
 │   │   └── ⚛️ App.js                # 主应用
 │   ├── 📄 package.json             # NPM依赖配置
 │   └── 📁 public/                  # 静态资源
@@ -121,6 +138,9 @@
 ├── 🛑 stop.sh                      # 停止服务脚本
 ├── 📊 system-status.sh             # 系统状态检查
 ├── ⚙️ config.env                   # 环境配置文件
+├── 🤖 ai_config.env.example        # AI服务配置模板
+├── 📋 SUBSCRIPTION_FEATURE.md      # 订阅功能详细说明
+├── 📋 SUBSCRIPTION_MANAGEMENT.md   # 订阅管理文档
 └── 📚 README.md                    # 项目文档
 ```
 
@@ -170,7 +190,7 @@ chmod +x start.sh
 - **用户名**: `admin`
 - **密码**: `admin`
 
-### 🤖 AI服务配置
+### 🤖 AI服务配置 (v2.1.0)
 系统支持多种AI服务提供商，部署前需要配置：
 
 ```bash
@@ -181,13 +201,26 @@ cp ai_config.env.example ai_config.env
 vim ai_config.env
 
 # 3. 填入您的API配置
-AI_PROVIDER=deepseek  # 选择提供商: openai/deepseek/qwen/zhipu
+AI_PROVIDER=deepseek  # 选择提供商: openai/deepseek/qwen/zhipu/custom
 AI_API_KEY=sk-your-api-key-here  # 填入API密钥
+AI_BASE_URL=https://api.deepseek.com/v1  # 自定义API端点(可选)
+AI_MODEL=deepseek-chat  # 指定模型名称(可选)
 ```
 
-支持的AI服务商：**OpenAI** | **DeepSeek** | **通义千问** | **智谱AI** | **自定义API**
+**支持的AI服务商：**
+- **OpenAI** - GPT-3.5-turbo, GPT-4 系列模型
+- **DeepSeek** - DeepSeek-chat, DeepSeek-coder 系列模型
+- **通义千问** - Qwen-turbo, Qwen-plus, Qwen-max 系列模型
+- **智谱AI** - GLM-4, GLM-3-turbo 系列模型
+- **自定义API** - 支持兼容OpenAI格式的自定义API端点
 
-详细配置请参考：[部署配置指南](DEPLOYMENT.md)
+**配置参数说明：**
+- `AI_PROVIDER`: 选择AI服务提供商
+- `AI_API_KEY`: 对应服务商的API密钥
+- `AI_BASE_URL`: 自定义API端点（可选）
+- `AI_MODEL`: 指定使用的模型名称（可选）
+- `AI_TIMEOUT`: 请求超时时间（默认30秒）
+- `AI_MAX_TOKENS`: 最大令牌数（默认1000）
 
 ### 🌐 访问地址
 启动成功后，系统会自动打开浏览器访问登录页面：
@@ -234,6 +267,36 @@ npm start
 - **后端API**：http://localhost:8000  
 - **API文档**：http://localhost:8000/docs
 
+## 📬 订阅功能使用指南 (v2.1.0)
+
+### 🏷️ 筛选标签系统
+订阅系统通过彩色标签直观展示当前激活的筛选条件：
+- 🔵 **关键词**: 蓝色标签，显示搜索关键词
+- 🟢 **镇街**: 绿色标签，显示选中的镇街区域
+- 🟠 **事件级别**: 橙色标签，显示事件重要性级别
+- 🟣 **事件分类**: 紫色标签，显示事件分类类型
+- 🌊 **相关事件**: 青色标签，显示相关事件筛选
+- 🔴 **时间范围**: 红色标签，显示时间筛选范围
+
+### 💾 创建订阅
+1. 在事件列表页面设置所需的筛选条件
+2. 点击 **「订阅查询」** 按钮
+3. 填写订阅名称和描述信息
+4. 点击确认保存订阅配置
+
+### 🔄 使用订阅
+1. 点击 **「管理订阅」** 打开订阅管理面板
+2. 查看所有已保存的订阅配置
+3. 点击 **「应用」** 按钮快速应用选中的订阅
+4. 使用启用/禁用开关控制订阅状态
+5. 点击删除按钮移除不需要的订阅
+
+### 📊 订阅管理
+- **状态监控**: 导航栏显示当前活跃订阅数量
+- **快速切换**: 一键启用/禁用订阅配置
+- **批量操作**: 支持批量删除和状态切换
+- **数据持久化**: 订阅配置自动保存到本地存储
+
 ## 🔌 API 接口文档
 
 ### 🔐 认证相关
@@ -256,13 +319,27 @@ npm start
 - **GET** `/api/person-analysis` - 获取人员分析列表
 - **GET** `/api/person-analysis/{phone}` - 获取人员详细分析
 
-### 🤖 AI 智能问答
+### 🤖 AI 智能问答 (v2.1.0)
 - **POST** `/api/chat` - AI聊天对话
 - **GET** `/api/chat/health` - AI服务健康检查
 - **GET** `/api/chat/statistics` - AI使用统计
+- **GET** `/api/ai/config` - AI服务配置信息
+- **POST** `/api/ai/config` - 更新AI服务配置
 
 ### 📊 统计报告
 - **GET** `/api/statistics/report` - 获取统计报告数据
+
+### 📬 订阅管理 (v2.1.0)
+- **GET** `/api/subscriptions` - 获取用户订阅列表
+- **POST** `/api/subscriptions` - 创建新的查询订阅
+- **PUT** `/api/subscriptions/{id}` - 更新订阅配置
+- **DELETE** `/api/subscriptions/{id}` - 删除指定订阅
+- **POST** `/api/subscriptions/{id}/toggle` - 切换订阅状态
+
+### 🔗 聚类操作审计 (v2.1.0)
+- **GET** `/api/cluster/operations` - 获取聚类操作历史
+- **POST** `/api/cluster/operations` - 记录聚类操作
+- **GET** `/api/cluster/operations/{cluster_id}` - 获取特定聚类操作记录
 
 所有接口详情请访问：**http://localhost:8000/docs**
 
@@ -351,6 +428,16 @@ npm start
 - ✅ 优雅的服务启停机制
 
 ## 📈 版本更新日志
+
+### v2.1.0 (2025-01-15) - 智能化功能增强
+- 🆕 **事件查询订阅系统** - 保存常用筛选条件，一键快速应用
+- 🆕 **多AI服务商支持** - 集成OpenAI、DeepSeek、通义千问、智谱AI等
+- 🆕 **聚类操作审计** - 完整记录聚类操作历史和用户行为
+- 🆕 **筛选标签可视化** - 彩色标签直观显示当前激活筛选条件
+- 🆕 **劳动争议查询增强** - 优化分类查询和结果格式化
+- 🔧 **导航栏固定悬浮** - 提升用户交互体验
+- 🔧 **AI配置管理优化** - 统一配置界面，支持自定义端点
+- 🧪 **完善测试覆盖** - 新增订阅功能和查询功能测试用例
 
 ### v2.0.0 (2025-01-13) - 重大功能更新
 - 🆕 **新增用户认证系统** - 完整的登录/退出功能

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import uvicorn
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from models import (
     EventResponse, EventDetailResponse, ClusterEventResponse, 
@@ -18,7 +19,15 @@ from models import (
     PersonAnalysisQuery,
     ChatQuery,
     ChatResponse, 
-    ChatStatistics
+    ChatStatistics,
+    ClusterEditRequest,
+    UndoRequest,
+    EventClusterInfo,
+    ClusterEditResponse,
+    Subscription,
+    SubscriptionCreateRequest,
+    SubscriptionUpdateRequest,
+    SubscriptionListResponse
 )
 from services import event_service
 
@@ -393,6 +402,198 @@ async def get_statistics_report():
         raise HTTPException(status_code=500, detail=f"统计报告生成失败: {str(e)}")
 
 # 运行应用
+# ============ Cluster编辑相关API端点 ============
+
+@app.get("/api/events/{event_id}/cluster", response_model=EventClusterInfo)
+async def get_event_cluster_info(event_id: str):
+    """获取事件所属的cluster信息"""
+    try:
+        cluster_info = event_service.get_event_cluster_info(event_id)
+        return cluster_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clusters/{cluster_id}/edit", response_model=ClusterEditResponse)
+async def edit_cluster(cluster_id: str, request: ClusterEditRequest):
+    """编辑cluster（添加或删除事件）"""
+    try:
+        if request.operation == "remove_event":
+            return event_service.remove_event_from_cluster(request)
+        elif request.operation == "add_event":
+            if not request.target_cluster:
+                request.target_cluster = cluster_id
+            return event_service.add_event_to_cluster(request)
+        else:
+            raise HTTPException(status_code=400, detail="不支持的操作类型")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clusters/undo/{operation_id}", response_model=ClusterEditResponse)
+async def undo_cluster_operation(operation_id: str, request: UndoRequest):
+    """撤销cluster操作"""
+    try:
+        # 创建新的请求对象，包含URL中的operation_id
+        undo_request = UndoRequest(operation_id=operation_id, operator=request.operator)
+        return event_service.undo_cluster_operation(undo_request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clusters/{cluster_id}/operations")
+async def get_cluster_operations(cluster_id: str):
+    """获取cluster的操作记录"""
+    try:
+        operations = event_service.get_cluster_operations(cluster_id)
+        return {"operations": operations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============ 订阅管理API ============
+
+@app.get("/api/subscriptions", response_model=SubscriptionListResponse, summary="获取所有订阅")
+async def get_subscriptions():
+    """获取用户的所有订阅"""
+    try:
+        return event_service.get_all_subscriptions()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取订阅列表失败: {str(e)}")
+
+@app.post("/api/subscriptions", response_model=Subscription, summary="创建新订阅")
+async def create_subscription(request: SubscriptionCreateRequest):
+    """创建新的事件查询订阅"""
+    try:
+        return event_service.create_subscription(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建订阅失败: {str(e)}")
+
+@app.put("/api/subscriptions/{subscription_id}", response_model=Subscription, summary="更新订阅")
+async def update_subscription(subscription_id: str, request: SubscriptionUpdateRequest):
+    """更新指定的订阅"""
+    try:
+        return event_service.update_subscription(subscription_id, request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新订阅失败: {str(e)}")
+
+@app.delete("/api/subscriptions/{subscription_id}", summary="删除订阅")
+async def delete_subscription(subscription_id: str):
+    """删除指定的订阅"""
+    try:
+        success = event_service.delete_subscription(subscription_id)
+        if success:
+            return {"message": "订阅已删除", "success": True}
+        else:
+            raise HTTPException(status_code=404, detail="订阅不存在")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除订阅失败: {str(e)}")
+
+# ============ 数据管理API ============
+
+@app.post("/api/reload-data", summary="重新加载数据")
+async def reload_data():
+    """
+    重新加载所有CSV数据文件到内存中
+    用于在数据文件更新后刷新系统数据，避免重启服务
+    """
+    try:
+        # 记录重新加载前的数据统计
+        old_stats = {
+            "detail_count": len(event_service.detail_df) if event_service.detail_df is not None else 0,
+            "cluster_count": len(event_service.cluster_df) if event_service.cluster_df is not None else 0,
+            "raw_count": len(event_service.raw_conflict_df) if event_service.raw_conflict_df is not None else 0,
+        }
+        
+        # 重新加载数据
+        print("🔄 开始重新加载数据...")
+        event_service.load_data()
+        
+        # 重新初始化AI聊天服务
+        global ai_chat_service
+        try:
+            print("🔄 重新初始化AI聊天服务...")
+            from ai_chat_service import AIChatService
+            ai_chat_service = AIChatService()
+            print("✅ AI聊天服务重新初始化完成")
+        except Exception as e:
+            print(f"❌ AI聊天服务重新初始化失败: {e}")
+            ai_chat_service = None
+        
+        # 记录重新加载后的数据统计
+        new_stats = {
+            "detail_count": len(event_service.detail_df) if event_service.detail_df is not None else 0,
+            "cluster_count": len(event_service.cluster_df) if event_service.cluster_df is not None else 0,
+            "raw_count": len(event_service.raw_conflict_df) if event_service.raw_conflict_df is not None else 0,
+        }
+        
+        # 计算数据变化
+        changes = {
+            "detail_change": new_stats["detail_count"] - old_stats["detail_count"],
+            "cluster_change": new_stats["cluster_count"] - old_stats["cluster_count"],
+            "raw_change": new_stats["raw_count"] - old_stats["raw_count"],
+        }
+        
+        print("✅ 数据重新加载完成")
+        
+        return {
+            "success": True,
+            "message": "数据重新加载成功",
+            "old_stats": old_stats,
+            "new_stats": new_stats,
+            "changes": changes,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"❌ 数据重新加载失败: {e}")
+        raise HTTPException(status_code=500, detail=f"数据重新加载失败: {str(e)}")
+
+@app.post("/api/reinit-ai", summary="重新初始化AI聊天服务")
+async def reinit_ai_service():
+    """
+    重新初始化AI聊天服务，用于修复AI服务初始化失败的问题
+    """
+    try:
+        global ai_chat_service
+        
+        print("🔄 开始重新初始化AI聊天服务...")
+        
+        # 先释放旧的服务实例
+        ai_chat_service = None
+        
+        # 重新导入和初始化
+        from ai_chat_service import AIChatService
+        ai_chat_service = AIChatService()
+        
+        print("✅ AI聊天服务重新初始化成功")
+        
+        # 测试服务是否正常
+        stats = ai_chat_service.get_statistics()
+        
+        return {
+            "success": True,
+            "message": "AI聊天服务重新初始化成功",
+            "timestamp": datetime.now().isoformat(),
+            "stats": {
+                "total_events": stats.get('total_events', 0),
+                "service_available": True
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ AI聊天服务重新初始化失败: {e}")
+        ai_chat_service = None
+        return {
+            "success": False,
+            "message": f"AI聊天服务重新初始化失败: {str(e)}",
+            "timestamp": datetime.now().isoformat(),
+            "stats": {
+                "total_events": 0,
+                "service_available": False
+            }
+        }
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

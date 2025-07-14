@@ -1,0 +1,31 @@
+[
+  {
+    "id": "1752494914865",
+    "name": "工资 测试",
+    "description": "无描述",
+    "filters": {
+      "search": "工资",
+      "category": "劳动人事（就业）纠纷"
+    },
+    "searchParams": {
+      "search": "工资",
+      "category": "劳动人事（就业）纠纷"
+    },
+    "tags": [
+      {
+        "key": "search",
+        "label": "关键词",
+        "value": "工资",
+        "color": "blue"
+      },
+      {
+        "key": "category",
+        "label": "分类",
+        "value": "劳动人事（就业）纠纷",
+        "color": "purple"
+      }
+    ],
+    "createTime": "2025-07-14 20:08:34",
+    "enabled": true
+  }
+]
