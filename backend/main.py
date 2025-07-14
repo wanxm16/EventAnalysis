@@ -103,7 +103,9 @@ async def get_events(
     town: Optional[str] = Query(None, description="镇街名称筛选"),
     level: Optional[str] = Query(None, description="事件级别筛选"),
     category: Optional[str] = Query(None, description="二级分类筛选"),
-    related_events: Optional[str] = Query(None, description="相关事件数量筛选")
+    related_events: Optional[str] = Query(None, description="相关事件数量筛选"),
+    start_time: Optional[str] = Query(None, description="开始时间筛选"),
+    end_time: Optional[str] = Query(None, description="结束时间筛选")
 ):
     """
     获取事件列表，支持分页、搜索和筛选，按上报时间倒序排列
@@ -124,7 +126,9 @@ async def get_events(
             town=town,
             level=level,
             category=category,
-            related_events=related_events
+            related_events=related_events,
+            start_time=start_time,
+            end_time=end_time
         )
         return result
     except Exception as e:
@@ -183,7 +187,11 @@ async def get_cluster_list(
     min_event_count: Optional[int] = Query(None, ge=2, description="最小事件数量"),
     max_event_count: Optional[int] = Query(None, ge=2, description="最大事件数量"),
     min_duration: Optional[float] = Query(None, ge=0, description="最小持续时间（天）"),
-    max_duration: Optional[float] = Query(None, ge=0, description="最大持续时间（天）")
+    max_duration: Optional[float] = Query(None, ge=0, description="最大持续时间（天）"),
+    first_report_time_start: Optional[str] = Query(None, description="首次上报时间开始"),
+    first_report_time_end: Optional[str] = Query(None, description="首次上报时间结束"),
+    last_report_time_start: Optional[str] = Query(None, description="最后上报时间开始"),
+    last_report_time_end: Optional[str] = Query(None, description="最后上报时间结束")
 ):
     """
     获取聚合事件列表，只显示record_count > 1的记录
@@ -195,6 +203,10 @@ async def get_cluster_list(
     - **max_event_count**: 最大事件数量筛选
     - **min_duration**: 最小持续时间筛选（天）
     - **max_duration**: 最大持续时间筛选（天）
+    - **first_report_time_start**: 首次上报时间开始
+    - **first_report_time_end**: 首次上报时间结束
+    - **last_report_time_start**: 最后上报时间开始
+    - **last_report_time_end**: 最后上报时间结束
     """
     try:
         result = event_service.get_cluster_list(
@@ -204,7 +216,11 @@ async def get_cluster_list(
             min_event_count=min_event_count,
             max_event_count=max_event_count,
             min_duration=min_duration,
-            max_duration=max_duration
+            max_duration=max_duration,
+            first_report_time_start=first_report_time_start,
+            first_report_time_end=first_report_time_end,
+            last_report_time_start=last_report_time_start,
+            last_report_time_end=last_report_time_end
         )
         return result
     except Exception as e:

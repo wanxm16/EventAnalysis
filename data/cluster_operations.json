@@ -1,0 +1,32 @@
+[
+  {
+    "operation_id": "missing-record-001",
+    "event_id": "XMEW202505010101",
+    "operation_type": "delete",
+    "timestamp": "2025-07-14T12:00:00.000000",
+    "operator": "管理员",
+    "source_cluster": "cluster_3961",
+    "target_cluster": "",
+    "description": "事件 XMEW202505010101 从cluster cluster_3961 中删除，现在为独立事件"
+  },
+  {
+    "operation_id": "d27c9900-bdfd-4944-b254-022f91f91b7c",
+    "event_id": "XMEW202505010102",
+    "operation_type": "delete",
+    "timestamp": "2025-07-15T05:36:24.378455",
+    "operator": "管理员",
+    "source_cluster": "cluster_3961",
+    "target_cluster": "",
+    "description": "事件 XMEW202505010102 从cluster cluster_3961 中删除，现在为独立事件"
+  },
+  {
+    "operation_id": "386a9a8a-2e5a-4598-90ed-7c22a0fcaf0d",
+    "event_id": "XMEW202505010102",
+    "operation_type": "add",
+    "timestamp": "2025-07-15T05:47:31.948420",
+    "operator": "管理员",
+    "source_cluster": "",
+    "target_cluster": "cluster_3961",
+    "description": "事件 XMEW202505010102 添加到cluster cluster_3961（原本不属于任何cluster）"
+  }
+]

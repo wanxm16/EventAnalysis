@@ -5,7 +5,6 @@ import re
 import os
 from datetime import datetime
 import uuid
-import csv
 from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo, PersonSearchQuery, PersonSearchResponse, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery, ClusterEditOperation, ClusterEditRequest, UndoRequest, EventClusterInfo, ClusterEditResponse, Subscription, SubscriptionCreateRequest, SubscriptionUpdateRequest, SubscriptionListResponse
 import json
 
@@ -26,12 +25,14 @@ class EventService:
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             parent_dir = os.path.dirname(current_dir)
-            operations_path = os.path.join(parent_dir, 'data', 'cluster_operations.csv')
+            operations_path = os.path.join(parent_dir, 'data', 'cluster_operations.json')
             
             if os.path.exists(operations_path):
-                self.operations_df = pd.read_csv(operations_path)
-                if not self.operations_df.empty:
-                    self.operations_df = self.operations_df.fillna('')
+                with open(operations_path, 'r', encoding='utf-8') as f:
+                    operations_list = json.load(f)
+                    self.operations_df = pd.DataFrame(operations_list)
+                    if not self.operations_df.empty:
+                        self.operations_df = self.operations_df.fillna('')
                 print(f"重新加载操作记录: {len(self.operations_df)} 条")
             else:
                 self.operations_df = pd.DataFrame()
@@ -57,7 +58,7 @@ class EventService:
             people_path = os.path.join(data_dir, 'people_info.csv')
             phone_master_path = os.path.join(data_dir, 'phone_master_index.csv')
             raw_conflict_path = os.path.join(data_dir, 'raw_conflict.csv')
-            operations_path = os.path.join(data_dir, 'cluster_operations.csv')
+            operations_path = os.path.join(data_dir, 'cluster_operations.json')
             
             # 打印路径信息用于调试
             print(f"数据目录: {data_dir}")
@@ -137,7 +138,9 @@ class EventService:
             try:
                 if os.path.exists(operations_path):
                     print(f"正在加载操作记录数据: {operations_path}")
-                    self.operations_df = pd.read_csv(operations_path)
+                    with open(operations_path, 'r', encoding='utf-8') as f:
+                        operations_list = json.load(f)
+                        self.operations_df = pd.DataFrame(operations_list)
                     print(f"✅ 操作记录数据加载成功: {len(self.operations_df)} 行")
                 else:
                     print(f"操作记录文件不存在，创建空DataFrame: {operations_path}")
@@ -286,7 +289,8 @@ class EventService:
     
     def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
                    town: Optional[str] = None, level: Optional[str] = None,
-                   category: Optional[str] = None, related_events: Optional[str] = None) -> PaginatedResponse:
+                   category: Optional[str] = None, related_events: Optional[str] = None,
+                   start_time: Optional[str] = None, end_time: Optional[str] = None) -> PaginatedResponse:
         """获取事件列表（分页）- 基于raw_conflict.csv数据"""
         
         if self.raw_conflict_df.empty:
@@ -323,6 +327,33 @@ class EventService:
         
         if category:
             df = df[df['二级分类'].astype(str).str.contains(category, case=False, na=False)]
+        
+        # 应用时间筛选
+        if start_time or end_time:
+            # 解析时间字符串并过滤数据
+            try:
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # 将上报时间转换为datetime类型
+                    df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
+                
+                if start_time:
+                    try:
+                        start_dt = pd.to_datetime(start_time)
+                        df = df[df['上报时间_parsed'] >= start_dt]
+                    except Exception as e:
+                        print(f"解析开始时间失败: {start_time}, 错误: {e}")
+                
+                if end_time:
+                    try:
+                        end_dt = pd.to_datetime(end_time)
+                        df = df[df['上报时间_parsed'] <= end_dt]
+                    except Exception as e:
+                        print(f"解析结束时间失败: {end_time}, 错误: {e}")
+                        
+            except Exception as e:
+                print(f"时间筛选失败: {e}")
         
         # 应用相关事件数量筛选 - 需要从cluster_df获取sequence_total信息
         if related_events:
@@ -362,9 +393,13 @@ class EventService:
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
+                # 如果还没有parsed列，则创建
+                if '上报时间_parsed' not in df.columns:
+                    df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
             df = df.sort_values('上报时间_parsed', ascending=False, na_position='last')
-            df = df.drop(columns=['上报时间_parsed'])  # 删除临时列
+            # 删除临时列
+            if '上报时间_parsed' in df.columns:
+                df = df.drop(columns=['上报时间_parsed'])
         except Exception as e:
             print(f"排序失败: {e}")
             # 如果时间解析失败，按原始字符串倒序排列
@@ -641,7 +676,9 @@ class EventService:
     
     def get_cluster_list(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
                         min_event_count: Optional[int] = None, max_event_count: Optional[int] = None,
-                        min_duration: Optional[float] = None, max_duration: Optional[float] = None) -> ClusterListPaginatedResponse:
+                        min_duration: Optional[float] = None, max_duration: Optional[float] = None,
+                        first_report_time_start: Optional[str] = None, first_report_time_end: Optional[str] = None,
+                        last_report_time_start: Optional[str] = None, last_report_time_end: Optional[str] = None) -> ClusterListPaginatedResponse:
         """获取聚合事件列表（分页）"""
         
         if self.cluster_df.empty:
@@ -669,6 +706,22 @@ class EventService:
         
         if max_duration is not None:
             df = df[df['duration_days'] <= max_duration]
+
+        # 应用首次上报时间筛选
+        if first_report_time_start or first_report_time_end:
+            df['first_report_time_parsed'] = pd.to_datetime(df['first_report_time'], errors='coerce')
+            if first_report_time_start:
+                df = df[df['first_report_time_parsed'] >= pd.to_datetime(first_report_time_start)]
+            if first_report_time_end:
+                df = df[df['first_report_time_parsed'] <= pd.to_datetime(first_report_time_end)]
+
+        # 应用最后上报时间筛选
+        if last_report_time_start or last_report_time_end:
+            df['last_report_time_parsed'] = pd.to_datetime(df['last_report_time'], errors='coerce')
+            if last_report_time_start:
+                df = df[df['last_report_time_parsed'] >= pd.to_datetime(last_report_time_start)]
+            if last_report_time_end:
+                df = df[df['last_report_time_parsed'] <= pd.to_datetime(last_report_time_end)]
         
         # 按record_count倒序排列，然后按duration_days倒序
         df = df.sort_values(['record_count', 'duration_days'], ascending=[False, False])
@@ -1224,11 +1277,11 @@ class EventService:
                 return new_id
     
     def _save_operation_record(self, operation: ClusterEditOperation) -> None:
-        """保存操作记录到CSV文件"""
+        """保存操作记录到JSON文件"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             parent_dir = os.path.dirname(current_dir)
-            operations_path = os.path.join(parent_dir, 'data', 'cluster_operations.csv')
+            operations_path = os.path.join(parent_dir, 'data', 'cluster_operations.json')
             
             # 准备记录数据
             record = {
@@ -1242,10 +1295,22 @@ class EventService:
                 'description': operation.description or ''
             }
             
-            # 追加到CSV文件
-            with open(operations_path, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=record.keys())
-                writer.writerow(record)
+            # 读取现有的操作记录
+            operations_list = []
+            if os.path.exists(operations_path):
+                try:
+                    with open(operations_path, 'r', encoding='utf-8') as f:
+                        operations_list = json.load(f)
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"读取现有操作记录失败，将创建新文件: {e}")
+                    operations_list = []
+            
+            # 添加新记录
+            operations_list.append(record)
+            
+            # 保存到JSON文件
+            with open(operations_path, 'w', encoding='utf-8') as f:
+                json.dump(operations_list, f, ensure_ascii=False, indent=2)
             
             # 更新内存中的operations_df
             new_row = pd.DataFrame([record])
@@ -1289,7 +1354,7 @@ class EventService:
         )
     
     def remove_event_from_cluster(self, request: ClusterEditRequest) -> ClusterEditResponse:
-        """从cluster中删除事件，创建新的独立cluster"""
+        """从cluster中删除事件，使其变成独立事件"""
         try:
             # 获取事件当前的cluster信息
             event_cluster_info = self.get_event_cluster_info(request.event_id)
@@ -1302,9 +1367,6 @@ class EventService:
             
             source_cluster = event_cluster_info.cluster_id
             
-            # 生成新的cluster ID
-            new_cluster_id = self._generate_cluster_id()
-            
             # 获取事件详情
             event_detail = self.get_event_detail(request.event_id)
             if not event_detail:
@@ -1313,23 +1375,9 @@ class EventService:
                     message="找不到指定的事件"
                 )
             
-            # 更新detail_df中的EventUID
+            # 将事件的EventUID设置为空字符串，表示不属于任何cluster
             mask = self.detail_df['事件编号'].astype(str) == request.event_id
-            self.detail_df.loc[mask, 'EventUID'] = new_cluster_id
-            
-            # 在cluster_df中创建新的cluster记录
-            new_cluster_data = {
-                'EventUID': new_cluster_id,
-                'Event_description': event_detail.事件描述,
-                'sequence_total': 1,
-                'participant_count': 1
-            }
-            
-            new_cluster_row = pd.DataFrame([new_cluster_data])
-            if self.cluster_df.empty:
-                self.cluster_df = new_cluster_row
-            else:
-                self.cluster_df = pd.concat([self.cluster_df, new_cluster_row], ignore_index=True)
+            self.detail_df.loc[mask, 'EventUID'] = ''
             
             # 更新原cluster的sequence_total和record_count
             source_mask = self.cluster_df['EventUID'].astype(str) == source_cluster
@@ -1354,19 +1402,19 @@ class EventService:
                 operation_type="delete",
                 event_id=request.event_id,
                 source_cluster=source_cluster,
-                target_cluster=new_cluster_id,
+                target_cluster="",  # 空字符串表示不属于任何cluster
                 operator=request.operator,
                 timestamp=datetime.now(),
-                description=f"事件 {request.event_id} 从cluster {source_cluster} 中删除，创建新cluster {new_cluster_id}"
+                description=f"事件 {request.event_id} 从cluster {source_cluster} 中删除，现在为独立事件"
             )
             
             self._save_operation_record(operation)
             
             return ClusterEditResponse(
                 success=True,
-                message=f"事件已从cluster {source_cluster} 中删除，创建新cluster {new_cluster_id}",
+                message=f"事件已从cluster {source_cluster} 中删除，现在为独立事件",
                 operation_id=operation.operation_id,
-                new_cluster_id=new_cluster_id
+                new_cluster_id=""  # 空字符串表示不属于任何cluster
             )
             
         except Exception as e:
@@ -1551,7 +1599,7 @@ class EventService:
             
             # 执行反向操作
             if operation_type == "delete":
-                # 撤销删除：将事件从新cluster移回原cluster
+                # 撤销删除：将独立事件添加回原cluster
                 if source_cluster and source_cluster != 'nan':
                     undo_request = ClusterEditRequest(
                         operation="add_event",
@@ -1560,14 +1608,6 @@ class EventService:
                         target_cluster=source_cluster
                     )
                     result = self.add_event_to_cluster(undo_request)
-                    
-                    # 删除撤销操作创建的独立cluster
-                    if result.success:
-                        target_mask = self.cluster_df['EventUID'].astype(str) == target_cluster
-                        if target_mask.any():
-                            self.cluster_df = self.cluster_df[~target_mask]
-                            self._save_dataframes()
-                    
                     return result
                 else:
                     return ClusterEditResponse(

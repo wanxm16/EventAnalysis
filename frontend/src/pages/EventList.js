@@ -199,6 +199,8 @@ const EventList = () => {
           onChange={(dates) => setSelectedKeys(dates ? [dates] : [])}
           style={{ marginBottom: 8, display: 'block' }}
           placeholder={['开始日期', '结束日期']}
+          allowEmpty={[false, true]}
+          showTime
         />
         <Space>
           <Button
@@ -287,19 +289,19 @@ const EventList = () => {
   const handleDateFilter = (selectedKeys, confirm, apiParam) => {
     confirm();
     const dateRange = selectedKeys[0];
-    
+
     // 更新列筛选状态
     const newColumnFilters = { ...columnFilters };
-    if (dateRange && dateRange.length === 2) {
+    if (dateRange && (dateRange[0] || dateRange[1])) {
       newColumnFilters[apiParam] = dateRange; // 保存原始日期范围用于显示
     } else {
       delete newColumnFilters[apiParam];
     }
     setColumnFilters(newColumnFilters);
-    
+
     // 更新搜索参数并重新加载数据
     const newParams = { ...searchParams };
-    
+
     // 清除之前的日期筛选参数
     delete newParams[`${apiParam}_start`];
     delete newParams[`${apiParam}_end`];
@@ -307,18 +309,27 @@ const EventList = () => {
     delete newParams['end_time'];
     delete newParams['report_time_start'];
     delete newParams['report_time_end'];
-    
-    if (dateRange && dateRange.length === 2) {
+
+    if (dateRange) {
+      const [start, end] = dateRange;
       // 根据API参数类型设置正确的参数名
       if (apiParam === 'report_time') {
-        newParams['start_time'] = dateRange[0].format('YYYY-MM-DD HH:mm:ss');
-        newParams['end_time'] = dateRange[1].format('YYYY-MM-DD HH:mm:ss');
+        if (start) {
+          newParams['start_time'] = start.format('YYYY-MM-DD HH:mm:ss');
+        }
+        if (end) {
+          newParams['end_time'] = end.format('YYYY-MM-DD HH:mm:ss');
+        }
       } else {
-        newParams[`${apiParam}_start`] = dateRange[0].format('YYYY-MM-DD');
-        newParams[`${apiParam}_end`] = dateRange[1].format('YYYY-MM-DD');
+        if (start) {
+          newParams[`${apiParam}_start`] = start.format('YYYY-MM-DD');
+        }
+        if (end) {
+          newParams[`${apiParam}_end`] = end.format('YYYY-MM-DD');
+        }
       }
     }
-    
+
     setSearchParams(newParams);
     setPagination(prev => ({ ...prev, current: 1 }));
     loadEvents({ page: 1, ...newParams });
@@ -658,10 +669,18 @@ const EventList = () => {
     // 日期筛选
     if (columnFilters.report_time && Array.isArray(columnFilters.report_time)) {
       const [start, end] = columnFilters.report_time;
+      let value = '';
+      if (start && end) {
+        value = `${start.format('MM-DD')} 至 ${end.format('MM-DD')}`;
+      } else if (start) {
+        value = `从 ${start.format('MM-DD')} 开始`;
+      } else if (end) {
+        value = `截至 ${end.format('MM-DD')}`;
+      }
       tags.push({
         key: 'report_time',
         label: '上报时间',
-        value: `${start.format('MM-DD')} 至 ${end.format('MM-DD')}`,
+        value: value,
         color: 'volcano'
       });
     }

@@ -185,6 +185,7 @@ const ClusterList = () => {
           onChange={(dates) => setSelectedKeys(dates ? [dates] : [])}
           style={{ marginBottom: 8, display: 'block' }}
           placeholder={['开始日期', '结束日期']}
+          allowEmpty={[false, true]}
         />
         <Space>
           <Button
@@ -296,41 +297,31 @@ const ClusterList = () => {
   const handleDateFilter = (selectedKeys, confirm, apiParam) => {
     confirm();
     const dateRange = selectedKeys[0];
-    
-    // 更新列筛选状态
+
     const newColumnFilters = { ...columnFilters };
-    if (dateRange && dateRange.length === 2) {
-      newColumnFilters[apiParam] = dateRange; // 保存原始日期范围用于显示
+    if (dateRange && (dateRange[0] || dateRange[1])) {
+      newColumnFilters[apiParam] = dateRange;
     } else {
       delete newColumnFilters[apiParam];
     }
     setColumnFilters(newColumnFilters);
-    
-    // 更新搜索参数并重新加载数据
+
     const newParams = { ...Object.fromEntries(searchParams) };
-    
+
     // 清除之前的日期筛选参数
     delete newParams[`${apiParam}_start`];
     delete newParams[`${apiParam}_end`];
-    delete newParams['first_report_time_start'];
-    delete newParams['first_report_time_end'];
-    delete newParams['last_report_time_start'];
-    delete newParams['last_report_time_end'];
-    
-    if (dateRange && dateRange.length === 2) {
-      // 根据API参数类型设置正确的参数名
-      if (apiParam === 'first_report_time') {
-        newParams['first_report_time_start'] = dateRange[0].format('YYYY-MM-DD');
-        newParams['first_report_time_end'] = dateRange[1].format('YYYY-MM-DD');
-      } else if (apiParam === 'last_report_time') {
-        newParams['last_report_time_start'] = dateRange[0].format('YYYY-MM-DD');
-        newParams['last_report_time_end'] = dateRange[1].format('YYYY-MM-DD');
-      } else {
-        newParams[`${apiParam}_start`] = dateRange[0].format('YYYY-MM-DD');
-        newParams[`${apiParam}_end`] = dateRange[1].format('YYYY-MM-DD');
+
+    if (dateRange) {
+      const [start, end] = dateRange;
+      if (start) {
+        newParams[`${apiParam}_start`] = start.format('YYYY-MM-DD');
+      }
+      if (end) {
+        newParams[`${apiParam}_end`] = end.endOf('day').format('YYYY-MM-DD HH:mm:ss');
       }
     }
-    
+
     setSearchParams(newParams);
     setPagination(prev => ({ ...prev, current: 1 }));
     loadClusters({ page: 1, ...newParams });
@@ -358,16 +349,11 @@ const ClusterList = () => {
     } else if (apiParam === 'duration_range') {
       delete newParams.min_duration;
       delete newParams.max_duration;
-    } else if (apiParam === 'first_report_time') {
-      delete newParams.first_report_time_start;
-      delete newParams.first_report_time_end;
-    } else if (apiParam === 'last_report_time') {
-      delete newParams.last_report_time_start;
-      delete newParams.last_report_time_end;
-    } else {
-      delete newParams[apiParam];
+    } else if (apiParam === 'first_report_time' || apiParam === 'last_report_time') {
       delete newParams[`${apiParam}_start`];
       delete newParams[`${apiParam}_end`];
+    } else {
+      delete newParams[apiParam];
     }
     
     setSearchParams(newParams);
