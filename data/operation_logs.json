@@ -1,0 +1,401 @@
+[
+  {
+    "id": "log-001",
+    "operator": "管理员",
+    "operation_type": "create",
+    "resource_type": "topic",
+    "resource_id": "topic-001",
+    "resource_name": "交通事故类事件",
+    "operation_desc": "创建了主题：交通事故类事件",
+    "before_data": null,
+    "after_data": {
+      "id": "topic-001",
+      "name": "交通事故类事件",
+      "description": "涉及交通事故的相关事件",
+      "enabled": true
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T13:30:25.123456",
+    "extra_info": null
+  },
+  {
+    "id": "log-002",
+    "operator": "张三",
+    "operation_type": "update",
+    "resource_type": "topic",
+    "resource_id": "topic-001",
+    "resource_name": "交通事故类事件",
+    "operation_desc": "更新了主题：交通事故类事件",
+    "before_data": {
+      "id": "topic-001",
+      "name": "交通事故类事件",
+      "description": "涉及交通事故的相关事件",
+      "enabled": true
+    },
+    "after_data": {
+      "id": "topic-001",
+      "name": "交通事故类事件",
+      "description": "涉及交通事故的相关事件，包括车祸、追尾等",
+      "enabled": true
+    },
+    "ip_address": "192.168.1.100",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T14:15:30.456789",
+    "extra_info": null
+  },
+  {
+    "id": "log-003",
+    "operator": "李四",
+    "operation_type": "create",
+    "resource_type": "report",
+    "resource_id": "report-001",
+    "resource_name": "2025年8月月度报告",
+    "operation_desc": "创建了报告：2025年8月月度报告",
+    "before_data": null,
+    "after_data": {
+      "id": "report-001",
+      "title": "2025年8月月度报告",
+      "month": "2025-08",
+      "status": "draft"
+    },
+    "ip_address": "192.168.1.101",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T09:20:15.789012",
+    "extra_info": null
+  },
+  {
+    "id": "log-004",
+    "operator": "王五",
+    "operation_type": "delete",
+    "resource_type": "topic",
+    "resource_id": "topic-002",
+    "resource_name": "测试主题",
+    "operation_desc": "删除了主题：测试主题",
+    "before_data": {
+      "id": "topic-002",
+      "name": "测试主题",
+      "description": "这是一个测试主题",
+      "enabled": false
+    },
+    "after_data": null,
+    "ip_address": "192.168.1.102",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/91.0.864.59",
+    "timestamp": "2025-09-18T11:45:40.234567",
+    "extra_info": null
+  },
+  {
+    "id": "log-005",
+    "operator": "管理员",
+    "operation_type": "export",
+    "resource_type": "system",
+    "resource_id": "export-001",
+    "resource_name": "事件数据导出",
+    "operation_desc": "导出了事件数据",
+    "before_data": null,
+    "after_data": {
+      "export_type": "events",
+      "file_name": "events_export_20250918.csv",
+      "record_count": 1250
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T10:30:20.345678",
+    "extra_info": {
+      "file_size": "2.5MB",
+      "download_url": "/downloads/events_export_20250918.csv"
+    }
+  },
+  {
+    "id": "log-006",
+    "operator": "赵六",
+    "operation_type": "view",
+    "resource_type": "event",
+    "resource_id": "event-12345",
+    "resource_name": "海曙区某路段交通事故",
+    "operation_desc": "查看了事件详情：海曙区某路段交通事故",
+    "before_data": null,
+    "after_data": null,
+    "ip_address": "192.168.1.103",
+    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15",
+    "timestamp": "2025-09-18T15:22:18.567890",
+    "extra_info": {
+      "view_duration": "2m 30s",
+      "sections_viewed": [
+        "基本信息",
+        "处置记录",
+        "相关事件"
+      ]
+    }
+  },
+  {
+    "id": "log-007",
+    "operator": "孙七",
+    "operation_type": "update",
+    "resource_type": "subscription",
+    "resource_id": "sub-001",
+    "resource_name": "重点事件订阅",
+    "operation_desc": "更新了订阅：重点事件订阅",
+    "before_data": {
+      "id": "sub-001",
+      "name": "重点事件订阅",
+      "enabled": false,
+      "filters": {
+        "level": "重点"
+      }
+    },
+    "after_data": {
+      "id": "sub-001",
+      "name": "重点事件订阅",
+      "enabled": true,
+      "filters": {
+        "level": "重点",
+        "type": "紧急"
+      }
+    },
+    "ip_address": "192.168.1.104",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/91.0",
+    "timestamp": "2025-09-18T08:15:45.678901",
+    "extra_info": null
+  },
+  {
+    "id": "log-008",
+    "operator": "管理员",
+    "operation_type": "login",
+    "resource_type": "system",
+    "resource_id": "session-001",
+    "resource_name": "系统登录",
+    "operation_desc": "管理员登录了系统",
+    "before_data": null,
+    "after_data": {
+      "session_id": "session-001",
+      "login_time": "2025-09-18T07:30:00.000000",
+      "login_method": "username_password"
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T07:30:00.123456",
+    "extra_info": {
+      "login_success": true,
+      "session_duration": "8h 30m"
+    }
+  },
+  {
+    "id": "log-009",
+    "operator": "李四",
+    "operation_type": "update",
+    "resource_type": "cluster",
+    "resource_id": "cluster-001",
+    "resource_name": "交通类聚合事件",
+    "operation_desc": "向聚类添加了事件",
+    "before_data": {
+      "cluster_id": "cluster-001",
+      "event_count": 15
+    },
+    "after_data": {
+      "cluster_id": "cluster-001",
+      "event_count": 16,
+      "added_event": "event-12346"
+    },
+    "ip_address": "192.168.1.101",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timestamp": "2025-09-18T12:45:32.789012",
+    "extra_info": {
+      "operation_type": "add_event",
+      "target_cluster": "cluster-001"
+    }
+  },
+  {
+    "id": "log-010",
+    "operator": "王五",
+    "operation_type": "create",
+    "resource_type": "topic",
+    "resource_id": "topic-003",
+    "resource_name": "环境污染事件",
+    "operation_desc": "创建了主题：环境污染事件",
+    "before_data": null,
+    "after_data": {
+      "id": "topic-003",
+      "name": "环境污染事件",
+      "description": "涉及环境污染的相关事件",
+      "enabled": true,
+      "keywords": [
+        "污染",
+        "环境",
+        "废气",
+        "噪音"
+      ]
+    },
+    "ip_address": "192.168.1.102",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/91.0.864.59",
+    "timestamp": "2025-09-17T16:20:10.345678",
+    "extra_info": null
+  },
+  {
+    "id": "17a2b569-7b51-44e1-845e-410154bae0fc",
+    "operator": "管理员",
+    "operation_type": "create",
+    "resource_type": "topic",
+    "resource_id": "1761205903476",
+    "resource_name": "未成年人",
+    "operation_desc": "创建了主题：未成年人",
+    "before_data": null,
+    "after_data": {
+      "id": "1761205903476",
+      "name": "未成年人",
+      "description": "",
+      "include_keywords": {
+        "description": [
+          "小孩",
+          "未成年"
+        ],
+        "result": [
+          "小孩",
+          "未成年"
+        ]
+      },
+      "exclude_keywords": {
+        "description": [],
+        "result": []
+      },
+      "categories": [],
+      "dedup": "description",
+      "fine_filters": [],
+      "enabled": true,
+      "createTime": "2025-10-23 15:51:43"
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    "timestamp": "2025-10-23T15:51:43.481178",
+    "extra_info": null
+  },
+  {
+    "id": "f79d9a4d-cf52-42d9-b17e-e8797dc9f234",
+    "operator": "管理员",
+    "operation_type": "update",
+    "resource_type": "topic",
+    "resource_id": "1761205903476",
+    "resource_name": "未成年人",
+    "operation_desc": "更新了主题：未成年人",
+    "before_data": {
+      "id": "1761205903476",
+      "name": "未成年人",
+      "description": "",
+      "include_keywords": {
+        "description": [
+          "小孩",
+          "未成年"
+        ],
+        "result": [
+          "小孩",
+          "未成年"
+        ]
+      },
+      "exclude_keywords": {
+        "description": [],
+        "result": []
+      },
+      "categories": [],
+      "dedup": "description",
+      "fine_filters": [],
+      "enabled": true,
+      "createTime": "2025-10-23 15:51:43"
+    },
+    "after_data": {
+      "id": "1761205903476",
+      "name": "未成年人",
+      "description": "",
+      "include_keywords": {
+        "description": [
+          "小孩",
+          "未成年"
+        ],
+        "result": [
+          "小孩",
+          "未成年"
+        ]
+      },
+      "exclude_keywords": {
+        "description": [
+          "老人"
+        ],
+        "result": []
+      },
+      "categories": [],
+      "dedup": "description",
+      "fine_filters": [],
+      "enabled": true,
+      "createTime": "2025-10-23 15:51:43"
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    "timestamp": "2025-11-05T14:13:54.277302",
+    "extra_info": null
+  },
+  {
+    "id": "7d209fe0-26d1-4ba9-a006-b2bf80f06acd",
+    "operator": "管理员",
+    "operation_type": "update",
+    "resource_type": "topic",
+    "resource_id": "1761205903476",
+    "resource_name": "未成年人",
+    "operation_desc": "更新了主题：未成年人",
+    "before_data": {
+      "id": "1761205903476",
+      "name": "未成年人",
+      "description": "",
+      "include_keywords": {
+        "description": [
+          "小孩",
+          "未成年"
+        ],
+        "result": [
+          "小孩",
+          "未成年"
+        ]
+      },
+      "exclude_keywords": {
+        "description": [
+          "老人"
+        ],
+        "result": []
+      },
+      "categories": [],
+      "dedup": "description",
+      "fine_filters": [],
+      "enabled": true,
+      "createTime": "2025-10-23 15:51:43"
+    },
+    "after_data": {
+      "id": "1761205903476",
+      "name": "未成年人",
+      "description": "",
+      "include_keywords": {
+        "description": [
+          "小孩",
+          "未成年"
+        ],
+        "result": [
+          "小孩",
+          "未成年"
+        ]
+      },
+      "exclude_keywords": {
+        "description": [
+          "老人",
+          "养老院"
+        ],
+        "result": []
+      },
+      "categories": [],
+      "dedup": "description",
+      "fine_filters": [],
+      "enabled": true,
+      "createTime": "2025-10-23 15:51:43"
+    },
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    "timestamp": "2025-11-05T14:14:10.702746",
+    "extra_info": null
+  }
+]

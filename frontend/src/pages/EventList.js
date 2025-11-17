@@ -16,11 +16,14 @@ import {
   Modal,
   Form,
   Badge,
+  Spin,
 } from 'antd';
-import { SearchOutlined, EyeOutlined, FilterOutlined, BellOutlined, DeleteOutlined, SettingOutlined, CheckCircleOutlined, PauseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, FilterOutlined, BellOutlined, DeleteOutlined, SettingOutlined, CheckCircleOutlined, PauseCircleOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import Highlighter from 'react-highlight-words';
+// 图表已迁移到 Topic 统计页面
 import { useNavigate } from 'react-router-dom';
 import { eventAPI } from '../services/api';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 
@@ -42,10 +45,11 @@ const EventList = () => {
   const [columnFilters, setColumnFilters] = useState({});
   const [filterOptions, setFilterOptions] = useState({
     towns: [],
+    villages: [],
     levels: [],
     categories: [],
   });
-  
+
   // 订阅相关状态
   const [subscribeModalVisible, setSubscribeModalVisible] = useState(false);
   const [subscribeForm] = Form.useForm();
@@ -53,36 +57,189 @@ const EventList = () => {
   const [manageModalVisible, setManageModalVisible] = useState(false);
   const [newEventNotifications, setNewEventNotifications] = useState([]); // 新事件通知
 
+  // 趋势图数据
+  // 事件页不再维护趋势图状态
+
+  // 自定义列展示
+  const defaultVisibleKeys = () => {
+    // 默认显示除新增两列外的主要列
+    const saved = localStorage.getItem('event_list_visible_columns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return (parsed || []).filter(k => k !== '事件编号' && k !== 'action');
+      } catch {}
+    }
+    return ['事件描述','镇街名称','事件级别','二级分类','上报时间','报警人信息','相关','处置结果'];
+  };
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState(defaultVisibleKeys());
+  const [columnModalOpen, setColumnModalOpen] = useState(false);
+  const dragIndexRef = useRef(null);
+  
+  // 排序状态管理
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
+  
+  // 列宽度状态管理
+  const [columnWidths, setColumnWidths] = useState({
+    '事件编号': 160,
+    '事件描述': 200,
+    '镇街名称': 100,
+    '村社名称': 120,
+    '事件级别': 100,
+    '二级分类': 120,
+    '上报时间': 150,
+    '报警人信息': 200,
+    '处置结果': 180,
+    '相关': 100,
+    'action': 100,
+  });
+
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const saveVisibleColumns = (keys) => {
+    setVisibleColumnKeys(keys);
+    try { localStorage.setItem('event_list_visible_columns', JSON.stringify(keys)); } catch {}
+  };
+
+  const resetVisibleColumns = () => {
+    const keys = defaultVisibleKeys();
+    saveVisibleColumns(keys);
+  };
+
+  // 可拖拽列宽度组件
+  const ResizeableTitle = (props) => {
+    const { onResize, width, ...restProps } = props;
+
+    if (!width) {
+      return <th {...restProps} />;
+    }
+
+    return (
+      <th
+        {...restProps}
+        style={{ position: 'relative' }}
+      >
+        {restProps.children}
+        <div
+          style={{
+            position: 'absolute',
+            right: '-5px',
+            top: 0,
+            bottom: 0,
+            width: '10px',
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.pageX;
+            const startWidth = width;
+
+            const handleMouseMove = (e) => {
+              const newWidth = startWidth + e.pageX - startX;
+              if (newWidth > 50) { // 最小宽度限制
+                onResize(newWidth);
+              }
+            };
+
+            const handleMouseUp = () => {
+              document.removeEventListener('mousemove', handleMouseMove);
+              document.removeEventListener('mouseup', handleMouseUp);
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+          }}
+        />
+      </th>
+    );
+  };
+
+  // 处理列宽度变化
+  const handleResize = (key) => (width) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [key]: width
+    }));
+  };
+
+  // 解析搜索输入：空格分词，前缀-为排除
+  const parseSearchInput = (input) => {
+    const tokens = (input || '')
+      .split(/\s+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+    const include = [];
+    const exclude = [];
+    for (const t of tokens) {
+      if (t.startsWith('-') && t.length > 1) exclude.push(t.slice(1));
+      else include.push(t);
+    }
+    return { include, exclude };
+  };
+
   // 获取列搜索属性
   const getColumnSearchProps = (dataIndex, placeholder, apiParam) => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
-        <Input
-          ref={searchInput}
-          placeholder={placeholder}
-          value={selectedKeys[0]}
-          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
-          style={{ marginBottom: 8, display: 'block' }}
-        />
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
-            icon={<SearchOutlined />}
-            size="small"
-            style={{ width: 90 }}
-          >
-            搜索
-          </Button>
-          <Button
-            onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
-            size="small"
-            style={{ width: 90 }}
-          >
-            重置
-          </Button>
-        </Space>
+      <div style={{ padding: 8, width: 300 }} onKeyDown={(e) => e.stopPropagation()}>
+        {(() => {
+          let state = { include: [], exclude: [] };
+          try {
+            if (selectedKeys && selectedKeys[0]) {
+              state = JSON.parse(selectedKeys[0]);
+            }
+          } catch {}
+          const update = (next) => {
+            const merged = { include: next.include ?? state.include, exclude: next.exclude ?? state.exclude };
+            setSelectedKeys([JSON.stringify(merged)]);
+          };
+          return (
+            <div>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>包含关键词（回车添加）</div>
+              <Select
+                mode="tags"
+                style={{ width: '100%', marginBottom: 8 }}
+                value={state.include}
+                onChange={(vals) => update({ include: vals })}
+                open={false}
+                placeholder={placeholder || '如：离婚 酒店'}
+              />
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>排除关键词（回车添加）</div>
+              <Select
+                mode="tags"
+                style={{ width: '100%', marginBottom: 8 }}
+                value={state.exclude}
+                onChange={(vals) => update({ exclude: vals })}
+                open={false}
+                placeholder={'如：交通 群体'}
+              />
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
+                  icon={<SearchOutlined />}
+                  size="small"
+                  style={{ width: 90 }}
+                >
+                  搜索
+                </Button>
+                <Button
+                  onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+                  size="small"
+                  style={{ width: 90 }}
+                >
+                  重置
+                </Button>
+              </Space>
+              <div style={{ marginTop: 8, fontSize: 11, color: '#999' }}>
+                提示：类似 Excel，可添加多个包含/排除词
+              </div>
+            </div>
+          );
+        })()}
       </div>
     ),
     filterIcon: (filtered) => (
@@ -107,16 +264,78 @@ const EventList = () => {
     filteredValue: columnFilters[apiParam] ? [columnFilters[apiParam]] : null,
   });
 
-  // 获取列筛选属性
+  // 简单文本搜索属性（仅设置单一 search，不使用 include/exclude）
+  const getSimpleSearchProps = (dataIndex, placeholder) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={searchInput}
+          placeholder={placeholder}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => handleSimpleSearch(selectedKeys, confirm, dataIndex)}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button type="primary" onClick={() => handleSimpleSearch(selectedKeys, confirm, dataIndex)} icon={<SearchOutlined />} size="small" style={{ width: 90 }}>搜索</Button>
+          <Button onClick={() => handleColumnFilterReset(clearFilters, 'search')} size="small" style={{ width: 90 }}>重置</Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: () => (
+      <SearchOutlined style={{ color: columnFilters['search'] ? '#1890ff' : undefined }} />
+    ),
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) {
+        setTimeout(() => searchInput.current?.select(), 100);
+      }
+    },
+    render: (text) => (
+      searchedColumn === dataIndex ? (
+        <Highlighter
+          highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+          searchWords={[searchText]}
+          autoEscape
+          textToHighlight={text ? text.toString() : ''}
+        />
+      ) : (
+        text
+      )
+    ),
+    filteredValue: columnFilters['search'] ? [columnFilters['search']] : null,
+  });
+
+  const handleSimpleSearch = (selectedKeys, confirm, dataIndex) => {
+    confirm();
+    const value = selectedKeys[0] || '';
+    setSearchText(value);
+    setSearchedColumn(dataIndex);
+    const newColumnFilters = { ...columnFilters };
+    if (value) newColumnFilters['search'] = value; else delete newColumnFilters['search'];
+    setColumnFilters(newColumnFilters);
+    const newParams = { ...searchParams };
+    if (value) newParams.search = value; else delete newParams.search;
+    // 清除 include/exclude
+    delete newParams.include;
+    delete newParams.exclude;
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadEvents({ page: 1, ...newParams });
+  };
+
+  // 获取列筛选属性（支持多选）
   const getColumnFilterProps = (dataIndex, options, placeholder, apiParam) => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
       <div style={{ padding: 8 }}>
         <Select
+          mode="multiple"
           placeholder={placeholder}
-          value={selectedKeys[0]}
-          onChange={(value) => setSelectedKeys(value ? [value] : [])}
-          style={{ width: 200, marginBottom: 8, display: 'block' }}
+          value={selectedKeys}
+          onChange={(values) => setSelectedKeys(values || [])}
+          style={{ width: 260, marginBottom: 8, display: 'block' }}
           allowClear
+          showSearch
+          maxTagCount="responsive"
         >
           {options.map(option => (
             <Option key={option} value={option}>{option}</Option>
@@ -125,7 +344,7 @@ const EventList = () => {
         <Space>
           <Button
             type="primary"
-            onClick={() => handleColumnFilter(selectedKeys, confirm, apiParam)}
+            onClick={() => handleColumnFilterMultiple(selectedKeys, confirm, apiParam)}
             icon={<FilterOutlined />}
             size="small"
             style={{ width: 90 }}
@@ -145,7 +364,7 @@ const EventList = () => {
     filterIcon: (filtered) => (
       <FilterOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
     ),
-    filteredValue: columnFilters[apiParam] ? [columnFilters[apiParam]] : null,
+    filteredValue: Array.isArray(columnFilters[apiParam]) ? columnFilters[apiParam] : null,
   });
 
   // 获取相关事件筛选属性
@@ -238,21 +457,49 @@ const EventList = () => {
   // 处理列搜索筛选（与API集成）
   const handleColumnSearchFilter = (selectedKeys, confirm, dataIndex, apiParam) => {
     confirm();
-    const value = selectedKeys[0];
-    setSearchText(value);
+    const raw = selectedKeys && selectedKeys[0];
+    let include = [], exclude = [];
+    if (raw) {
+      try {
+        const obj = JSON.parse(raw);
+        include = Array.isArray(obj.include) ? obj.include : [];
+        exclude = Array.isArray(obj.exclude) ? obj.exclude : [];
+      } catch {
+        const parsed = parseSearchInput(String(raw));
+        include = parsed.include; exclude = parsed.exclude;
+      }
+    }
+    const display = [
+      ...(include || []),
+      ...((exclude || []).map(x => `-${x}`))
+    ].join(' ');
+    setSearchText(display);
     setSearchedColumn(dataIndex);
-    
-    // 更新列筛选状态
+
     const newColumnFilters = { ...columnFilters };
-    if (value) {
-      newColumnFilters[apiParam] = value;
+    // 保存原始JSON格式用于filteredValue回显
+    if (include.length > 0 || exclude.length > 0) {
+      newColumnFilters[apiParam] = JSON.stringify({ include, exclude });
     } else {
       delete newColumnFilters[apiParam];
     }
     setColumnFilters(newColumnFilters);
-    
-    // 更新搜索参数并重新加载数据
-    const newParams = { ...searchParams, ...newColumnFilters };
+
+    const newParams = { ...searchParams };
+    // 清理单一 search（事件编号）不会影响本列
+    if (apiParam === 'search_desc') {
+      // 描述关键词（独立）
+      if (include.length > 0) newParams.include_desc = include; else delete newParams.include_desc;
+      if (exclude.length > 0) newParams.exclude_desc = exclude; else delete newParams.exclude_desc;
+    } else if (apiParam === 'search_result') {
+      // 处置结果关键词（独立）
+      if (include.length > 0) newParams.include_result = include; else delete newParams.include_result;
+      if (exclude.length > 0) newParams.exclude_result = exclude; else delete newParams.exclude_result;
+    } else {
+      // 兼容旧用法
+      if (include.length > 0) newParams.include = include; else delete newParams.include;
+      if (exclude.length > 0) newParams.exclude = exclude; else delete newParams.exclude;
+    }
     setSearchParams(newParams);
     setPagination(prev => ({ ...prev, current: 1 }));
     loadEvents({ page: 1, ...newParams });
@@ -264,15 +511,15 @@ const EventList = () => {
     setSearchText('');
   };
 
-  // 处理列筛选
-  const handleColumnFilter = (selectedKeys, confirm, apiParam) => {
+  // 处理列筛选（多选）
+  const handleColumnFilterMultiple = (selectedKeys, confirm, apiParam) => {
     confirm();
-    const value = selectedKeys[0];
+    const values = Array.isArray(selectedKeys) ? selectedKeys : [];
     
     // 更新列筛选状态
     const newColumnFilters = { ...columnFilters };
-    if (value) {
-      newColumnFilters[apiParam] = value;
+    if (values.length) {
+      newColumnFilters[apiParam] = values;
     } else {
       delete newColumnFilters[apiParam];
     }
@@ -284,6 +531,22 @@ const EventList = () => {
     setPagination(prev => ({ ...prev, current: 1 }));
     loadEvents({ page: 1, ...newParams });
   };
+
+  // 处理单选筛选（用于相关事件数量等场景，保持兼容）
+  const handleColumnFilter = (selectedKeys, confirm, apiParam) => {
+    confirm();
+    const value = selectedKeys && selectedKeys[0];
+
+    const newColumnFilters = { ...columnFilters };
+    if (value) newColumnFilters[apiParam] = value; else delete newColumnFilters[apiParam];
+    setColumnFilters(newColumnFilters);
+
+    const newParams = { ...searchParams, ...newColumnFilters };
+    setSearchParams(newParams);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadEvents({ page: 1, ...newParams });
+  };
+
 
   // 处理日期筛选
   const handleDateFilter = (selectedKeys, confirm, apiParam) => {
@@ -349,6 +612,14 @@ const EventList = () => {
     delete newParams[apiParam];
     delete newParams[`${apiParam}_start`];
     delete newParams[`${apiParam}_end`];
+    if (apiParam === 'search' || apiParam === 'search_desc' || apiParam === 'search_result') {
+      delete newParams.include;
+      delete newParams.exclude;
+      delete newParams.include_desc;
+      delete newParams.exclude_desc;
+      delete newParams.include_result;
+      delete newParams.exclude_result;
+    }
     
     // 特殊处理日期参数
     if (apiParam === 'report_time') {
@@ -369,8 +640,13 @@ const EventList = () => {
       title: '事件编号',
       dataIndex: '事件编号',
       key: '事件编号',
-      width: 120,
-      ...getColumnSearchProps('事件编号', '搜索事件编号', 'search'),
+      width: columnWidths['事件编号'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['事件编号'],
+        onResize: handleResize('事件编号'),
+      }),
+      ...getSimpleSearchProps('事件编号', '搜索事件编号'),
       render: (text) => 
         searchedColumn === '事件编号' ? (
           <Tooltip title={text}>
@@ -391,8 +667,13 @@ const EventList = () => {
       title: '事件描述',
       dataIndex: '事件描述',
       key: '事件描述',
-      width: 200,
-      ...getColumnSearchProps('事件描述', '搜索事件描述', 'search'),
+      width: columnWidths['事件描述'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['事件描述'],
+        onResize: handleResize('事件描述'),
+      }),
+      ...getColumnSearchProps('事件描述', '搜索事件描述', 'search_desc'),
       ellipsis: {
         showTitle: false,
       },
@@ -416,14 +697,38 @@ const EventList = () => {
       title: '镇街名称',
       dataIndex: '镇街名称',
       key: '镇街名称',
-      width: 100,
+      width: columnWidths['镇街名称'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['镇街名称'],
+        onResize: handleResize('镇街名称'),
+      }),
       ...getColumnFilterProps('镇街名称', filterOptions.towns, '选择镇街名称', 'town'),
+    },
+    {
+      title: '村社名称',
+      dataIndex: '村社名称',
+      key: '村社名称',
+      width: columnWidths['村社名称'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['村社名称'],
+        onResize: handleResize('村社名称'),
+      }),
+      ...getColumnFilterProps('村社名称', filterOptions.villages || [], '选择村社名称', 'village'),
+      ellipsis: true,
+      render: (text) => text || '-',
     },
     {
       title: '事件级别',
       dataIndex: '事件级别',
       key: '事件级别',
-      width: 100,
+      width: columnWidths['事件级别'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['事件级别'],
+        onResize: handleResize('事件级别'),
+      }),
       ...getColumnFilterProps('事件级别', filterOptions.levels, '选择事件级别', 'level'),
       render: (level) => {
         let color = 'default';
@@ -438,7 +743,12 @@ const EventList = () => {
       title: '二级分类',
       dataIndex: '二级分类',
       key: '二级分类',
-      width: 120,
+      width: columnWidths['二级分类'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['二级分类'],
+        onResize: handleResize('二级分类'),
+      }),
       ...getColumnFilterProps('二级分类', filterOptions.categories, '选择二级分类', 'category'),
       ellipsis: {
         showTitle: false,
@@ -453,7 +763,13 @@ const EventList = () => {
       title: '上报时间',
       dataIndex: '上报时间',
       key: '上报时间',
-      width: 150,
+      width: columnWidths['上报时间'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['上报时间'],
+        onResize: handleResize('上报时间'),
+      }),
+      sorter: true,
       ...getDateFilterProps('上报时间', 'report_time'),
       render: (time) => {
         if (!time) return '-';
@@ -507,7 +823,12 @@ const EventList = () => {
       title: '报警人信息',
       dataIndex: '报警人信息',
       key: '报警人信息',
-      width: 200,
+      width: columnWidths['报警人信息'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['报警人信息'],
+        onResize: handleResize('报警人信息'),
+      }),
       ellipsis: {
         showTitle: false,
       },
@@ -523,9 +844,32 @@ const EventList = () => {
       },
     },
     {
+      title: '处置结果',
+      dataIndex: '处置结果',
+      key: '处置结果',
+      width: columnWidths['处置结果'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['处置结果'],
+        onResize: handleResize('处置结果'),
+      }),
+      ...getColumnSearchProps('处置结果', '搜索处置结果', 'search_result'),
+      ellipsis: { showTitle: false },
+      render: (text) => (
+        <Tooltip title={text}>
+          <span>{text || '-'}</span>
+        </Tooltip>
+      ),
+    },
+    {
       title: '相关事件',
-      key: 'related',
-      width: 100,
+      key: '相关',
+      width: columnWidths['相关'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['相关'],
+        onResize: handleResize('相关'),
+      }),
       ...getRelatedEventsFilterProps(),
       render: (_, record) => {
         if (record.相关事件 && record.相关事件 > 0) {
@@ -556,6 +900,19 @@ const EventList = () => {
     },
   ];
 
+  // 根据选择过滤列，并按用户选择顺序排列（固定：事件编号在最前，操作在最后）
+  const orderedColumns = () => {
+    const map = Object.fromEntries(columns.map(c => [c.key, c]));
+    const middle = visibleColumnKeys
+      .filter(k => k !== '事件编号' && k !== 'action')
+      .filter(k => map[k]);
+    const result = [];
+    if (map['事件编号']) result.push(map['事件编号']);
+    result.push(...middle.map(k => map[k]));
+    if (map['action']) result.push(map['action']);
+    return result;
+  };
+
   // 加载事件列表
   const loadEvents = async (params = {}) => {
     setLoading(true);
@@ -564,6 +921,8 @@ const EventList = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         ...searchParams,
+        sort_field: sortField,
+        sort_order: sortOrder,
         ...params,
       });
       
@@ -591,13 +950,88 @@ const EventList = () => {
     }
   };
 
+  const buildExportParams = () => {
+    const params = { ...searchParams };
+    if (sortField) params.sort_field = sortField;
+    if (sortOrder) params.sort_order = sortOrder;
+    delete params.search_desc;
+    delete params.search_result;
+    delete params.report_time;
+    return params;
+  };
 
-  // 处理分页变化
-  const handleTableChange = (pagination) => {
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      setImporting(true);
+      const result = await eventAPI.importEvents(file);
+      message.success(`导入成功，新增/更新 ${result?.imported ?? 0} 条事件`);
+      setPagination(prev => ({ ...prev, current: 1 }));
+      await loadEvents({ page: 1 });
+      await loadFilterOptions();
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error.message;
+      message.error(`导入失败: ${detail}`);
+    } finally {
+      setImporting(false);
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const params = buildExportParams();
+      const blob = await eventAPI.exportEvents(params);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = dayjs().format('YYYYMMDD_HHmmss');
+      link.href = url;
+      link.download = `事件列表_${timestamp}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success('导出成功');
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error.message;
+      message.error(`导出失败: ${detail}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 事件页不再加载趋势
+
+
+  // 处理分页变化和排序
+  const handleTableChange = (pagination, filters, sorter) => {
     setPagination(pagination);
+    
+    // 处理排序
+    let newSortField = null;
+    let newSortOrder = null;
+    
+    if (sorter && sorter.field) {
+      newSortField = sorter.field;
+      newSortOrder = sorter.order === 'ascend' ? 'asc' : 'desc';
+    }
+    
+    setSortField(newSortField);
+    setSortOrder(newSortOrder);
+    
     loadEvents({
       page: pagination.current,
       page_size: pagination.pageSize,
+      sort_field: newSortField,
+      sort_order: newSortOrder,
     });
   };
 
@@ -610,14 +1044,40 @@ const EventList = () => {
   const getFilterTags = () => {
     const tags = [];
     
-    // 搜索文本
-    if (columnFilters.search) {
-      tags.push({
-        key: 'search',
-        label: '关键词',
-        value: columnFilters.search,
-        color: 'blue'
-      });
+    // 搜索文本（独立）
+    if (columnFilters.search_desc) {
+      try {
+        const parsed = JSON.parse(columnFilters.search_desc);
+        const include = parsed.include || [];
+        const exclude = parsed.exclude || [];
+        const display = [
+          ...include,
+          ...exclude.map(x => `-${x}`)
+        ].join(' ');
+        if (display) {
+          tags.push({ key: 'search_desc', label: '描述关键词', value: display, color: 'blue' });
+        }
+      } catch {
+        // 向后兼容，如果不是JSON格式就直接显示
+        tags.push({ key: 'search_desc', label: '描述关键词', value: columnFilters.search_desc, color: 'blue' });
+      }
+    }
+    if (columnFilters.search_result) {
+      try {
+        const parsed = JSON.parse(columnFilters.search_result);
+        const include = parsed.include || [];
+        const exclude = parsed.exclude || [];
+        const display = [
+          ...include,
+          ...exclude.map(x => `-${x}`)
+        ].join(' ');
+        if (display) {
+          tags.push({ key: 'search_result', label: '处置关键词', value: display, color: 'geekblue' });
+        }
+      } catch {
+        // 向后兼容，如果不是JSON格式就直接显示
+        tags.push({ key: 'search_result', label: '处置关键词', value: columnFilters.search_result, color: 'geekblue' });
+      }
     }
     
     // 镇街名称
@@ -625,7 +1085,7 @@ const EventList = () => {
       tags.push({
         key: 'town',
         label: '镇街',
-        value: columnFilters.town,
+        value: Array.isArray(columnFilters.town) ? columnFilters.town.join('、') : columnFilters.town,
         color: 'green'
       });
     }
@@ -635,7 +1095,7 @@ const EventList = () => {
       tags.push({
         key: 'level',
         label: '级别',
-        value: columnFilters.level,
+        value: Array.isArray(columnFilters.level) ? columnFilters.level.join('、') : columnFilters.level,
         color: 'orange'
       });
     }
@@ -645,7 +1105,7 @@ const EventList = () => {
       tags.push({
         key: 'category',
         label: '分类',
-        value: columnFilters.category,
+        value: Array.isArray(columnFilters.category) ? columnFilters.category.join('、') : columnFilters.category,
         color: 'purple'
       });
     }
@@ -702,6 +1162,18 @@ const EventList = () => {
     if (tagKey === 'report_time') {
       delete newParams['start_time'];
       delete newParams['end_time'];
+    }
+
+    // 清理相应的 include/exclude 参数
+    if (tagKey === 'search_desc') {
+      delete newParams.include_desc;
+      delete newParams.exclude_desc;
+    } else if (tagKey === 'search_result') {
+      delete newParams.include_result;
+      delete newParams.exclude_result;
+    } else if (tagKey === 'search') {
+      delete newParams.include;
+      delete newParams.exclude;
     }
     
     setSearchParams(newParams);
@@ -917,6 +1389,9 @@ const EventList = () => {
     }
   };
 
+
+  // =============== 原有函数 ===============
+
   // 数据刷新功能
   const reloadData = async () => {
     try {
@@ -973,37 +1448,22 @@ const EventList = () => {
     loadSubscriptions();
   }, []);
 
+  // 当筛选条件改变时，刷新趋势（与表格保持一致）
+  // 事件页不再随筛选刷新趋势
+
   return (
     <div className="page-container">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 className="page-title" style={{ margin: 0 }}>事件列表</h1>
         <Space>
-          <Button 
-            icon={<ReloadOutlined />}
-            onClick={reloadData}
-            loading={loading}
-            title="刷新数据"
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleExport}
+            loading={exporting}
+            disabled={exporting}
           >
-            刷新数据
+            导出结果
           </Button>
-          {subscriptions.length > 0 && (
-            <Badge 
-              dot={newEventNotifications.length > 0}
-              offset={[-5, 5]}
-            >
-              <Button 
-                type="primary"
-                icon={<SettingOutlined />}
-                onClick={() => {
-                  setManageModalVisible(true);
-                  // 打开订阅管理时清除通知小红点
-                  setNewEventNotifications([]);
-                }}
-              >
-                我的订阅
-              </Button>
-            </Badge>
-          )}
         </Space>
       </div>
 
@@ -1055,8 +1515,13 @@ const EventList = () => {
 
       {/* 事件列表表格 */}
       <Card>
+        {/* 趋势图已移动到主题统计页面 */}
+        {/* 自定义列控制 */}
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button onClick={() => setColumnModalOpen(true)} icon={<SettingOutlined />}>自定义列</Button>
+        </div>
         <Table
-          columns={columns}
+          columns={orderedColumns()}
           dataSource={events}
           loading={loading}
           pagination={{
@@ -1070,8 +1535,96 @@ const EventList = () => {
           rowKey="事件编号"
           scroll={{ x: 1200 }}
           size="small"
+          showSorterTooltip={false}
+          components={{
+            header: {
+              cell: ResizeableTitle,
+            },
+          }}
         />
       </Card>
+
+      {/* 自定义列模态框 */}
+      <Modal
+        title="自定义显示的列"
+        open={columnModalOpen}
+        onCancel={() => setColumnModalOpen(false)}
+        onOk={() => { saveVisibleColumns(visibleColumnKeys); setColumnModalOpen(false); }}
+        footer={[
+          <Button key="reset" onClick={resetVisibleColumns}>恢复默认</Button>,
+          <Button key="cancel" onClick={() => setColumnModalOpen(false)}>取消</Button>,
+          <Button key="ok" type="primary" onClick={() => { saveVisibleColumns(visibleColumnKeys); setColumnModalOpen(false); }}>确定</Button>,
+        ]}
+      >
+        <div style={{ marginBottom: 8, color: '#666' }}>勾选需要显示的列（可多选）：</div>
+        <Select
+          mode="multiple"
+          value={visibleColumnKeys}
+          onChange={setVisibleColumnKeys}
+          style={{ width: '100%' }}
+          options={(() => {
+            const opts = columns
+              .filter(c => c.key !== '事件编号' && c.key !== 'action')
+              .map(c => ({ label: c.title, value: c.key }));
+            // 未选中的排前面
+            return opts.sort((a, b) => {
+              const aSel = visibleColumnKeys.includes(a.value);
+              const bSel = visibleColumnKeys.includes(b.value);
+              if (aSel === bSel) return 0;
+              return aSel ? 1 : -1;
+            });
+          })()}
+        />
+        <div style={{ marginTop: 12, color: '#666' }}>拖拽下方项目以调整显示顺序：</div>
+        <div
+          style={{
+            border: '1px dashed #d9d9d9',
+            padding: 8,
+            borderRadius: 4,
+            minHeight: 48,
+            marginTop: 8,
+          }}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          {visibleColumnKeys.map((k, idx) => (
+            <div
+              key={k}
+              draggable
+              onDragStart={() => { dragIndexRef.current = idx; }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = dragIndexRef.current;
+                const to = idx;
+                if (from === null || from === undefined || from === to) return;
+                const next = [...visibleColumnKeys];
+                const [moved] = next.splice(from, 1);
+                next.splice(to, 0, moved);
+                setVisibleColumnKeys(next);
+                dragIndexRef.current = null;
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 8px',
+                margin: 4,
+                border: '1px solid #e5e7eb',
+                borderRadius: 4,
+                background: '#fafafa',
+                cursor: 'grab',
+                userSelect: 'none',
+              }}
+              title="拖拽以排序"
+            >
+              <span style={{ color: '#999', fontSize: 12, letterSpacing: 1 }}>≡</span>
+              <span>{(columns.find(c => c.key === k) || {}).title || k}</span>
+            </div>
+          ))}
+          {visibleColumnKeys.length === 0 && (
+            <div style={{ color: '#999', fontSize: 12 }}>未选择任何列</div>
+          )}
+        </div>
+      </Modal>
       
       {/* 订阅模态框 */}
       <Modal
@@ -1275,6 +1828,7 @@ const EventList = () => {
           </div>
         )}
       </Modal>
+
     </div>
   );
 };

@@ -4,6 +4,14 @@
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^5.2.6",
+    "@ant-design/plots": "^2.2.16",
+    "@tiptap/core": "^2.3.1",
+    "@tiptap/extension-link": "^2.3.1",
+    "@tiptap/extension-placeholder": "^2.3.1",
+    "@tiptap/extension-text-align": "^2.3.1",
+    "@tiptap/extension-underline": "^2.3.1",
+    "@tiptap/react": "^2.3.1",
+    "@tiptap/starter-kit": "^2.3.1",
     "antd": "^5.12.8",
     "axios": "^1.6.2",
     "dayjs": "^1.11.10",
@@ -12,7 +20,9 @@
     "react-highlight-words": "^0.20.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.8.1",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "remark-gfm": "^3.0.1",
+    "tiptap-markdown": "^0.8.10"
   },
   "scripts": {
     "start": "react-scripts start",

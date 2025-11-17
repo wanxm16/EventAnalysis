@@ -1,12 +1,25 @@
 import pandas as pd
 import numpy as np
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import re
 import os
 from datetime import datetime
 import uuid
-from models import EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions, ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo, PersonSearchQuery, PersonSearchResponse, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery, PersonAnalysis, PersonAnalysisResponse, PersonEvent, PersonDetailResponse, PersonAnalysisQuery, ClusterEditOperation, ClusterEditRequest, UndoRequest, EventClusterInfo, ClusterEditResponse, Subscription, SubscriptionCreateRequest, SubscriptionUpdateRequest, SubscriptionListResponse
+from io import BytesIO
+from models import (
+    EventResponse, EventDetailResponse, ClusterEventResponse, PaginatedResponse, FilterOptions,
+    ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions, PersonInfo,
+    PersonSearchQuery, PersonSearchResponse, PersonAnalysis, PersonAnalysisResponse, PersonEvent,
+    PersonDetailResponse, PersonAnalysisQuery, ClusterEditOperation, ClusterEditRequest, UndoRequest,
+    EventClusterInfo, ClusterEditResponse, Subscription, SubscriptionCreateRequest, SubscriptionUpdateRequest,
+    SubscriptionListResponse, Topic, TopicCreateRequest, TopicUpdateRequest, TopicListResponse,
+    TopicEventsQuery, TopicStatsResponse,
+    Indicator, IndicatorSearchResponse, IndicatorValueResponse, Report,
+    ReportListResponse, ReportCreateRequest, ReportUpdateRequest, ReportPreviewRequest, ReportPreviewResponse, RenderedValue,
+    OperationLog, OperationLogQuery, OperationLogResponse, OperationStatsItem, OperationStatsResponse, OperationLogFilterOptions
+)
 import json
+import re
 
 class EventService:
     def __init__(self):
@@ -18,6 +31,10 @@ class EventService:
         self.phone_master_df = None  # 新增人员分析数据
         self.raw_conflict_df = None  # 原始事件数据
         self.operations_df = None  # Cluster操作记录数据
+        self.topics_cache: List[Topic] = []  # 主题缓存
+        # 报告与指标
+        self.reports_cache: List[Report] = []
+        self.indicators_catalog: List[Indicator] = []
         self.load_data()
     
     def reload_operations_data(self):
@@ -59,6 +76,8 @@ class EventService:
             phone_master_path = os.path.join(data_dir, 'phone_master_index.csv')
             raw_conflict_path = os.path.join(data_dir, 'raw_conflict.csv')
             operations_path = os.path.join(data_dir, 'cluster_operations.json')
+            indicators_values_path = os.path.join(data_dir, 'indicator_values.json')
+            reports_path = os.path.join(data_dir, 'reports.json')
             
             # 打印路径信息用于调试
             print(f"数据目录: {data_dir}")
@@ -150,7 +169,43 @@ class EventService:
                 self.operations_df = pd.DataFrame()
                 
             print(f"数据加载成功: 事件详情 {len(self.detail_df)} 条, 聚类事件 {len(self.cluster_df)} 条, 报警人信息 {len(self.info_df)} 条, 人口信息 {len(self.people_df)} 条, 人员分析 {len(self.phone_master_df)} 条, 原始事件 {len(self.raw_conflict_df)} 条, 操作记录 {len(self.operations_df)} 条")
-            
+
+            # 初始化指标目录（简化/固定）
+            self.indicators_catalog = [
+                Indicator(code="KPI_EVT_MAJOR", name="重点事件数量", unit="件"),
+                Indicator(code="KPI_EVT_RET_CLOSED", name="退回核查闭环件数", unit="件"),
+                Indicator(code="KPI_EVT_EXTREME", name="扬言极端类件数", unit="件"),
+                Indicator(code="KPI_PUBSAFE_TRACK", name="公共安全类追踪件数", unit="件"),
+                Indicator(code="KPI_PUBSAFE_MERGE", name="公共安全类-警网融合件数", unit="件"),
+                Indicator(code="KPI_MINOR_TRACK", name="涉未成年人追踪件数", unit="件"),
+                Indicator(code="KPI_MINOR_MERGE", name="涉未成年人-警网融合件数", unit="件"),
+                Indicator(code="KPI_MINOR_NONPOLICE", name="涉未成年人-非警务分流件数", unit="件"),
+                Indicator(code="KPI_CONFLICT_TRACK", name="矛纠治安信访类追踪件数", unit="件"),
+                Indicator(code="KPI_CONFLICT_NONPOLICE", name="矛纠治安信访类-非警务分流件数", unit="件"),
+                Indicator(code="KPI_CONFLICT_MERGE", name="矛纠治安信访类-警网融合件数", unit="件"),
+                Indicator(code="KPI_CONFLICT_RETURN", name="矛纠治安信访类-退回件数", unit="件"),
+                Indicator(
+                    code="CHART_EVT_STREET_BAR",
+                    name="各街道事件数量柱状图",
+                    grain="month",
+                    desc="展示指定月份各街道事件数量对比",
+                    kind="CHART",
+                    metadata={"chart_type": "bar", "dimension": "镇街名称"}
+                ),
+            ]
+
+            # 初始化报告存储
+            try:
+                if os.path.exists(reports_path):
+                    with open(reports_path, 'r', encoding='utf-8') as f:
+                        reports_raw = json.load(f) or []
+                        self.reports_cache = [Report(**r) for r in reports_raw]
+                else:
+                    self.reports_cache = []
+            except Exception as e:
+                print(f"加载报告文件失败: {e}")
+                self.reports_cache = []
+
         except Exception as e:
             print(f"数据加载失败: {e}")
             # 创建空的DataFrame作为fallback
@@ -161,6 +216,8 @@ class EventService:
             self.phone_master_df = pd.DataFrame()
             self.raw_conflict_df = pd.DataFrame()
             self.operations_df = pd.DataFrame()
+            self.topics_cache = []
+            self.reports_cache = []
     
     def _preprocess_data(self):
         """预处理数据"""
@@ -190,6 +247,10 @@ class EventService:
                 self.phone_master_df['event_count'] = pd.to_numeric(
                     self.phone_master_df['event_count'], errors='coerce'
                 ).fillna(0).astype(int)
+
+            # 初始化population_tags列（如果不存在）
+            if 'population_tags' not in self.phone_master_df.columns:
+                self.phone_master_df['population_tags'] = None
         
         if self.operations_df is not None and not self.operations_df.empty:
             self.operations_df = self.operations_df.fillna('')
@@ -287,29 +348,50 @@ class EventService:
             print(f"解析当事人信息失败: {event_id}, 错误: {e}")
             return None
     
-    def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
-                   town: Optional[str] = None, level: Optional[str] = None,
-                   category: Optional[str] = None, related_events: Optional[str] = None,
-                   start_time: Optional[str] = None, end_time: Optional[str] = None) -> PaginatedResponse:
-        """获取事件列表（分页）- 基于raw_conflict.csv数据"""
-        
+    def filter_events_dataframe(self, search: Optional[str] = None,
+                                include: Optional[List[str]] = None, exclude: Optional[List[str]] = None,
+                                include_desc: Optional[List[str]] = None, exclude_desc: Optional[List[str]] = None,
+                                include_result: Optional[List[str]] = None, exclude_result: Optional[List[str]] = None,
+                                town: Optional[List[str]] = None, village: Optional[List[str]] = None, level: Optional[List[str]] = None,
+                                category: Optional[List[str]] = None, event_type: Optional[List[str]] = None,
+                                related_events: Optional[str] = None,
+                                start_time: Optional[str] = None, end_time: Optional[str] = None,
+                                sort_field: Optional[str] = None, sort_order: Optional[str] = None) -> pd.DataFrame:
+        """根据筛选条件返回未分页的事件DataFrame"""
+
         if self.raw_conflict_df.empty:
-            return PaginatedResponse(
-                items=[], total=0, page=page, page_size=page_size, total_pages=0
-            )
-        
+            return pd.DataFrame()
+
         df = self.raw_conflict_df.copy()
-        
+
         # 为每个事件获取报警人信息（从info_merge.csv）
         df['报警人信息'] = df['事件编号'].apply(
             lambda x: self._get_caller_info(str(x)) or ''
         )
-        
-        # 应用搜索过滤
+
+        def normalize_list(lst: Optional[List[str]]) -> Optional[List[str]]:
+            if lst is None:
+                return None
+            if len(lst) == 1 and isinstance(lst[0], str) and ("," in lst[0]):
+                parts = [p.strip() for p in lst[0].split(",") if p.strip()]
+                return parts or None
+            cleaned = [str(x).strip() for x in lst if str(x).strip()]
+            return cleaned or None
+
+        include = normalize_list(include)
+        exclude = normalize_list(exclude)
+        town = normalize_list(town)
+        level = normalize_list(level)
+        village = normalize_list(village)
+        category = normalize_list(category)
+        event_type = normalize_list(event_type)
+        include_desc = normalize_list(include_desc)
+        exclude_desc = normalize_list(exclude_desc)
+        include_result = normalize_list(include_result)
+        exclude_result = normalize_list(exclude_result)
+
         if search:
-            # 转义正则表达式特殊字符，避免搜索包含*等字符时出错
             search_escaped = re.escape(search)
-            
             search_condition = (
                 df['事件编号'].astype(str).str.contains(search_escaped, case=False, na=False) |
                 df['事件描述'].astype(str).str.contains(search_escaped, case=False, na=False) |
@@ -317,55 +399,106 @@ class EventService:
                 df['报警人信息'].astype(str).str.contains(search_escaped, case=False, na=False)
             )
             df = df[search_condition]
-        
-        # 应用筛选条件
+
+        if include or exclude:
+            combined = (
+                df['事件编号'].astype(str) + ' ' +
+                df['事件描述'].astype(str) + ' ' +
+                df['处置结果'].astype(str) + ' ' +
+                df['报警人信息'].astype(str)
+            ).str.lower()
+
+            if include:
+                include_condition = None
+                for kw in include:
+                    kw_l = str(kw).lower()
+                    condition = combined.str.contains(re.escape(kw_l), na=False)
+                    if include_condition is None:
+                        include_condition = condition
+                    else:
+                        include_condition = include_condition | condition
+                df = df[include_condition]
+
+            if exclude:
+                for kw in exclude:
+                    kw_l = str(kw).lower()
+                    df = df[~combined.str.contains(re.escape(kw_l), na=False)]
+
+        if include_desc:
+            include_desc_condition = None
+            for kw in include_desc:
+                condition = df['事件描述'].astype(str).str.lower().str.contains(re.escape(str(kw).lower()), na=False)
+                if include_desc_condition is None:
+                    include_desc_condition = condition
+                else:
+                    include_desc_condition = include_desc_condition | condition
+            df = df[include_desc_condition]
+
+        if exclude_desc:
+            for kw in exclude_desc:
+                df = df[~df['事件描述'].astype(str).str.lower().str.contains(re.escape(str(kw).lower()), na=False)]
+
+        if '处置结果' in df.columns:
+            if include_result:
+                include_result_condition = None
+                for kw in include_result:
+                    condition = df['处置结果'].astype(str).str.lower().str.contains(re.escape(str(kw).lower()), na=False)
+                    if include_result_condition is None:
+                        include_result_condition = condition
+                    else:
+                        include_result_condition = include_result_condition | condition
+                df = df[include_result_condition]
+
+            if exclude_result:
+                for kw in exclude_result:
+                    df = df[~df['处置结果'].astype(str).str.lower().str.contains(re.escape(str(kw).lower()), na=False)]
+
         if town:
-            df = df[df['镇街名称'].astype(str).str.contains(town, case=False, na=False)]
-        
+            df = df[df['镇街名称'].astype(str).isin(town)]
+
+        if village and '村社名称' in df.columns:
+            df = df[df['村社名称'].astype(str).isin(village)]
+
         if level:
-            df = df[df['事件级别'].astype(str).str.contains(level, case=False, na=False)]
-        
+            df = df[df['事件级别'].astype(str).isin(level)]
+
         if category:
-            df = df[df['二级分类'].astype(str).str.contains(category, case=False, na=False)]
-        
-        # 应用时间筛选
+            df = df[df['二级分类'].astype(str).isin(category)]
+
+        if event_type and '事件类型' in df.columns:
+            df = df[df['事件类型'].astype(str).isin(event_type)]
+
         if start_time or end_time:
-            # 解析时间字符串并过滤数据
             try:
                 import warnings
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    # 将上报时间转换为datetime类型
                     df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
-                
+
                 if start_time:
                     try:
                         start_dt = pd.to_datetime(start_time)
                         df = df[df['上报时间_parsed'] >= start_dt]
                     except Exception as e:
                         print(f"解析开始时间失败: {start_time}, 错误: {e}")
-                
+
                 if end_time:
                     try:
                         end_dt = pd.to_datetime(end_time)
                         df = df[df['上报时间_parsed'] <= end_dt]
                     except Exception as e:
                         print(f"解析结束时间失败: {end_time}, 错误: {e}")
-                        
+
             except Exception as e:
                 print(f"时间筛选失败: {e}")
-        
-        # 应用相关事件数量筛选 - 需要从cluster_df获取sequence_total信息
+
         if related_events:
-            # 为原始事件添加聚类信息
             if not self.cluster_df.empty:
-                # 创建事件编号到sequence_total的映射
                 cluster_mapping = {}
                 for _, cluster_row in self.cluster_df.iterrows():
                     event_uid = str(cluster_row.get('EventUID', ''))
                     sequence_total = cluster_row.get('sequence_total', 1)
-                    
-                    # 从detail_df中找到属于此聚类的事件编号
+
                     if not self.detail_df.empty:
                         cluster_events = self.detail_df[
                             self.detail_df['EventUID'].astype(str) == event_uid
@@ -373,38 +506,80 @@ class EventService:
                         for _, detail_row in cluster_events.iterrows():
                             event_id = str(detail_row.get('事件编号', ''))
                             cluster_mapping[event_id] = sequence_total
-                
-                # 为df添加sequence_total列
+
                 df['sequence_total'] = df['事件编号'].map(cluster_mapping).fillna(1)
-                
-                # 应用筛选
-                if related_events == "0":  # 无关联事件
+
+                if related_events == "0":
                     df = df[df['sequence_total'] <= 1]
-                elif related_events == "1":  # 1个关联事件
+                elif related_events == "1":
                     df = df[df['sequence_total'] == 2]
-                elif related_events == "2-5":  # 2-5个关联事件
+                elif related_events == "2-5":
                     df = df[(df['sequence_total'] >= 3) & (df['sequence_total'] <= 6)]
-                elif related_events == "5+":  # 5个以上关联事件
+                elif related_events == "5+":
                     df = df[df['sequence_total'] > 6]
-        
-        # 按上报时间倒序排列
+
         try:
-            # 尝试多种时间格式解析
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                # 如果还没有parsed列，则创建
-                if '上报时间_parsed' not in df.columns:
-                    df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
-            df = df.sort_values('上报时间_parsed', ascending=False, na_position='last')
-            # 删除临时列
-            if '上报时间_parsed' in df.columns:
-                df = df.drop(columns=['上报时间_parsed'])
+            if not sort_field:
+                sort_field = '上报时间'
+                sort_order = 'desc'
+
+            ascending = True if sort_order == 'asc' else False
+
+            if sort_field == '上报时间':
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    if '上报时间_parsed' not in df.columns:
+                        df['上报时间_parsed'] = pd.to_datetime(df['上报时间'], errors='coerce')
+                df = df.sort_values('上报时间_parsed', ascending=ascending, na_position='last')
+            else:
+                if sort_field in df.columns:
+                    df = df.sort_values(sort_field, ascending=ascending, na_position='last')
+                else:
+                    df = df.sort_values('上报时间', ascending=False, na_position='last')
         except Exception as e:
             print(f"排序失败: {e}")
-            # 如果时间解析失败，按原始字符串倒序排列
             df = df.sort_values('上报时间', ascending=False, na_position='last')
-        
+
+        if '上报时间_parsed' in df.columns:
+            df = df.drop(columns=['上报时间_parsed'])
+
+        return df
+
+    def get_events(self, page: int = 1, page_size: int = 20, search: Optional[str] = None,
+                   include: Optional[List[str]] = None, exclude: Optional[List[str]] = None,
+                   include_desc: Optional[List[str]] = None, exclude_desc: Optional[List[str]] = None,
+                   include_result: Optional[List[str]] = None, exclude_result: Optional[List[str]] = None,
+                   town: Optional[List[str]] = None, village: Optional[List[str]] = None, level: Optional[List[str]] = None,
+                   category: Optional[List[str]] = None, event_type: Optional[List[str]] = None,
+                   related_events: Optional[str] = None,
+                   start_time: Optional[str] = None, end_time: Optional[str] = None,
+                   sort_field: Optional[str] = None, sort_order: Optional[str] = None) -> PaginatedResponse:
+        """获取事件列表（分页）"""
+
+        df = self.filter_events_dataframe(
+            search=search,
+            include=include,
+            exclude=exclude,
+            include_desc=include_desc,
+            exclude_desc=exclude_desc,
+            include_result=include_result,
+            exclude_result=exclude_result,
+            town=town,
+            village=village,
+            level=level,
+            category=category,
+            event_type=event_type,
+            related_events=related_events,
+            start_time=start_time,
+            end_time=end_time,
+            sort_field=sort_field,
+            sort_order=sort_order,
+        )
+
+        if df.empty:
+            return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, total_pages=0)
+
         # 计算分页
         total = len(df)
         total_pages = (total + page_size - 1) // page_size
@@ -443,9 +618,11 @@ class EventService:
                 事件编号=event_id,
                 事件描述=str(row.get('事件描述', '')),
                 镇街名称=str(row.get('镇街名称', '')),
+                村社名称=str(row.get('村社名称', '')) if '村社名称' in row and pd.notna(row.get('村社名称')) else None,
                 事件级别=str(row.get('事件级别', '')),
                 二级分类=str(row.get('二级分类', '')),
                 上报时间=str(row.get('上报时间', '')),
+                处置结果=str(row.get('处置结果', '')) if '处置结果' in row and pd.notna(row.get('处置结果')) else None,
                 CallerPhone=caller_phone,
                 CallerID=caller_id,
                 EventUID=event_uid,
@@ -462,44 +639,133 @@ class EventService:
             page_size=page_size,
             total_pages=total_pages
         )
+
+    def import_events_from_excel(self, file_bytes: bytes, filename: str, mode: str = 'append') -> Dict[str, Any]:
+        if not file_bytes:
+            raise ValueError('文件内容为空')
+
+        try:
+            buffer = BytesIO(file_bytes)
+            if filename.lower().endswith('.csv'):
+                new_df = pd.read_csv(buffer)
+            else:
+                new_df = pd.read_excel(buffer)
+        except Exception as e:
+            raise ValueError(f'解析文件失败: {e}')
+
+        if new_df.empty:
+            return {"imported": 0, "total": int(self.raw_conflict_df.shape[0] if self.raw_conflict_df is not None else 0)}
+
+        if '事件编号' not in new_df.columns:
+            raise ValueError('缺少“事件编号”列')
+
+        new_df['事件编号'] = new_df['事件编号'].astype(str)
+
+        # 保持列顺序与现有数据一致
+        base_df = self.raw_conflict_df.copy() if self.raw_conflict_df is not None else pd.DataFrame()
+
+        if mode == 'replace' or base_df.empty:
+            combined = new_df.copy()
+        else:
+            combined = pd.concat([base_df, new_df], ignore_index=True)
+
+        combined = combined.drop_duplicates(subset=['事件编号'], keep='last')
+
+        if not base_df.empty:
+            for col in base_df.columns:
+                if col not in combined.columns:
+                    combined[col] = ''
+            combined = combined[base_df.columns]
+        else:
+            combined = combined.fillna('')
+
+        combined = combined.fillna('')
+
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+        raw_conflict_path = os.path.join(data_dir, 'raw_conflict.csv')
+        combined.to_csv(raw_conflict_path, index=False)
+
+        # 重新加载数据以刷新缓存
+        self.load_data()
+
+        return {
+            "imported": int(new_df.shape[0]),
+            "total": int(combined.shape[0])
+        }
     
     def get_event_detail(self, event_id: str) -> Optional[EventDetailResponse]:
         """获取事件详情"""
-        
-        if self.detail_df.empty:
+
+        normalized_id = str(event_id).strip()
+
+        def clean_value(value: Any) -> Optional[str]:
+            if value is None:
+                return None
+            if pd.isna(value):
+                return None
+            text = str(value).strip()
+            return text or None
+
+        if not self.detail_df.empty:
+            event_row = self.detail_df[self.detail_df['事件编号'].astype(str).str.strip() == normalized_id]
+        else:
+            event_row = pd.DataFrame()
+
+        if not event_row.empty:
+            row = event_row.iloc[0]
+
+            sequence_total = row.get('sequence_total')
+            related_events_count = 0
+            if pd.notna(sequence_total) and sequence_total > 1:
+                related_events_count = int(sequence_total) - 1
+
+            caller_info = self._get_caller_info(normalized_id)
+            involved_parties_info = self._get_involved_parties_info(normalized_id)
+
+            return EventDetailResponse(
+                事件编号=str(row.get('事件编号', '')),
+                事件描述=str(row.get('事件描述', '')),
+                镇街名称=str(row.get('镇街名称', '')),
+                村社名称=clean_value(row.get('村社名称')),
+                事件级别=str(row.get('事件级别', '')),
+                事件类型=clean_value(row.get('事件类型')),
+                二级分类=str(row.get('二级分类', '')),
+                上报时间=str(row.get('上报时间', '')),
+                办结时间=clean_value(row.get('办结时间')),
+                处置结果=clean_value(row.get('处置结果')),
+                EventUID=clean_value(row.get('EventUID')),
+                sequence_total=int(sequence_total) if pd.notna(sequence_total) else None,
+                related_events_count=related_events_count,
+                报警人信息=caller_info,
+                当事人信息=involved_parties_info
+            )
+
+        # 兼容 detail_df 未覆盖到的事件：回落到原始冲突数据
+        if self.raw_conflict_df.empty:
             return None
-        
-        # 查找事件
-        event_row = self.detail_df[self.detail_df['事件编号'].astype(str) == event_id]
-        
-        if event_row.empty:
+
+        raw_match = self.raw_conflict_df[self.raw_conflict_df['事件编号'].astype(str).str.strip() == normalized_id]
+        if raw_match.empty:
             return None
-        
-        row = event_row.iloc[0]
-        
-        # 计算相关事件数量
-        related_events_count = 0  # 默认为0
-        sequence_total = row.get('sequence_total')
-        if pd.notna(sequence_total) and sequence_total > 1:
-            related_events_count = int(sequence_total) - 1
-        
-        # 获取报警人信息和当事人信息
-        caller_info = self._get_caller_info(event_id)
-        involved_parties_info = self._get_involved_parties_info(event_id)
-        
+
+        row = raw_match.iloc[0]
+        caller_info = self._get_caller_info(normalized_id)
+        involved_parties_info = self._get_involved_parties_info(normalized_id)
+
         return EventDetailResponse(
             事件编号=str(row.get('事件编号', '')),
             事件描述=str(row.get('事件描述', '')),
             镇街名称=str(row.get('镇街名称', '')),
-            村社名称=str(row.get('村社名称', '')) if row.get('村社名称') else None,
+            村社名称=clean_value(row.get('村社名称')),
             事件级别=str(row.get('事件级别', '')),
+            事件类型=clean_value(row.get('事件类型')),
             二级分类=str(row.get('二级分类', '')),
             上报时间=str(row.get('上报时间', '')),
-            办结时间=str(row.get('办结时间', '')) if row.get('办结时间') else None,
-            处置结果=str(row.get('处置结果', '')) if row.get('处置结果') else None,
-            EventUID=str(row.get('EventUID', '')) if row.get('EventUID') else None,
-            sequence_total=int(sequence_total) if pd.notna(sequence_total) else None,
-            related_events_count=related_events_count,
+            办结时间=clean_value(row.get('办结时间')),
+            处置结果=clean_value(row.get('处置结果')),
+            EventUID=None,
+            sequence_total=None,
+            related_events_count=None,
             报警人信息=caller_info,
             当事人信息=involved_parties_info
         )
@@ -637,6 +903,9 @@ class EventService:
             timeline_item = {
                 '事件编号': event_id,
                 '事件描述': str(row.get('事件描述', '')),
+                '镇街名称': str(row.get('镇街名称', '')) if row.get('镇街名称') else None,
+                '事件类型': str(row.get('事件类型', '')) if row.get('事件类型') else None,
+                '二级分类': str(row.get('二级分类', '')) if row.get('二级分类') else None,
                 '上报时间': str(row.get('上报时间', '')),
                 '办结时间': str(row.get('办结时间', '')) if row.get('办结时间') else None,
                 '处置结果': str(row.get('处置结果', '')) if row.get('处置结果') else None,
@@ -655,22 +924,30 @@ class EventService:
     
     def get_filter_options(self) -> FilterOptions:
         """获取筛选选项"""
-        
+
         if self.detail_df.empty:
-            return FilterOptions(towns=[], levels=[], categories=[], related_event_options=[])
-        
+            return FilterOptions(towns=[], villages=[], levels=[], categories=[], event_types=[], related_event_options=[])
+
         # 获取去重的选项
         towns = sorted([str(x) for x in self.detail_df['镇街名称'].dropna().unique() if str(x).strip()])
+        villages = sorted([str(x) for x in self.detail_df['村社名称'].dropna().unique() if str(x).strip()]) if '村社名称' in self.detail_df.columns else []
         levels = sorted([str(x) for x in self.detail_df['事件级别'].dropna().unique() if str(x).strip()])
         categories = sorted([str(x) for x in self.detail_df['二级分类'].dropna().unique() if str(x).strip()])
-        
+
+        # 从raw_conflict.csv中获取事件类型选项（如果存在）
+        event_types = []
+        if not self.raw_conflict_df.empty and '事件类型' in self.raw_conflict_df.columns:
+            event_types = sorted([str(x) for x in self.raw_conflict_df['事件类型'].dropna().unique() if str(x).strip()])
+
         # 相关事件数量选项（固定选项）
         related_event_options = ["0", "1", "2-5", "5+"]
-        
+
         return FilterOptions(
             towns=towns,
+            villages=villages,
             levels=levels,
             categories=categories,
+            event_types=event_types,
             related_event_options=related_event_options
         )
     
@@ -886,7 +1163,7 @@ class EventService:
                     "phone_only_rate": round(float((phone_only / total_persons * 100) if total_persons > 0 else 0), 1)
                 }
             }
-            
+
         except Exception as e:
             print(f"统计报告生成失败: {e}")
             return {
@@ -907,6 +1184,81 @@ class EventService:
                     "phone_only_rate": 0
                 }
             }
+
+    def get_monthly_statistics(self, start_time: Optional[str] = None, end_time: Optional[str] = None,
+                               towns: Optional[List[str]] = None, levels: Optional[List[str]] = None) -> Dict[str, Any]:
+        """按月统计事件数量及按镇街/级别分组，支持筛选。"""
+        if self.raw_conflict_df.empty:
+            return {"monthly_total": [], "by_town": [], "by_level": []}
+
+        df = self.raw_conflict_df.copy()
+        # 解析时间
+        with pd.option_context('mode.chained_assignment', None):
+            df['__time'] = pd.to_datetime(df['上报时间'], errors='coerce')
+            df = df[pd.notna(df['__time'])]
+            if start_time:
+                try:
+                    df = df[df['__time'] >= pd.to_datetime(start_time)]
+                except Exception:
+                    pass
+            if end_time:
+                try:
+                    df = df[df['__time'] <= pd.to_datetime(end_time)]
+                except Exception:
+                    pass
+            # 筛选镇街/级别
+            if towns:
+                if isinstance(towns, list) and len(towns) == 1 and isinstance(towns[0], str) and ',' in towns[0]:
+                    towns = [t.strip() for t in towns[0].split(',') if t.strip()]
+                df = df[df['镇街名称'].astype(str).isin(towns)] if len(towns or []) else df
+            if levels:
+                if isinstance(levels, list) and len(levels) == 1 and isinstance(levels[0], str) and ',' in levels[0]:
+                    levels = [t.strip() for t in levels[0].split(',') if t.strip()]
+                df = df[df['事件级别'].astype(str).isin(levels)] if len(levels or []) else df
+
+            df['__month'] = df['__time'].dt.to_period('M').astype(str)
+
+        # 月总量
+        monthly_total = (
+            df.groupby('__month').size().reset_index(name='count')
+            .sort_values('__month')
+        )
+
+        # 分镇街
+        if '镇街名称' in df.columns:
+            by_town = (
+                df.groupby(['__month', '镇街名称']).size().reset_index(name='count')
+                .rename(columns={'镇街名称': 'town'})
+                .sort_values(['__month', 'town'])
+            )
+        else:
+            by_town = pd.DataFrame(columns=['__month', 'town', 'count'])
+
+        # 分级别
+        if '事件级别' in df.columns:
+            by_level = (
+                df.groupby(['__month', '事件级别']).size().reset_index(name='count')
+                .rename(columns={'事件级别': 'level'})
+                .sort_values(['__month', 'level'])
+            )
+        else:
+            by_level = pd.DataFrame(columns=['__month', 'level', 'count'])
+
+        # 转为列表
+        return {
+            "monthly_total": [
+                {"month": str(r['__month']), "count": int(r['count'])}
+                for _, r in monthly_total.iterrows()
+            ],
+            "by_town": [
+                {"month": str(r['__month']), "town": str(r['town']), "count": int(r['count'])}
+                for _, r in by_town.iterrows()
+            ],
+            "by_level": [
+                {"month": str(r['__month']), "level": str(r['level']), "count": int(r['count'])}
+                for _, r in by_level.iterrows()
+            ]
+        }
     
     def _mask_id_card(self, id_card: str) -> str:
         """对身份证号码进行脱敏处理"""
@@ -1079,14 +1431,14 @@ class EventService:
     
     def get_person_analysis(self, query: PersonAnalysisQuery) -> PersonAnalysisResponse:
         """获取人员分析列表（分页）"""
-        
+
         if self.phone_master_df.empty:
             return PersonAnalysisResponse(
                 items=[], total=0, page=query.page, page_size=query.page_size, total_pages=0
             )
-        
+
         df = self.phone_master_df.copy()
-        
+
         # 应用搜索过滤
         if query.search:
             search_escaped = re.escape(query.search)
@@ -1095,26 +1447,43 @@ class EventService:
                 df['phone'].astype(str).str.contains(search_escaped, case=False, na=False)
             )
             df = df[search_condition]
-        
+
         # 应用角色筛选
         if query.role:
             df = df[df['primary_role'].astype(str).str.contains(query.role, case=False, na=False)]
-        
+
         # 按event_count倒序排列
         df = df.sort_values('event_count', ascending=False)
-        
+
+        # 为前5名生成人口标签
+        if query.page == 1:
+            self._generate_population_tags_for_top_people(df.head(5))
+
+        # 应用标签筛选
+        if query.tags:
+            tag_list = [tag.strip() for tag in query.tags.split(',') if tag.strip()]
+            if tag_list:
+                # 筛选包含任一指定标签的人员
+                tag_condition = df['population_tags'].astype(str).apply(
+                    lambda x: any(tag in x for tag in tag_list) if x and x != 'nan' else False
+                )
+                df = df[tag_condition]
+
         # 计算分页
         total = len(df)
         total_pages = (total + query.page_size - 1) // query.page_size
         start_idx = (query.page - 1) * query.page_size
         end_idx = start_idx + query.page_size
-        
+
         # 获取当前页数据
         page_df = df.iloc[start_idx:end_idx]
-        
+
         # 转换为响应模型
         items = []
         for _, row in page_df.iterrows():
+            # 解析人口标签
+            population_tags = self._parse_population_tags(row.get('population_tags'))
+
             person = PersonAnalysis(
                 phone=str(row.get('phone', '')),
                 name=str(row.get('name', '')) if row.get('name') else None,
@@ -1122,10 +1491,11 @@ class EventService:
                 primary_role=str(row.get('primary_role', '')) if row.get('primary_role') else None,
                 event_count=int(row.get('event_count', 0)),
                 name_candidates=str(row.get('name_candidates', '')) if row.get('name_candidates') else None,
-                id_candidates=str(row.get('id_candidates', '')) if row.get('id_candidates') else None
+                id_candidates=str(row.get('id_candidates', '')) if row.get('id_candidates') else None,
+                population_tags=population_tags
             )
             items.append(person)
-        
+
         return PersonAnalysisResponse(
             items=items,
             total=total,
@@ -1168,6 +1538,9 @@ class EventService:
                         event = PersonEvent(
                             事件编号=event_detail.事件编号,
                             事件描述=event_detail.事件描述,
+                            镇街名称=event_detail.镇街名称,
+                            事件类型=event_detail.事件类型,
+                            二级分类=event_detail.二级分类,
                             上报时间=event_detail.上报时间,
                             办结时间=event_detail.办结时间,
                             处置结果=event_detail.处置结果,
@@ -1227,9 +1600,200 @@ class EventService:
         """获取人员分析中的所有角色选项"""
         if self.phone_master_df.empty:
             return []
-        
+
         roles = self.phone_master_df['primary_role'].dropna().unique()
         return sorted([str(role) for role in roles if str(role).strip()])
+
+    def _generate_population_tags_for_top_people(self, top_people_df: pd.DataFrame):
+        """为排名前5的人员生成人口标签"""
+        if top_people_df.empty:
+            return
+
+        for _, row in top_people_df.iterrows():
+            phone = str(row.get('phone', ''))
+            name = str(row.get('name', '')) if row.get('name') else None
+            id_card = str(row.get('id_card', '')) if row.get('id_card') else None
+
+            # 生成人口标签
+            population_tags = self._match_population_database(phone, name, id_card)
+
+            # 更新phone_master_df中的数据
+            mask = self.phone_master_df['phone'].astype(str) == phone
+            if mask.any():
+                self.phone_master_df.loc[mask, 'population_tags'] = str(population_tags) if population_tags else None
+
+    def _match_population_database(self, phone: str, name: Optional[str], id_card: Optional[str]) -> List[str]:
+        """与人口库进行匹配，生成人口标签"""
+        tags = []
+
+        # 检查人口数据库是否存在
+        if not hasattr(self, 'population_df') or self.population_df.empty:
+            # 生成模拟标签作为示例
+            return self._generate_mock_population_tags(phone, name, id_card)
+
+        try:
+            # 尝试匹配人口数据库
+            matched_rows = pd.DataFrame()
+
+            # 按手机号匹配
+            if phone:
+                phone_matches = self.population_df[self.population_df['mobile_phone'].astype(str).str.contains(phone[-4:], na=False)]
+                matched_rows = pd.concat([matched_rows, phone_matches])
+
+            # 按身份证匹配
+            if id_card and len(id_card) > 6:
+                id_matches = self.population_df[self.population_df['id_card_no'].astype(str).str.contains(id_card[-6:], na=False)]
+                matched_rows = pd.concat([matched_rows, id_matches])
+
+            # 按姓名匹配
+            if name:
+                name_matches = self.population_df[self.population_df['name_cn'].astype(str).str.contains(name, na=False)]
+                matched_rows = pd.concat([matched_rows, name_matches])
+
+            if not matched_rows.empty:
+                # 从匹配的记录中提取标签
+                matched_row = matched_rows.iloc[0]
+                tags = self._extract_tags_from_population_record(matched_row)
+            else:
+                # 未匹配到记录，生成基础标签
+                tags = self._generate_basic_tags(phone, name, id_card)
+
+        except Exception as e:
+            print(f"人口数据库匹配失败: {e}")
+            tags = self._generate_mock_population_tags(phone, name, id_card)
+
+        return tags
+
+    def _generate_mock_population_tags(self, phone: str, name: Optional[str], id_card: Optional[str]) -> List[str]:
+        """生成模拟人口标签（用于演示）"""
+        tags = []
+
+        # 根据手机号后缀生成一些示例标签
+        if phone:
+            last_digit = int(phone[-1]) if phone[-1].isdigit() else 0
+
+            if last_digit <= 2:
+                tags.extend(['常住人口', '本地户籍'])
+            elif last_digit <= 4:
+                tags.extend(['流动人口', '外地户籍'])
+            elif last_digit <= 6:
+                tags.extend(['重点关注人员', '多次涉事'])
+            else:
+                tags.extend(['一般人群', '偶发涉事'])
+
+        # 根据事件数量添加标签
+        if hasattr(self, 'phone_master_df') and not self.phone_master_df.empty:
+            person_row = self.phone_master_df[self.phone_master_df['phone'].astype(str) == phone]
+            if not person_row.empty:
+                event_count = person_row.iloc[0].get('event_count', 0)
+                if event_count >= 5:
+                    tags.append('高频涉事人员')
+                elif event_count >= 3:
+                    tags.append('中频涉事人员')
+                else:
+                    tags.append('低频涉事人员')
+
+        # 根据名字特征添加一些标签
+        if name:
+            if len(name) == 2:
+                tags.append('二字姓名')
+            elif len(name) >= 3:
+                tags.append('多字姓名')
+
+        return list(set(tags))  # 去重
+
+    def _extract_tags_from_population_record(self, record: pd.Series) -> List[str]:
+        """从人口记录中提取标签"""
+        tags = []
+
+        # 性别标签
+        gender = str(record.get('gender', ''))
+        if gender == '1':
+            tags.append('男性')
+        elif gender == '2':
+            tags.append('女性')
+
+        # 年龄标签（从出生日期计算）
+        birth_date = record.get('birth_date')
+        if birth_date:
+            try:
+                birth_year = int(str(birth_date)[:4])
+                current_year = 2024
+                age = current_year - birth_year
+
+                if age < 18:
+                    tags.append('未成年')
+                elif age < 30:
+                    tags.append('青年')
+                elif age < 50:
+                    tags.append('中年')
+                else:
+                    tags.append('中老年')
+            except:
+                pass
+
+        # 户籍地标签
+        hukou_province = str(record.get('hukou_province', ''))
+        reside_province = str(record.get('reside_province', ''))
+
+        if hukou_province and reside_province:
+            if hukou_province == reside_province:
+                tags.append('本省户籍')
+            else:
+                tags.append('外省户籍')
+
+        # 教育程度标签
+        education = str(record.get('highest_education', ''))
+        if education:
+            if education in ['10', '20']:  # 小学、初中
+                tags.append('基础教育')
+            elif education in ['30', '40']:  # 高中、中专
+                tags.append('中等教育')
+            elif education in ['50', '60', '70']:  # 大专、本科、研究生
+                tags.append('高等教育')
+
+        # 职业标签
+        occupation = str(record.get('occupation_code', ''))
+        if occupation:
+            tags.append('有职业记录')
+
+        return tags
+
+    def _generate_basic_tags(self, phone: str, name: Optional[str], id_card: Optional[str]) -> List[str]:
+        """生成基础标签（未匹配到人口库时）"""
+        tags = ['未匹配人口库']
+
+        if phone:
+            tags.append('有联系方式')
+
+        if name:
+            tags.append('有姓名信息')
+
+        if id_card:
+            tags.append('有身份证信息')
+
+        return tags
+
+    def _parse_population_tags(self, tags_str: Any) -> List[str]:
+        """解析人口标签字符串"""
+        if not tags_str or pd.isna(tags_str) or str(tags_str) == 'nan':
+            return []
+
+        try:
+            # 如果是字符串形式的列表
+            if isinstance(tags_str, str) and tags_str.startswith('['):
+                import ast
+                return ast.literal_eval(tags_str)
+            # 如果是逗号分隔的字符串
+            elif isinstance(tags_str, str):
+                return [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+            # 如果已经是列表
+            elif isinstance(tags_str, list):
+                return tags_str
+        except:
+            pass
+
+        return []
     
     # ============ Cluster编辑功能 ============
     
@@ -1790,5 +2354,842 @@ class EventService:
             print(f"删除订阅失败: {e}")
             raise
 
+    # ============ 主题（Topic）管理功能 ============
+    def get_topics_file_path(self) -> str:
+        """获取主题存储文件路径"""
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        return os.path.join(parent_dir, 'data', 'topics.json')
+
+    def load_topics(self) -> List[Topic]:
+        """加载主题列表"""
+        try:
+            topics_path = self.get_topics_file_path()
+            if os.path.exists(topics_path):
+                with open(topics_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f) or []
+                    topics = []
+                    for item in data:
+                        # 处理数据迁移：从旧的字符串数组格式转为新的字段级关键词格式
+                        if isinstance(item.get('include_keywords'), list):
+                            item['include_keywords'] = {
+                                'description': item['include_keywords'],
+                                'result': []
+                            }
+                        if isinstance(item.get('exclude_keywords'), list):
+                            item['exclude_keywords'] = {
+                                'description': item['exclude_keywords'],
+                                'result': []
+                            }
+                        topics.append(Topic(**item))
+                    self.topics_cache = topics
+                    return topics
+            self.topics_cache = []
+            return []
+        except Exception as e:
+            print(f"加载主题列表失败: {e}")
+            return self.topics_cache or []
+
+    def save_topics(self, topics: List[Topic]) -> None:
+        """保存主题列表"""
+        try:
+            topics_path = self.get_topics_file_path()
+            os.makedirs(os.path.dirname(topics_path), exist_ok=True)
+            data = [t.model_dump() for t in topics]
+            with open(topics_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.topics_cache = topics
+        except Exception as e:
+            print(f"保存主题列表失败: {e}")
+            raise
+
+    def get_all_topics(self) -> TopicListResponse:
+        topics = self.load_topics()
+        return TopicListResponse(topics=topics)
+
+    def create_topic(self, request: TopicCreateRequest) -> Topic:
+        """创建新主题"""
+        try:
+            topic_id = str(int(datetime.now().timestamp() * 1000))
+            topic = Topic(
+                id=topic_id,
+                name=request.name,
+                description=request.description or '',
+                include_keywords=request.include_keywords,
+                exclude_keywords=request.exclude_keywords,
+                categories=request.categories or [],
+                dedup=request.dedup,
+                fine_filters=request.fine_filters or [],
+                enabled=request.enabled if request.enabled is not None else True,
+                createTime=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            )
+            topics = self.load_topics()
+            topics.append(topic)
+            self.save_topics(topics)
+            return topic
+        except Exception as e:
+            print(f"创建主题失败: {e}")
+            raise
+
+    def get_topic(self, topic_id: str) -> Optional[Topic]:
+        """获取单个主题"""
+        try:
+            topics = self.load_topics()
+            for t in topics:
+                if t.id == topic_id:
+                    return t
+            return None
+        except Exception as e:
+            print(f"获取主题失败: {e}")
+            raise
+
+    def update_topic(self, topic_id: str, request: TopicUpdateRequest) -> Topic:
+        try:
+            topics = self.load_topics()
+            target = None
+            for t in topics:
+                if t.id == topic_id:
+                    target = t
+                    break
+            if not target:
+                raise ValueError(f"主题不存在: {topic_id}")
+            if request.name is not None:
+                target.name = request.name
+            if request.description is not None:
+                target.description = request.description
+            if request.include_keywords is not None:
+                target.include_keywords = request.include_keywords
+            if request.exclude_keywords is not None:
+                target.exclude_keywords = request.exclude_keywords
+            if request.categories is not None:
+                target.categories = request.categories
+            if request.dedup is not None:
+                target.dedup = request.dedup
+            if request.fine_filters is not None:
+                target.fine_filters = request.fine_filters
+            if request.enabled is not None:
+                target.enabled = request.enabled
+            self.save_topics(topics)
+            return target
+        except Exception as e:
+            print(f"更新主题失败: {e}")
+            raise
+
+    def delete_topic(self, topic_id: str) -> bool:
+        try:
+            topics = self.load_topics()
+            new_list = [t for t in topics if t.id != topic_id]
+            if len(new_list) == len(topics):
+                raise ValueError(f"主题不存在: {topic_id}")
+            self.save_topics(new_list)
+            return True
+        except Exception as e:
+            print(f"删除主题失败: {e}")
+            raise
+
+    # 主题事件匹配与统计
+    def _contains_any(self, text: str, keywords: List[str]) -> bool:
+        if not keywords:
+            return False
+        text = str(text or '')
+        for kw in keywords:
+            try:
+                if kw and re.search(re.escape(kw), text, flags=re.IGNORECASE):
+                    return True
+            except re.error:
+                # 回退到简单包含
+                if kw in text:
+                    return True
+        return False
+
+    def _filter_events_by_topic(self, topic: Topic, start_time: Optional[str] = None, end_time: Optional[str] = None, search: Optional[str] = None) -> pd.DataFrame:
+        """根据主题规则过滤原始事件数据"""
+        if self.raw_conflict_df.empty:
+            return pd.DataFrame()
+        df = self.raw_conflict_df.copy()
+
+        # 时间过滤
+        if start_time or end_time:
+            with pd.option_context('mode.chained_assignment', None):
+                df['__dt'] = pd.to_datetime(df['上报时间'], errors='coerce')
+                if start_time:
+                    try:
+                        df = df[df['__dt'] >= pd.to_datetime(start_time)]
+                    except Exception:
+                        pass
+                if end_time:
+                    try:
+                        df = df[df['__dt'] <= pd.to_datetime(end_time)]
+                    except Exception:
+                        pass
+
+        # 自由搜索（可选）
+        if search:
+            esc = re.escape(search)
+            df = df[
+                df['事件编号'].astype(str).str.contains(esc, case=False, na=False) |
+                df['事件描述'].astype(str).str.contains(esc, case=False, na=False) |
+                df['处置结果'].astype(str).str.contains(esc, case=False, na=False)
+            ]
+
+        # 第一关：包含关键词（字段间AND，字段内OR）
+        if topic.include_keywords:
+            include_mask = pd.Series([True] * len(df), index=df.index)
+            
+            # 事件描述关键词（如果有的话）
+            if topic.include_keywords.description:
+                desc_mask = df['事件描述'].astype(str).apply(
+                    lambda x: self._contains_any(x, topic.include_keywords.description)
+                )
+                include_mask = include_mask & desc_mask
+            
+            # 处置结果关键词（如果有的话）
+            if topic.include_keywords.result:
+                result_mask = df['处置结果'].astype(str).apply(
+                    lambda x: self._contains_any(x, topic.include_keywords.result)
+                )
+                include_mask = include_mask & result_mask
+            
+            df = df[include_mask]
+
+        # 第二关：排除关键词（字段间OR，字段内OR）
+        if topic.exclude_keywords:
+            exclude_mask = pd.Series([False] * len(df), index=df.index)
+            
+            # 事件描述排除关键词
+            if topic.exclude_keywords.description:
+                desc_exclude_mask = df['事件描述'].astype(str).apply(
+                    lambda x: self._contains_any(x, topic.exclude_keywords.description)
+                )
+                exclude_mask = exclude_mask | desc_exclude_mask
+            
+            # 处置结果排除关键词
+            if topic.exclude_keywords.result:
+                result_exclude_mask = df['处置结果'].astype(str).apply(
+                    lambda x: self._contains_any(x, topic.exclude_keywords.result)
+                )
+                exclude_mask = exclude_mask | result_exclude_mask
+            
+            df = df[~exclude_mask]
+
+        # 第四关：精筛（可选，任一命中）
+        if topic.fine_filters:
+            mask_f = df['事件描述'].astype(str).apply(lambda x: self._contains_any(x, topic.fine_filters))
+            df = df[mask_f]
+
+        # 第三关：去重
+        if topic.dedup == 'description' and not df.empty:
+            df = df.drop_duplicates(subset=['事件描述'])
+        elif topic.dedup == 'event_id' and not df.empty:
+            df = df.drop_duplicates(subset=['事件编号'])
+
+        return df
+
+    def get_topic_events(self, topic_id: str, query: TopicEventsQuery) -> PaginatedResponse:
+        topics = self.load_topics()
+        topic = next((t for t in topics if t.id == topic_id), None)
+        if not topic:
+            raise ValueError(f"主题不存在: {topic_id}")
+
+        df = self._filter_events_by_topic(topic, query.start_time, query.end_time, query.search)
+        total = len(df)
+        total_pages = (total + query.page_size - 1) // query.page_size
+        start_idx = (query.page - 1) * query.page_size
+        end_idx = start_idx + query.page_size
+        page_df = df.iloc[start_idx:end_idx] if total > 0 else df
+
+        items: List[EventResponse] = []
+        for _, row in page_df.iterrows():
+            items.append(EventResponse(
+                事件编号=str(row.get('事件编号', '')),
+                事件描述=str(row.get('事件描述', '')),
+                镇街名称=str(row.get('镇街名称', '')),
+                事件级别=str(row.get('事件级别', '')),
+                二级分类=str(row.get('二级分类', '')),
+                上报时间=str(row.get('上报时间', '')),
+                CallerPhone=None,
+                CallerID=None,
+                EventUID=str(row.get('EventUID', '')) if 'EventUID' in row else None,
+                sequence_total=int(row.get('sequence_total', 1)) if 'sequence_total' in row else None,
+                相关事件=int(row.get('相关事件', 0)) if '相关事件' in row else None,
+                报警人信息=None
+            ))
+
+        return PaginatedResponse(items=items, total=total, page=query.page, page_size=query.page_size, total_pages=total_pages)
+
+    def get_topic_stats(self, topic_id: str, start_time: Optional[str] = None, end_time: Optional[str] = None) -> TopicStatsResponse:
+        topics = self.load_topics()
+        topic = next((t for t in topics if t.id == topic_id), None)
+        if not topic:
+            raise ValueError(f"主题不存在: {topic_id}")
+        df = self._filter_events_by_topic(topic, start_time, end_time, None)
+        if df.empty:
+            return TopicStatsResponse(topic_id=topic_id, total=0, by_day=[])
+
+        with pd.option_context('mode.chained_assignment', None):
+            df['__date'] = pd.to_datetime(df['上报时间'], errors='coerce').dt.date
+        ts = df.groupby('__date').size().reset_index(name='count').sort_values('__date')
+        # 计算7日移动平均与简易异常（> 均值+2*std）
+        ts['ma7'] = ts['count'].rolling(window=7, min_periods=1).mean()
+        mean = ts['count'].mean()
+        std = ts['count'].std() if len(ts) > 1 else 0
+        threshold = mean + 2 * std if std and not np.isnan(std) else None
+
+        points = []
+        for _, row in ts.iterrows():
+            date_str = row['__date'].strftime('%Y-%m-%d') if hasattr(row['__date'], 'strftime') else str(row['__date'])
+            anomaly = bool(row['count'] > threshold) if threshold is not None else False
+            points.append({
+                'date': date_str,
+                'count': int(row['count']),
+                'ma7': float(row['ma7']) if not pd.isna(row['ma7']) else None,
+                'anomaly': anomaly
+            })
+
+        return TopicStatsResponse(topic_id=topic_id, total=int(df.shape[0]), by_day=points)
+
+    # ===== 指标与报告 API（Demo） =====
+
+    def indicators_search(self, keyword: Optional[str] = None, page: int = 1, page_size: int = 10, kind: Optional[str] = None) -> IndicatorSearchResponse:
+        items = self.indicators_catalog
+        if kind:
+            kind_upper = kind.upper()
+            items = [i for i in items if (i.kind or 'KPI').upper() == kind_upper]
+        if keyword:
+            kw = str(keyword).lower()
+            items = [i for i in items if kw in i.code.lower() or kw in i.name.lower()]
+        total = len(items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return IndicatorSearchResponse(items=items[start:end], total=total)
+
+    def _load_indicator_values(self) -> Dict[str, Dict[str, float]]:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        path = os.path.join(parent_dir, 'data', 'indicator_values.json')
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f) or {}
+        return {}
+
+    def indicator_value(self, code: str, period: str, scope: Optional[str] = None) -> IndicatorValueResponse:
+        data = self._load_indicator_values()
+        val = None
+        try:
+            val = data.get(period, {}).get(code)
+        except Exception:
+            val = None
+        unit = next((i.unit for i in self.indicators_catalog if i.code == code), None)
+        return IndicatorValueResponse(code=code, period=period, scope=scope, value=val, unit=unit, precision=0)
+
+    # 报告存取
+    def _save_reports(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        path = os.path.join(parent_dir, 'data', 'reports.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump([r.model_dump() for r in self.reports_cache], f, ensure_ascii=False, indent=2)
+
+    def list_reports(self) -> ReportListResponse:
+        return ReportListResponse(items=self.reports_cache)
+
+    def create_report(self, req: ReportCreateRequest) -> Report:
+        rid = str(int(datetime.now().timestamp() * 1000))
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rpt = Report(
+            id=rid,
+            title=req.title,
+            month=req.month,
+            content_md_draft=req.content_md_draft or '',
+            status='draft',
+            created_at=now,
+            updated_at=now,
+            schedule_type=req.schedule_type,
+            schedule_day=req.schedule_day,
+            template_id=req.template_id,
+            template_name=req.template_name,
+        )
+        self.reports_cache.append(rpt)
+        self._save_reports()
+        return rpt
+
+    def update_report(self, report_id: str, req: ReportUpdateRequest) -> Report:
+        for r in self.reports_cache:
+            if r.id == report_id:
+                if req.title is not None:
+                    r.title = req.title
+                if req.month is not None:
+                    r.month = req.month
+                if req.content_md_draft is not None:
+                    r.content_md_draft = req.content_md_draft
+                if req.schedule_type is not None:
+                    r.schedule_type = req.schedule_type
+                if req.schedule_day is not None or req.schedule_type == 'manual':
+                    r.schedule_day = req.schedule_day
+                if req.template_id is not None:
+                    r.template_id = req.template_id
+                if req.template_name is not None:
+                    r.template_name = req.template_name
+                r.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self._save_reports()
+                return r
+        raise ValueError('报告不存在')
+
+    def get_report(self, report_id: str) -> Optional[Report]:
+        for r in self.reports_cache:
+            if r.id == report_id:
+                return r
+        return None
+
+    # ===== 占位符解析与渲染 =====
+    PLACEHOLDER_PATTERN = re.compile(r"\[(?P<type>[A-Z_]+):(?P<label>[^\]|]+)(?P<params>(\|[^\]]+)*)\]")
+
+    def _parse_params(self, params_str: str) -> Tuple[Dict[str, str], List[str]]:
+        result: Dict[str, str] = {}
+        order: List[str] = []
+        if not params_str:
+            return result, order
+        parts = [p for p in params_str.split('|') if p]
+        for p in parts:
+            if '=' in p:
+                k, v = p.split('=', 1)
+                key = k.strip()
+                result[key] = v.strip()
+                order.append(key)
+        return result, order
+
+    def _chart_dataset_by_street(self, period: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        if self.detail_df is None or self.detail_df.empty:
+            return [], None
+        df = self.detail_df.copy()
+        if '上报时间' not in df.columns:
+            return [], None
+        df['__month'] = pd.to_datetime(df['上报时间'], errors='coerce').dt.strftime('%Y-%m')
+        available_months = [m for m in df['__month'].dropna().unique().tolist() if m]
+        if not available_months:
+            return [], None
+        target_month = period if period in available_months else sorted(available_months)[-1]
+        df = df[df['__month'] == target_month]
+        if df.empty or '镇街名称' not in df.columns:
+            return [], target_month
+        grouped = (
+            df.dropna(subset=['镇街名称'])
+              .groupby('镇街名称')
+              .size()
+              .reset_index(name='count')
+              .sort_values('count', ascending=False)
+        )
+        if grouped.empty:
+            return [], target_month
+        grouped['镇街名称'] = grouped['镇街名称'].fillna('未标注')
+        return grouped.to_dict(orient='records'), target_month
+
+    def _render_chart_block(
+        self,
+        code: str,
+        label: str,
+        period: str,
+        params: Dict[str, str]
+    ) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
+        if code == 'CHART_EVT_STREET_BAR':
+            data, actual_period = self._chart_dataset_by_street(period)
+            display_period = actual_period or period
+            if not data:
+                return f"\n> 图表：{label}（{display_period}）暂无数据\n\n", display_period, None
+
+            top_n = data[:12]
+            max_val = max((item.get('count', 0) or 0) for item in top_n) or 1
+            rows = []
+            chart_data = []
+            for item in top_n:
+                count = int(item.get('count', 0) or 0)
+                name = item.get('镇街名称') or '未标注'
+                bar_units = max(int(round(count / max_val * 20)), 1) if count else 1
+                bar = '█' * bar_units
+                rows.append(f"| {name} | {count} | {bar} |")
+                chart_data.append({
+                    'name': name,
+                    'value': count
+                })
+
+            header = "| 镇街 | 件数 | 分布 |\n| --- | ---: | :--- |"
+            note_text = None
+            if actual_period and actual_period != period:
+                note_text = f"提示：{period} 暂无数据，展示最近的 {display_period} 数据。"
+                fallback_note = f"_{note_text}_\n\n"
+            else:
+                fallback_note = ''
+
+            markdown = f"\n> 图表：{label}（{display_period}）\n\n{fallback_note}{header}\n" + "\n".join(rows) + "\n\n"
+
+            chart_spec = {
+                'type': 'column',
+                'title': label,
+                'period': display_period,
+                'data': chart_data,
+                'xField': 'name',
+                'yField': 'value',
+                'unit': params.get('unit') or '件',
+            }
+            if note_text:
+                chart_spec['note'] = note_text
+
+            return markdown, display_period, chart_spec
+
+        return f"\n> 图表：{label}（{period}）暂无可用渲染\n\n", period, None
+
+    def _render_placeholder(self, ph_type: str, label: str, params: Dict[str, str], param_order: List[str], month: str) -> Tuple[RenderedValue, str]:
+        # 将中文名称映射到 code（简化：直接按名称在目录里找）
+        code = params.get('code') or next((i.code for i in self.indicators_catalog if i.name == label or i.code == label), label)
+        raw_period = params.get('period', '@month')
+        period = month if raw_period == '@month' else raw_period
+        if ph_type == 'CHART':
+            markdown, actual_period, chart_spec = self._render_chart_block(code, label, period, params)
+            used_period = actual_period or period
+            placeholder_id = f"ph_{abs(hash(label + used_period))}"
+            metadata = None
+            if chart_spec:
+                chart_payload = chart_spec.copy()
+                chart_payload['code'] = code
+                chart_payload['label'] = label
+                chart_payload['period'] = used_period
+                chart_payload['placeholder_id'] = placeholder_id
+                metadata = {'chart': chart_payload}
+            rv = RenderedValue(
+                placeholder_id=placeholder_id,
+                code=code,
+                period=used_period,
+                value=None,
+                unit=None,
+                metadata=metadata
+            )
+            return rv, markdown
+
+        base = self.indicator_value(code, period, params.get('scope'))
+        unit = params.get('unit') or base.unit
+        precision = int(params.get('precision', '1')) if 'precision' in params else 1
+
+        if ph_type == 'KPI':
+            value = base.value
+        elif ph_type in ('KPI_MOM_PCT', 'KPI_MOM_DIR'):
+            try:
+                dt = pd.to_datetime(period + '-01')
+                prev = (dt - pd.DateOffset(months=1)).strftime('%Y-%m')
+            except Exception:
+                prev = period
+            prev_val = self.indicator_value(code, prev, params.get('scope')).value
+            if base.value is None or prev_val in (None, 0):
+                change = None
+            else:
+                change = (base.value - prev_val) / prev_val * 100
+            if ph_type == 'KPI_MOM_PCT':
+                value = None if change is None else round(change, precision)
+                unit = '%'
+            else:
+                if change is None:
+                    value = None
+                else:
+                    value = '上升' if change > 0 else ('下降' if change < 0 else '持平')
+        else:
+            value = base.value
+
+        placeholder_id = f"ph_{abs(hash(label+period))}"
+        rv = RenderedValue(placeholder_id=placeholder_id, code=code, period=period, value=value, unit=unit)
+
+        display_value = value
+        if isinstance(display_value, float):
+            if display_value.is_integer():
+                display_value = int(display_value)
+            elif 'precision' in params:
+                try:
+                    precision_val = int(params.get('precision', '1'))
+                    display_value = round(display_value, precision_val)
+                except Exception:
+                    pass
+
+        if value is None:
+            rendered = '—'
+        else:
+            if ph_type == 'KPI':
+                rendered = str(display_value)
+            elif unit == '%':
+                rendered = f"{display_value}{unit}"
+            else:
+                rendered = str(display_value)
+
+        param_items = []
+        for key in param_order:
+            if key in params and params[key] != '':
+                param_items.append(f"{key}={params[key]}")
+        for key, val in params.items():
+            if key not in param_order and val != '':
+                param_items.append(f"{key}={val}")
+        definition = f"[{ph_type}:{label}"
+        if param_items:
+            definition += '|' + '|'.join(param_items)
+        definition += ']'
+
+        rv.metadata = {
+            'type': ph_type,
+            'definition': definition,
+            'rendered': rendered,
+            'unit': unit,
+            'value': value,
+        }
+
+        return rv, rendered
+
+    def preview_report(self, req: ReportPreviewRequest) -> ReportPreviewResponse:
+        html = req.content_md
+        values: List[RenderedValue] = []
+        def repl(match: re.Match) -> str:
+            ph_type = match.group('type')
+            label = match.group('label')
+            params, param_order = self._parse_params(match.group('params') or '')
+            rv, rendered = self._render_placeholder(ph_type, label, params, param_order, req.month)
+            if rv:
+                values.append(rv)
+            return rendered
+        rendered = re.sub(self.PLACEHOLDER_PATTERN, repl, html)
+        return ReportPreviewResponse(rendered_html=rendered, values=values)
+
+    def render_chart_markdown(
+        self,
+        code: str,
+        period: Optional[str],
+        scope: Optional[str],
+        month: Optional[str]
+    ) -> Tuple[str, Optional[str], Optional[Dict[str, Any]]]:
+        indicator = next((i for i in self.indicators_catalog if i.code == code), None)
+        label = indicator.name if indicator else code
+        target_period = period or '@month'
+        if target_period == '@month' and month:
+            target_period = month
+        params: Dict[str, str] = {}
+        if scope:
+            params['scope'] = scope
+        markdown, actual_period, chart_spec = self._render_chart_block(code, label, target_period, params)
+        if chart_spec:
+            chart_spec = chart_spec.copy()
+            chart_spec['code'] = code
+            chart_spec['label'] = label
+            chart_spec['period'] = actual_period or target_period
+        return markdown, actual_period, chart_spec
+
+    def publish_report(self, report_id: str, month: str) -> Dict[str, Any]:
+        rpt = self.get_report(report_id)
+        if not rpt:
+            raise ValueError('报告不存在')
+        # 以草稿内容渲染
+        preview = self.preview_report(ReportPreviewRequest(content_md=rpt.content_md_draft, month=month))
+        # 保存快照值
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        snapshots_path = os.path.join(parent_dir, 'data', 'report_snapshot_values.json')
+        try:
+            if os.path.exists(snapshots_path):
+                with open(snapshots_path, 'r', encoding='utf-8') as f:
+                    snap = json.load(f) or {}
+            else:
+                snap = {}
+        except Exception:
+            snap = {}
+        snap[report_id] = [v.model_dump() for v in preview.values]
+        with open(snapshots_path, 'w', encoding='utf-8') as f:
+            json.dump(snap, f, ensure_ascii=False, indent=2)
+        # 更新报告状态
+        rpt.status = 'published'
+        rpt.published_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rpt.updated_at = rpt.published_at
+        self._save_reports()
+        return {"html": preview.rendered_html, "values": [v.model_dump() for v in preview.values]}
+
+
+# ============ 操作日志服务 ============
+
+class OperationLogService:
+    def __init__(self):
+        self.logs_cache: List[OperationLog] = []
+        self.load_logs()
+
+    def load_logs(self):
+        """加载操作日志"""
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            logs_path = os.path.join(parent_dir, 'data', 'operation_logs.json')
+
+            if os.path.exists(logs_path):
+                with open(logs_path, 'r', encoding='utf-8') as f:
+                    logs_data = json.load(f)
+                    self.logs_cache = [OperationLog(**log) for log in logs_data]
+                print(f"操作日志加载成功: {len(self.logs_cache)} 条")
+            else:
+                self.logs_cache = []
+                print("操作日志文件不存在，初始化为空列表")
+        except Exception as e:
+            print(f"加载操作日志失败: {e}")
+            self.logs_cache = []
+
+    def log_operation(
+        self,
+        operator: str,
+        operation_type: str,
+        resource_type: str,
+        resource_id: str,
+        operation_desc: str,
+        resource_name: str = None,
+        before_data: Dict = None,
+        after_data: Dict = None,
+        ip_address: str = None,
+        user_agent: str = None,
+        extra_info: Dict = None
+    ):
+        """记录操作日志"""
+        log = OperationLog(
+            id=str(uuid.uuid4()),
+            operator=operator,
+            operation_type=operation_type,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            resource_name=resource_name,
+            operation_desc=operation_desc,
+            before_data=before_data,
+            after_data=after_data,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            timestamp=datetime.now(),
+            extra_info=extra_info
+        )
+
+        self.logs_cache.append(log)
+        self.save_logs()
+        print(f"记录操作日志: {operator} {operation_desc}")
+        return log
+
+    def save_logs(self):
+        """保存操作日志到文件"""
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            logs_path = os.path.join(parent_dir, 'data', 'operation_logs.json')
+
+            # 只保留最近1000条日志，避免文件过大
+            recent_logs = self.logs_cache[-1000:] if len(self.logs_cache) > 1000 else self.logs_cache
+
+            logs_data = []
+            for log in recent_logs:
+                log_dict = log.dict()
+                # 确保datetime对象被正确序列化
+                log_dict['timestamp'] = log_dict['timestamp'].isoformat() if isinstance(log_dict['timestamp'], datetime) else str(log_dict['timestamp'])
+                logs_data.append(log_dict)
+
+            with open(logs_path, 'w', encoding='utf-8') as f:
+                json.dump(logs_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存操作日志失败: {e}")
+
+    def get_logs(self, query: OperationLogQuery) -> OperationLogResponse:
+        """获取操作日志列表"""
+        logs = self.logs_cache.copy()
+
+        # 筛选
+        if query.operator:
+            logs = [log for log in logs if query.operator.lower() in log.operator.lower()]
+        if query.operation_type:
+            logs = [log for log in logs if log.operation_type == query.operation_type]
+        if query.resource_type:
+            logs = [log for log in logs if log.resource_type == query.resource_type]
+        if query.resource_id:
+            logs = [log for log in logs if log.resource_id == query.resource_id]
+        if query.search:
+            search_lower = query.search.lower()
+            logs = [log for log in logs if (
+                search_lower in log.operation_desc.lower() or
+                search_lower in (log.resource_name or '').lower() or
+                search_lower in log.operator.lower()
+            )]
+
+        # 时间筛选
+        if query.start_time:
+            try:
+                start_dt = datetime.fromisoformat(query.start_time.replace('Z', '+00:00'))
+                logs = [log for log in logs if log.timestamp >= start_dt]
+            except ValueError:
+                pass
+        if query.end_time:
+            try:
+                end_dt = datetime.fromisoformat(query.end_time.replace('Z', '+00:00'))
+                logs = [log for log in logs if log.timestamp <= end_dt]
+            except ValueError:
+                pass
+
+        # 排序（最新的在前）
+        logs.sort(key=lambda x: x.timestamp, reverse=True)
+
+        # 分页
+        total = len(logs)
+        start_idx = (query.page - 1) * query.page_size
+        end_idx = start_idx + query.page_size
+        page_logs = logs[start_idx:end_idx]
+
+        return OperationLogResponse(
+            items=page_logs,
+            total=total,
+            page=query.page,
+            page_size=query.page_size,
+            total_pages=(total + query.page_size - 1) // query.page_size
+        )
+
+    def get_stats(self) -> OperationStatsResponse:
+        """获取操作统计"""
+        total = len(self.logs_cache)
+
+        # 按操作人统计
+        operator_counts = {}
+        operation_type_counts = {}
+        resource_type_counts = {}
+
+        for log in self.logs_cache:
+            operator_counts[log.operator] = operator_counts.get(log.operator, 0) + 1
+            operation_type_counts[log.operation_type] = operation_type_counts.get(log.operation_type, 0) + 1
+            resource_type_counts[log.resource_type] = resource_type_counts.get(log.resource_type, 0) + 1
+
+        def make_stats_items(counts_dict, label_key):
+            items = []
+            for key, count in sorted(counts_dict.items(), key=lambda x: x[1], reverse=True):
+                items.append(OperationStatsItem(
+                    key=label_key,
+                    value=key,
+                    count=count,
+                    percentage=round(count / total * 100, 2) if total > 0 else 0
+                ))
+            return items
+
+        # 最近操作（取最新20条）
+        recent = sorted(self.logs_cache, key=lambda x: x.timestamp, reverse=True)[:20]
+
+        return OperationStatsResponse(
+            total_operations=total,
+            by_operator=make_stats_items(operator_counts, "operator"),
+            by_operation_type=make_stats_items(operation_type_counts, "operation_type"),
+            by_resource_type=make_stats_items(resource_type_counts, "resource_type"),
+            recent_operations=recent
+        )
+
+    def get_filter_options(self) -> OperationLogFilterOptions:
+        """获取筛选选项"""
+        operators = list(set(log.operator for log in self.logs_cache))
+        operation_types = list(set(log.operation_type for log in self.logs_cache))
+        resource_types = list(set(log.resource_type for log in self.logs_cache))
+
+        return OperationLogFilterOptions(
+            operators=sorted(operators),
+            operation_types=sorted(operation_types),
+            resource_types=sorted(resource_types)
+        )
+
+
 # 创建全局服务实例
-event_service = EventService() 
+event_service = EventService()
+operation_log_service = OperationLogService()

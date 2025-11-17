@@ -8,7 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import RootRoute from './components/RootRoute';
-import ServiceMonitor from './components/ServiceMonitor';
+// import ServiceMonitor from './components/ServiceMonitor';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import EventList from './pages/EventList';
@@ -18,7 +18,14 @@ import ClusterList from './pages/ClusterList';
 import PersonAnalysisList from './pages/PersonAnalysisList';
 import PersonAnalysisDetail from './pages/PersonAnalysisDetail';
 import StatisticsReport from './pages/StatisticsReport';
-import AIChatPage from './pages/AIChatPage';
+import ReportList from './pages/ReportList';
+import ReportEdit from './pages/ReportEdit';
+// 已移除：AIChatPage
+import TopicList from './pages/TopicList';
+import TopicCreate from './pages/TopicCreate';
+import TopicDetail from './pages/TopicDetail';
+import TopicStats from './pages/TopicStats';
+import OperationLogList from './pages/OperationLogList';
 
 function App() {
   return (
@@ -78,17 +85,67 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
-            <Route path="/ai-chat" element={
-              <ProtectedRoute>
-                <Layout>
-                  <AIChatPage />
-                </Layout>
-              </ProtectedRoute>
-            } />
+            {/* 已移除：AI问答路由 */}
             <Route path="/statistics-report" element={
               <ProtectedRoute>
                 <Layout>
                   <StatisticsReport />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ReportList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports/:reportId/edit" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ReportEdit />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/topics" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TopicList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/topics/create" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TopicCreate />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/topics/:topicId/edit" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TopicCreate />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/topics/:topicId" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TopicDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/topics/:topicId/stats" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TopicStats />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/operation-logs" element={
+              <ProtectedRoute>
+                <Layout>
+                  <OperationLogList />
                 </Layout>
               </ProtectedRoute>
             } />

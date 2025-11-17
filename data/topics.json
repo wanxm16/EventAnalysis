@@ -1,0 +1,93 @@
+[
+  {
+    "id": "1757928028646",
+    "name": "贷款",
+    "description": "",
+    "include_keywords": {
+      "description": [
+        "贷款"
+      ],
+      "result": []
+    },
+    "exclude_keywords": {
+      "description": [
+        "定金"
+      ],
+      "result": []
+    },
+    "categories": [],
+    "dedup": "description",
+    "fine_filters": [],
+    "enabled": true,
+    "createTime": "2025-09-15 17:20:28"
+  },
+  {
+    "id": "1757928549682",
+    "name": "噪音",
+    "description": "",
+    "include_keywords": {
+      "description": [
+        "噪音"
+      ],
+      "result": []
+    },
+    "exclude_keywords": {
+      "description": [
+        "钢琴"
+      ],
+      "result": []
+    },
+    "categories": [],
+    "dedup": "description",
+    "fine_filters": [],
+    "enabled": true,
+    "createTime": "2025-09-15 17:29:09"
+  },
+  {
+    "id": "1758185560787",
+    "name": "安全",
+    "description": "",
+    "include_keywords": {
+      "description": [
+        "安全"
+      ],
+      "result": []
+    },
+    "exclude_keywords": {
+      "description": [],
+      "result": []
+    },
+    "categories": [],
+    "dedup": "description",
+    "fine_filters": [],
+    "enabled": true,
+    "createTime": "2025-09-18 16:52:40"
+  },
+  {
+    "id": "1761205903476",
+    "name": "未成年人",
+    "description": "",
+    "include_keywords": {
+      "description": [
+        "小孩",
+        "未成年"
+      ],
+      "result": [
+        "小孩",
+        "未成年"
+      ]
+    },
+    "exclude_keywords": {
+      "description": [
+        "老人",
+        "养老院"
+      ],
+      "result": []
+    },
+    "categories": [],
+    "dedup": "description",
+    "fine_filters": [],
+    "enabled": true,
+    "createTime": "2025-10-23 15:51:43"
+  }
+]

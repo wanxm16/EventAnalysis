@@ -7,6 +7,7 @@ class EventResponse(BaseModel):
     事件编号: str
     事件描述: str
     镇街名称: str
+    村社名称: Optional[str] = None
     事件级别: str
     二级分类: str
     上报时间: str
@@ -16,6 +17,7 @@ class EventResponse(BaseModel):
     sequence_total: Optional[int] = None
     相关事件: Optional[int] = None
     报警人信息: Optional[str] = None
+    处置结果: Optional[str] = None
 
 class EventDetailResponse(BaseModel):
     """事件详情响应模型"""
@@ -24,6 +26,7 @@ class EventDetailResponse(BaseModel):
     镇街名称: str
     村社名称: Optional[str] = None
     事件级别: str
+    事件类型: Optional[str] = None
     二级分类: str
     上报时间: str
     办结时间: Optional[str] = None
@@ -55,8 +58,10 @@ class PaginatedResponse(BaseModel):
 class FilterOptions(BaseModel):
     """筛选选项模型"""
     towns: List[str]
+    villages: List[str]
     levels: List[str]
     categories: List[str]
+    event_types: List[str]  # 事件类型选项
     related_event_options: List[str]  # 相关事件数量选项
 
 class EventQuery(BaseModel):
@@ -147,6 +152,7 @@ class PersonAnalysis(BaseModel):
     event_count: int
     name_candidates: Optional[str] = None
     id_candidates: Optional[str] = None
+    population_tags: Optional[List[str]] = None
 
 class PersonAnalysisResponse(BaseModel):
     """人员分析列表分页响应模型"""
@@ -160,6 +166,9 @@ class PersonEvent(BaseModel):
     """人员关联事件模型"""
     事件编号: str
     事件描述: str
+    镇街名称: Optional[str] = None
+    事件类型: Optional[str] = None
+    二级分类: Optional[str] = None
     上报时间: Optional[str] = None
     办结时间: Optional[str] = None
     处置结果: Optional[str] = None
@@ -182,33 +191,10 @@ class PersonAnalysisQuery(BaseModel):
     page_size: int = 20
     search: Optional[str] = None  # 搜索姓名或手机号
     role: Optional[str] = None    # 按角色筛选
+    tags: Optional[str] = None    # 按人口标签筛选（逗号分隔）
 
 # AI问答相关模型
-class ChatMessage(BaseModel):
-    """聊天消息模型"""
-    role: str  # user, assistant, system
-    content: str
-    timestamp: Optional[datetime] = None
-
-class ChatQuery(BaseModel):
-    """AI问答查询模型"""
-    message: str
-    conversation_id: Optional[str] = None  # 对话ID，用于上下文追踪
-
-class ChatResponse(BaseModel):
-    """AI问答响应模型"""
-    success: bool
-    message: str
-    query_type: Optional[str] = None  # sql, vector, hybrid
-    conversation_id: Optional[str] = None
-    data: Optional[Any] = None  # SQL结果、搜索结果等详细数据
-    
-class ChatStatistics(BaseModel):
-    """AI问答统计信息模型"""
-    total_events: int
-    by_town: List[Dict[str, Any]]
-    by_level: List[Dict[str, Any]]  
-    by_category: List[Dict[str, Any]]
+# 已移除：AI问答相关模型
 
 # Cluster编辑相关模型
 class ClusterEditOperation(BaseModel):
@@ -284,3 +270,221 @@ class SubscriptionUpdateRequest(BaseModel):
 class SubscriptionListResponse(BaseModel):
     """订阅列表响应模型"""
     subscriptions: List[Subscription]
+
+# 主题（Topic）相关模型
+class FieldKeywords(BaseModel):
+    """字段级关键词模型"""
+    description: List[str] = []  # 事件描述关键词
+    result: List[str] = []       # 处置结果关键词
+
+class TopicCategory(BaseModel):
+    """主题中的类型配置"""
+    name: Optional[str] = None
+    keywords: List[str] = []
+    # 新增：可选过滤条件
+    towns: List[str] = []
+    levels: List[str] = []
+    categories: List[str] = []
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+
+class Topic(BaseModel):
+    """主题模型（基于复杂关键词规则对事件进行集合化）"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    include_keywords: FieldKeywords = FieldKeywords()  # 第一关：包含的关键词（字段间AND，字段内OR）
+    exclude_keywords: FieldKeywords = FieldKeywords()  # 第二关：需要过滤掉的关键词（字段间OR，字段内OR）
+    categories: List[TopicCategory] = []  # 可分类型及其关键词
+    dedup: Optional[str] = None  # 第三关：去重方式，支持：None | "description" | "event_id"
+    fine_filters: List[str] = []  # 第四关：精筛关键词（任一命中）
+    enabled: bool = True
+    createTime: str
+
+class TopicCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    include_keywords: FieldKeywords = FieldKeywords()
+    exclude_keywords: FieldKeywords = FieldKeywords()
+    categories: List[TopicCategory] = []
+    dedup: Optional[str] = None
+    fine_filters: List[str] = []
+    enabled: bool = True
+
+class TopicUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    include_keywords: Optional[FieldKeywords] = None
+    exclude_keywords: Optional[FieldKeywords] = None
+    categories: Optional[List[TopicCategory]] = None
+    dedup: Optional[str] = None
+    fine_filters: Optional[List[str]] = None
+    enabled: Optional[bool] = None
+
+class TopicListResponse(BaseModel):
+    topics: List[Topic]
+
+class TopicEventsQuery(BaseModel):
+    page: int = 1
+    page_size: int = 20
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    search: Optional[str] = None
+
+class TopicStatsPoint(BaseModel):
+    date: str
+    count: int
+    ma7: Optional[float] = None
+    anomaly: Optional[bool] = None
+
+class TopicStatsResponse(BaseModel):
+    topic_id: str
+    total: int
+    by_day: List[TopicStatsPoint]
+
+# ============ 报告与指标（Demo） ============
+
+class Indicator(BaseModel):
+    code: str
+    name: str
+    unit: Optional[str] = None
+    grain: str = "month"
+    desc: Optional[str] = None
+    kind: str = "KPI"  # KPI | CHART
+    metadata: Optional[Dict[str, Any]] = None
+
+class IndicatorSearchResponse(BaseModel):
+    items: List[Indicator]
+    total: int
+
+class IndicatorValueResponse(BaseModel):
+    code: str
+    period: str
+    scope: Optional[str] = None
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    precision: Optional[int] = 0
+
+class Report(BaseModel):
+    id: str
+    title: str
+    month: str  # YYYY-MM
+    content_md_draft: str
+    status: str  # draft | published
+    created_by: str = "admin"
+    created_at: str
+    updated_at: str
+    published_at: Optional[str] = None
+    schedule_type: Optional[str] = None  # e.g. monthly | manual
+    schedule_day: Optional[int] = None   # 1-31
+    template_id: Optional[str] = None
+    template_name: Optional[str] = None
+
+class ReportListResponse(BaseModel):
+    items: List[Report]
+
+class ReportCreateRequest(BaseModel):
+    title: str
+    month: str
+    content_md_draft: str = ""
+    schedule_type: Optional[str] = None
+    schedule_day: Optional[int] = None
+    template_id: Optional[str] = None
+    template_name: Optional[str] = None
+
+class ReportUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    month: Optional[str] = None
+    content_md_draft: Optional[str] = None
+    schedule_type: Optional[str] = None
+    schedule_day: Optional[int] = None
+    template_id: Optional[str] = None
+    template_name: Optional[str] = None
+
+class ReportPreviewRequest(BaseModel):
+    content_md: str
+    month: str
+
+class RenderedValue(BaseModel):
+    placeholder_id: str
+    code: str
+    period: str
+    value: Optional[Any] = None
+    unit: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ReportPreviewResponse(BaseModel):
+    rendered_html: str
+    values: List[RenderedValue]
+
+
+class ChartRenderRequest(BaseModel):
+    code: str
+    period: Optional[str] = '@month'
+    scope: Optional[str] = None
+    month: Optional[str] = None
+
+
+class ChartRenderResponse(BaseModel):
+    markdown: str
+    period_used: Optional[str] = None
+    chart: Optional[Dict[str, Any]] = None
+
+# ============ 操作日志模块 ============
+
+class OperationLog(BaseModel):
+    """操作日志模型"""
+    id: str
+    operator: str  # 操作人
+    operation_type: str  # 操作类型：create, update, delete, view, export, login
+    resource_type: str  # 资源类型：topic, report, subscription, cluster, event, system
+    resource_id: str  # 资源ID
+    resource_name: Optional[str] = None  # 资源名称
+    operation_desc: str  # 操作描述
+    before_data: Optional[Dict[str, Any]] = None  # 操作前数据（JSON）
+    after_data: Optional[Dict[str, Any]] = None  # 操作后数据（JSON）
+    ip_address: Optional[str] = None  # IP地址
+    user_agent: Optional[str] = None  # 用户代理
+    timestamp: datetime
+    extra_info: Optional[Dict[str, Any]] = None  # 额外信息
+
+class OperationLogQuery(BaseModel):
+    """操作日志查询参数"""
+    page: int = 1
+    page_size: int = 20
+    operator: Optional[str] = None  # 按操作人筛选
+    operation_type: Optional[str] = None  # 按操作类型筛选
+    resource_type: Optional[str] = None  # 按资源类型筛选
+    resource_id: Optional[str] = None  # 按资源ID筛选
+    start_time: Optional[str] = None  # 开始时间
+    end_time: Optional[str] = None  # 结束时间
+    search: Optional[str] = None  # 搜索关键词
+
+class OperationLogResponse(BaseModel):
+    """操作日志分页响应"""
+    items: List[OperationLog]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+class OperationStatsItem(BaseModel):
+    """操作统计项"""
+    key: str
+    value: str
+    count: int
+    percentage: float
+
+class OperationStatsResponse(BaseModel):
+    """操作统计响应"""
+    total_operations: int
+    by_operator: List[OperationStatsItem]  # 按操作人统计
+    by_operation_type: List[OperationStatsItem]  # 按操作类型统计
+    by_resource_type: List[OperationStatsItem]  # 按资源类型统计
+    recent_operations: List[OperationLog]  # 最近操作
+
+class OperationLogFilterOptions(BaseModel):
+    """操作日志筛选选项"""
+    operators: List[str]
+    operation_types: List[str]
+    resource_types: List[str]

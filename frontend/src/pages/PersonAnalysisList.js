@@ -28,6 +28,8 @@ const PersonAnalysisList = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedRole, setSelectedRole] = useState(null);
   const [roles, setRoles] = useState([]);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [availableTags, setAvailableTags] = useState([]);
 
 
   // 获取角色选项
@@ -41,7 +43,7 @@ const PersonAnalysisList = () => {
   };
 
   // 获取人员分析数据
-  const fetchData = async (page = currentPage, size = pageSize, search = searchText, role = selectedRole) => {
+  const fetchData = async (page = currentPage, size = pageSize, search = searchText, role = selectedRole, tags = selectedTags) => {
     setLoading(true);
     try {
       const params = {
@@ -50,11 +52,23 @@ const PersonAnalysisList = () => {
       };
       if (search) params.search = search;
       if (role) params.role = role;
+      if (tags && tags.length > 0) params.tags = tags.join(',');
 
       const response = await api.get('/person-analysis', { params });
       setData(response.items || []);
       setTotal(response.total || 0);
       setCurrentPage(response.page || 1);
+
+      // 提取所有可用标签
+      if (response.items && page === 1) {
+        const allTags = new Set();
+        response.items.forEach(item => {
+          if (item.population_tags && Array.isArray(item.population_tags)) {
+            item.population_tags.forEach(tag => allTags.add(tag));
+          }
+        });
+        setAvailableTags(Array.from(allTags).sort());
+      }
     } catch (error) {
       console.error('获取人员分析数据失败:', error);
       message.error('获取人员分析数据失败');
@@ -73,22 +87,23 @@ const PersonAnalysisList = () => {
   // 处理搜索
   const handleDataSearch = () => {
     setCurrentPage(1);
-    fetchData(1, pageSize, searchText, selectedRole);
+    fetchData(1, pageSize, searchText, selectedRole, selectedTags);
   };
 
   // 处理重置
   const handleReset = () => {
     setSearchText('');
     setSelectedRole(null);
+    setSelectedTags([]);
     setCurrentPage(1);
-    fetchData(1, pageSize, '', null);
+    fetchData(1, pageSize, '', null, []);
   };
 
   // 处理分页变化
   const handlePageChange = (page, size) => {
     setCurrentPage(page);
     setPageSize(size);
-    fetchData(page, size, searchText, selectedRole);
+    fetchData(page, size, searchText, selectedRole, selectedTags);
   };
 
   // 查看详情
@@ -149,20 +164,24 @@ const PersonAnalysisList = () => {
       ),
     },
     {
-      title: '姓名候选',
-      dataIndex: 'name_candidates',
-      key: 'name_candidates',
+      title: '人口标签',
+      dataIndex: 'population_tags',
+      key: 'population_tags',
       width: 200,
-      ellipsis: true,
-      render: (text) => text || '-',
-    },
-    {
-      title: '身份证候选',
-      dataIndex: 'id_candidates',
-      key: 'id_candidates',
-      width: 200,
-      ellipsis: true,
-      render: (text) => text || '-',
+      render: (tags) => {
+        if (!tags || !Array.isArray(tags) || tags.length === 0) {
+          return <span style={{ color: '#999' }}>-</span>;
+        }
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {tags.map((tag, index) => (
+              <Tag key={index} color="blue" style={{ fontSize: '11px', margin: 0 }}>
+                {tag}
+              </Tag>
+            ))}
+          </div>
+        );
+      },
     },
     {
       title: '操作',
@@ -212,6 +231,19 @@ const PersonAnalysisList = () => {
             >
               {roles.map(role => (
                 <Option key={role} value={role}>{role}</Option>
+              ))}
+            </Select>
+            <Select
+              mode="multiple"
+              placeholder="选择人口标签"
+              value={selectedTags}
+              onChange={setSelectedTags}
+              style={{ width: 200 }}
+              allowClear
+              maxTagCount="responsive"
+            >
+              {availableTags.map(tag => (
+                <Option key={tag} value={tag}>{tag}</Option>
               ))}
             </Select>
             <Button type="primary" icon={<SearchOutlined />} onClick={handleDataSearch}>

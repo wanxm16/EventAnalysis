@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Optional, List
 import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime
+from io import StringIO
+import os
 
 from models import (
-    EventResponse, EventDetailResponse, ClusterEventResponse, 
+    EventResponse, EventDetailResponse, ClusterEventResponse,
     PaginatedResponse, FilterOptions, EventQuery,
     ClusterListResponse, ClusterListPaginatedResponse, ClusterFilterOptions,
     PersonInfo,
@@ -17,9 +20,6 @@ from models import (
     PersonEvent,
     PersonDetailResponse,
     PersonAnalysisQuery,
-    ChatQuery,
-    ChatResponse, 
-    ChatStatistics,
     ClusterEditRequest,
     UndoRequest,
     EventClusterInfo,
@@ -27,32 +27,18 @@ from models import (
     Subscription,
     SubscriptionCreateRequest,
     SubscriptionUpdateRequest,
-    SubscriptionListResponse
+    SubscriptionListResponse,
+    Topic, TopicCreateRequest, TopicUpdateRequest, TopicListResponse, TopicEventsQuery, TopicStatsResponse,
+    IndicatorSearchResponse, IndicatorValueResponse, ReportListResponse, ReportCreateRequest, ReportUpdateRequest, Report, ReportPreviewRequest, ReportPreviewResponse,
+    ChartRenderRequest, ChartRenderResponse,
+    OperationLogQuery, OperationLogResponse, OperationStatsResponse, OperationLogFilterOptions
 )
-from services import event_service
-
-# 全局变量存储AI聊天服务实例
-ai_chat_service = None
+from services import event_service, operation_log_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
-    global ai_chat_service
-    # 启动时
-    try:
-        print("🔄 正在初始化AI聊天服务...")
-        from ai_chat_service import AIChatService
-        ai_chat_service = AIChatService()
-        print("✅ AI聊天服务初始化完成")
-    except Exception as e:
-        print(f"❌ AI聊天服务初始化失败: {e}")
-        # 不阻止应用启动，但记录错误
-        ai_chat_service = None
-    
-    yield  # 应用运行
-    
-    # 关闭时
-    print("🔄 正在关闭AI聊天服务...")
+    """应用生命周期管理（AI问答已移除，无需初始化）"""
+    yield
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -83,7 +69,6 @@ async def root():
 @app.get("/api/health", summary="健康检查")
 async def health_check():
     """健康检查端点"""
-    import os
     
     # 检查服务状态文件是否存在
     service_file = "../.service_status"
@@ -95,17 +80,28 @@ async def health_check():
         "message": "API is running normally" if service_active else "Service is stopping"
     }
 
+# 事件列表：支持多关键词包含/排除与多选筛选
 @app.get("/api/events", response_model=PaginatedResponse, summary="获取事件列表")
 async def get_events(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    search: Optional[str] = Query(None, description="搜索关键词"),
-    town: Optional[str] = Query(None, description="镇街名称筛选"),
-    level: Optional[str] = Query(None, description="事件级别筛选"),
-    category: Optional[str] = Query(None, description="二级分类筛选"),
+    search: Optional[str] = Query(None, description="搜索关键词（单个）"),
+    include: Optional[List[str]] = Query(None, description="包含关键词（可多值，通用）"),
+    exclude: Optional[List[str]] = Query(None, description="排除关键词（可多值，通用）"),
+    include_desc: Optional[List[str]] = Query(None, description="描述包含关键词（多值）"),
+    exclude_desc: Optional[List[str]] = Query(None, description="描述排除关键词（多值）"),
+    include_result: Optional[List[str]] = Query(None, description="处置结果包含关键词（多值）"),
+    exclude_result: Optional[List[str]] = Query(None, description="处置结果排除关键词（多值）"),
+    town: Optional[List[str]] = Query(None, description="镇街名称筛选（可多选）"),
+    village: Optional[List[str]] = Query(None, description="村社名称筛选（可多选）"),
+    level: Optional[List[str]] = Query(None, description="事件级别筛选（可多选）"),
+    category: Optional[List[str]] = Query(None, description="二级分类筛选（可多选）"),
+    event_type: Optional[List[str]] = Query(None, description="事件类型筛选（可多选）"),
     related_events: Optional[str] = Query(None, description="相关事件数量筛选"),
     start_time: Optional[str] = Query(None, description="开始时间筛选"),
-    end_time: Optional[str] = Query(None, description="结束时间筛选")
+    end_time: Optional[str] = Query(None, description="结束时间筛选"),
+    sort_field: Optional[str] = Query(None, description="排序字段"),
+    sort_order: Optional[str] = Query(None, description="排序方向 (asc/desc)")
 ):
     """
     获取事件列表，支持分页、搜索和筛选，按上报时间倒序排列
@@ -123,16 +119,96 @@ async def get_events(
             page=page,
             page_size=page_size,
             search=search,
+            include=include,
+            exclude=exclude,
+            include_desc=include_desc,
+            exclude_desc=exclude_desc,
+            include_result=include_result,
+            exclude_result=exclude_result,
             town=town,
+            village=village,
             level=level,
             category=category,
+            event_type=event_type,
             related_events=related_events,
             start_time=start_time,
-            end_time=end_time
+            end_time=end_time,
+            sort_field=sort_field,
+            sort_order=sort_order
         )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取事件列表失败: {str(e)}")
+
+
+@app.get("/api/events/export", summary="导出事件列表为CSV")
+async def export_events(
+    search: Optional[str] = Query(None),
+    include: Optional[List[str]] = Query(None),
+    exclude: Optional[List[str]] = Query(None),
+    include_desc: Optional[List[str]] = Query(None),
+    exclude_desc: Optional[List[str]] = Query(None),
+    include_result: Optional[List[str]] = Query(None),
+    exclude_result: Optional[List[str]] = Query(None),
+    town: Optional[List[str]] = Query(None),
+    village: Optional[List[str]] = Query(None),
+    level: Optional[List[str]] = Query(None),
+    category: Optional[List[str]] = Query(None),
+    event_type: Optional[List[str]] = Query(None),
+    related_events: Optional[str] = Query(None),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    sort_field: Optional[str] = Query(None),
+    sort_order: Optional[str] = Query(None),
+):
+    try:
+        df = event_service.filter_events_dataframe(
+            search=search,
+            include=include,
+            exclude=exclude,
+            include_desc=include_desc,
+            exclude_desc=exclude_desc,
+            include_result=include_result,
+            exclude_result=exclude_result,
+            town=town,
+            village=village,
+            level=level,
+            category=category,
+            event_type=event_type,
+            related_events=related_events,
+            start_time=start_time,
+            end_time=end_time,
+            sort_field=sort_field,
+            sort_order=sort_order,
+        )
+
+        buffer = StringIO()
+        if not df.empty:
+            df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        filename = f"events_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
+
+
+@app.post("/api/events/import", summary="导入事件Excel")
+async def import_events(file: UploadFile = File(...), mode: str = Form('append')):
+    try:
+        contents = await file.read()
+        result = event_service.import_events_from_excel(contents, file.filename, mode)
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
 
 @app.get("/api/events/{event_id}", response_model=EventDetailResponse, summary="获取事件详情")
 async def get_event_detail(event_id: str):
@@ -276,22 +352,25 @@ async def get_person_analysis(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: Optional[str] = Query(None, description="搜索关键词（姓名或手机号）"),
-    role: Optional[str] = Query(None, description="角色筛选")
+    role: Optional[str] = Query(None, description="角色筛选"),
+    tags: Optional[str] = Query(None, description="人口标签筛选（逗号分隔）")
 ):
     """
     获取人员分析列表，按事件数量倒序排列
-    
+
     - **page**: 页码，从1开始
     - **page_size**: 每页数量，1-100之间
     - **search**: 搜索关键词，支持姓名或手机号
     - **role**: 按角色筛选，如"报警人"、"对方"等
+    - **tags**: 按人口标签筛选，多个标签用逗号分隔
     """
     try:
         query = PersonAnalysisQuery(
             page=page,
             page_size=page_size,
             search=search,
-            role=role
+            role=role,
+            tags=tags
         )
         result = event_service.get_person_analysis(query)
         return result
@@ -326,85 +405,7 @@ async def get_person_analysis_detail(phone: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取人员分析详情失败: {str(e)}")
 
-# 显式处理OPTIONS请求
-@app.options("/api/chat")
-async def chat_options():
-    """处理CORS预检请求"""
-    return {"message": "OK"}
-
-# AI问答API端点
-@app.post("/api/chat", response_model=ChatResponse, summary="AI问答接口")
-async def chat(query: ChatQuery):
-    """
-    AI问答接口，支持自然语言查询事件数据
-    
-    - **message**: 用户的问题或查询内容
-    - **conversation_id**: 可选的对话ID，用于上下文追踪
-    """
-    try:
-        # 检查AI聊天服务是否已初始化
-        if ai_chat_service is None:
-            raise HTTPException(status_code=503, detail="AI聊天服务未初始化")
-        
-        # 调用AI问答服务
-        result = ai_chat_service.chat(query.message)
-        
-        # 转换为响应模型
-        return ChatResponse(
-            success=True,
-            message=result['answer'],
-            query_type=result.get('query_type'),
-            conversation_id=query.conversation_id,
-            data=result.get('data')
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI问答处理失败: {str(e)}")
-
-@app.get("/api/chat/statistics", response_model=ChatStatistics, summary="获取数据统计信息")
-async def get_chat_statistics():
-    """
-    获取AI问答系统的数据统计信息
-    """
-    try:
-        if ai_chat_service is None:
-            raise HTTPException(status_code=503, detail="AI聊天服务未初始化")
-        
-        stats = ai_chat_service.get_statistics()
-        
-        return ChatStatistics(
-            total_events=stats.get('total_events', 0),
-            by_town=stats.get('by_town', []),
-            by_level=stats.get('by_level', []),
-            by_category=stats.get('by_category', [])
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
-
-@app.get("/api/chat/health", summary="AI问答健康检查")
-async def chat_health_check():
-    """AI问答系统健康检查"""
-    try:
-        if ai_chat_service is None:
-            return {
-                "status": "error",
-                "message": "AI聊天服务未初始化",
-                "data_loaded": False
-            }
-        
-        return {
-            "status": "healthy",
-            "message": "AI问答系统运行正常",
-            "data_loaded": True
-        }
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"AI问答系统异常: {str(e)}",
-            "data_loaded": False
-        }
+# 已移除：AI问答相关端点
 
 @app.get("/api/statistics/report", summary="获取统计报告")
 async def get_statistics_report():
@@ -416,6 +417,20 @@ async def get_statistics_report():
         return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"统计报告生成失败: {str(e)}")
+
+# 月度统计（带筛选）
+@app.get("/api/statistics/monthly", summary="按月统计事件数量与分组")
+async def get_statistics_monthly(
+    start_time: Optional[str] = Query(None, description="开始时间，YYYY-MM-DD"),
+    end_time: Optional[str] = Query(None, description="结束时间，YYYY-MM-DD"),
+    towns: Optional[list[str]] = Query(None, description="筛选镇街，多值"),
+    levels: Optional[list[str]] = Query(None, description="筛选事件级别，多值"),
+):
+    try:
+        data = event_service.get_monthly_statistics(start_time, end_time, towns, levels)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取月度统计失败: {str(e)}")
 
 # 运行应用
 # ============ Cluster编辑相关API端点 ============
@@ -505,6 +520,130 @@ async def delete_subscription(subscription_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除订阅失败: {str(e)}")
 
+# ============ 主题管理API ============
+
+@app.get("/api/topics", response_model=TopicListResponse, summary="获取主题列表")
+async def get_topics():
+    try:
+        return event_service.get_all_topics()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取主题列表失败: {str(e)}")
+
+@app.post("/api/topics", response_model=Topic, summary="创建主题")
+async def create_topic(request: TopicCreateRequest, http_request: Request):
+    try:
+        topic = event_service.create_topic(request)
+
+        # 记录操作日志
+        operation_log_service.log_operation(
+            operator="管理员",  # 在实际系统中应该从认证信息获取
+            operation_type="create",
+            resource_type="topic",
+            resource_id=topic.id,
+            resource_name=topic.name,
+            operation_desc=f"创建了主题：{topic.name}",
+            after_data=topic.dict(),
+            ip_address=http_request.client.host if http_request.client else None,
+            user_agent=http_request.headers.get("user-agent")
+        )
+
+        return topic
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建主题失败: {str(e)}")
+
+@app.get("/api/topics/{topic_id}", response_model=Topic, summary="获取单个主题")
+async def get_topic(topic_id: str):
+    try:
+        topic = event_service.get_topic(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail=f"主题不存在: {topic_id}")
+        return topic
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取主题失败: {str(e)}")
+
+@app.put("/api/topics/{topic_id}", response_model=Topic, summary="更新主题")
+async def update_topic(topic_id: str, request: TopicUpdateRequest, http_request: Request):
+    try:
+        # 获取更新前的数据
+        old_topic = event_service.get_topic(topic_id)
+        updated_topic = event_service.update_topic(topic_id, request)
+
+        # 记录操作日志
+        operation_log_service.log_operation(
+            operator="管理员",
+            operation_type="update",
+            resource_type="topic",
+            resource_id=topic_id,
+            resource_name=updated_topic.name,
+            operation_desc=f"更新了主题：{updated_topic.name}",
+            before_data=old_topic.dict() if old_topic else None,
+            after_data=updated_topic.dict(),
+            ip_address=http_request.client.host if http_request.client else None,
+            user_agent=http_request.headers.get("user-agent")
+        )
+
+        return updated_topic
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新主题失败: {str(e)}")
+
+@app.delete("/api/topics/{topic_id}", summary="删除主题")
+async def delete_topic(topic_id: str, http_request: Request):
+    try:
+        # 获取删除前的数据
+        old_topic = event_service.get_topic(topic_id)
+        success = event_service.delete_topic(topic_id)
+
+        if success:
+            # 记录操作日志
+            operation_log_service.log_operation(
+                operator="管理员",
+                operation_type="delete",
+                resource_type="topic",
+                resource_id=topic_id,
+                resource_name=old_topic.name if old_topic else topic_id,
+                operation_desc=f"删除了主题：{old_topic.name if old_topic else topic_id}",
+                before_data=old_topic.dict() if old_topic else None,
+                ip_address=http_request.client.host if http_request.client else None,
+                user_agent=http_request.headers.get("user-agent")
+            )
+            return {"message": "主题已删除", "success": True}
+        else:
+            raise HTTPException(status_code=404, detail="主题不存在")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除主题失败: {str(e)}")
+
+@app.get("/api/topics/{topic_id}/events", response_model=PaginatedResponse, summary="获取主题事件")
+async def get_topic_events(topic_id: str,
+                           page: int = Query(1, ge=1),
+                           page_size: int = Query(20, ge=1, le=100),
+                           start_time: Optional[str] = Query(None),
+                           end_time: Optional[str] = Query(None),
+                           search: Optional[str] = Query(None)):
+    try:
+        query = TopicEventsQuery(page=page, page_size=page_size, start_time=start_time, end_time=end_time, search=search)
+        return event_service.get_topic_events(topic_id, query)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取主题事件失败: {str(e)}")
+
+@app.get("/api/topics/{topic_id}/stats", response_model=TopicStatsResponse, summary="获取主题统计")
+async def get_topic_stats(topic_id: str,
+                          start_time: Optional[str] = Query(None),
+                          end_time: Optional[str] = Query(None)):
+    try:
+        return event_service.get_topic_stats(topic_id, start_time, end_time)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取主题统计失败: {str(e)}")
+
 # ============ 数据管理API ============
 
 @app.post("/api/reload-data", summary="重新加载数据")
@@ -524,17 +663,6 @@ async def reload_data():
         # 重新加载数据
         print("🔄 开始重新加载数据...")
         event_service.load_data()
-        
-        # 重新初始化AI聊天服务
-        global ai_chat_service
-        try:
-            print("🔄 重新初始化AI聊天服务...")
-            from ai_chat_service import AIChatService
-            ai_chat_service = AIChatService()
-            print("✅ AI聊天服务重新初始化完成")
-        except Exception as e:
-            print(f"❌ AI聊天服务重新初始化失败: {e}")
-            ai_chat_service = None
         
         # 记录重新加载后的数据统计
         new_stats = {
@@ -565,56 +693,154 @@ async def reload_data():
         print(f"❌ 数据重新加载失败: {e}")
         raise HTTPException(status_code=500, detail=f"数据重新加载失败: {str(e)}")
 
-@app.post("/api/reinit-ai", summary="重新初始化AI聊天服务")
-async def reinit_ai_service():
-    """
-    重新初始化AI聊天服务，用于修复AI服务初始化失败的问题
-    """
+# ====== 报告与指标（Demo） ======
+
+@app.get("/api/indicators", response_model=IndicatorSearchResponse)
+async def indicators(
+    keyword: Optional[str] = Query(None),
+    page: int = 1,
+    page_size: int = 10,
+    kind: Optional[str] = Query(None)
+):
+    return event_service.indicators_search(keyword, page, page_size, kind)
+
+@app.get("/api/indicators/value", response_model=IndicatorValueResponse)
+async def indicator_value(code: str, period: str, scope: Optional[str] = None):
+    return event_service.indicator_value(code, period, scope)
+
+@app.post("/api/charts/render", response_model=ChartRenderResponse)
+async def render_chart(req: ChartRenderRequest):
+    markdown, period_used, chart = event_service.render_chart_markdown(req.code, req.period, req.scope, req.month)
+    return ChartRenderResponse(markdown=markdown, period_used=period_used, chart=chart)
+
+@app.get("/api/reports", response_model=ReportListResponse)
+async def list_reports():
+    return event_service.list_reports()
+
+@app.post("/api/reports", response_model=Report)
+async def create_report(req: ReportCreateRequest):
+    return event_service.create_report(req)
+
+@app.get("/api/reports/{report_id}", response_model=Report)
+async def get_report(report_id: str):
+    rpt = event_service.get_report(report_id)
+    if not rpt:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    return rpt
+
+@app.put("/api/reports/{report_id}", response_model=Report)
+async def update_report(report_id: str, req: ReportUpdateRequest):
     try:
-        global ai_chat_service
-        
-        print("🔄 开始重新初始化AI聊天服务...")
-        
-        # 先释放旧的服务实例
-        ai_chat_service = None
-        
-        # 重新导入和初始化
-        from ai_chat_service import AIChatService
-        ai_chat_service = AIChatService()
-        
-        print("✅ AI聊天服务重新初始化成功")
-        
-        # 测试服务是否正常
-        stats = ai_chat_service.get_statistics()
-        
-        return {
-            "success": True,
-            "message": "AI聊天服务重新初始化成功",
-            "timestamp": datetime.now().isoformat(),
-            "stats": {
-                "total_events": stats.get('total_events', 0),
-                "service_available": True
-            }
-        }
-        
-    except Exception as e:
-        print(f"❌ AI聊天服务重新初始化失败: {e}")
-        ai_chat_service = None
-        return {
-            "success": False,
-            "message": f"AI聊天服务重新初始化失败: {str(e)}",
-            "timestamp": datetime.now().isoformat(),
-            "stats": {
-                "total_events": 0,
-                "service_available": False
-            }
-        }
+        return event_service.update_report(report_id, req)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.post("/api/reports/{report_id}/preview", response_model=ReportPreviewResponse)
+async def preview_report(report_id: str, req: ReportPreviewRequest):
+    return event_service.preview_report(req)
+
+@app.post("/api/reports/{report_id}/publish")
+async def publish_report(report_id: str, month: str):
+    try:
+        return event_service.publish_report(report_id, month)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/reports/{report_id}/export")
+async def export_report(report_id: str, month: Optional[str] = None, format: str = 'docx'):
+    import io
+    from docx import Document
+    rpt = event_service.get_report(report_id)
+    if not rpt:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    # 生成渲染内容（若未发布或指定month，按当前取数渲染）
+    if rpt.status == 'published' and not month:
+        html = event_service.preview_report(ReportPreviewRequest(content_md=rpt.content_md_draft, month=rpt.month)).rendered_html
+    else:
+        html = event_service.preview_report(ReportPreviewRequest(content_md=rpt.content_md_draft, month=month or rpt.month)).rendered_html
+    # 简易导出：基于原始渲染串按换行拆分
+    doc = Document()
+    text = html.replace('<br/>', '\n').replace('<br>', '\n').replace('<br />', '\n')
+    for line in text.split('\n'):
+        doc.add_paragraph(line)
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers={
+        'Content-Disposition': f'attachment; filename=report_{report_id}.docx'
+    })
+
+
+# ============ 操作日志相关API ============
+
+@app.get("/api/operation-logs", response_model=OperationLogResponse)
+async def get_operation_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    operator: Optional[str] = Query(None),
+    operation_type: Optional[str] = Query(None),
+    resource_type: Optional[str] = Query(None),
+    resource_id: Optional[str] = Query(None),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
+):
+    """获取操作日志列表"""
+    query = OperationLogQuery(
+        page=page,
+        page_size=page_size,
+        operator=operator,
+        operation_type=operation_type,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        start_time=start_time,
+        end_time=end_time,
+        search=search
+    )
+    return operation_log_service.get_logs(query)
+
+@app.get("/api/operation-logs/stats", response_model=OperationStatsResponse)
+async def get_operation_stats():
+    """获取操作统计信息"""
+    return operation_log_service.get_stats()
+
+@app.get("/api/operation-logs/filter-options", response_model=OperationLogFilterOptions)
+async def get_operation_filter_options():
+    """获取操作日志筛选选项"""
+    return operation_log_service.get_filter_options()
+
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    ) 
+    host = os.getenv("UVICORN_HOST", "127.0.0.1")
+    try:
+        port = int(os.getenv("PORT", "8000"))
+    except ValueError:
+        port = 8000
+    reload_env = os.getenv("UVICORN_RELOAD", "0").lower()
+    if reload_env == "auto":
+        reload_enabled = True
+    else:
+        reload_enabled = reload_env not in {"0", "false", "no", "off"}
+    try:
+        uvicorn.run(
+            "main:app",
+            host=host,
+            port=port,
+            reload=reload_enabled,
+            log_level="info"
+        )
+    except (PermissionError, OSError) as exc:
+        # 在受限环境下watchgod可能没有权限启动，自动降级为禁用热重载
+        if not isinstance(exc, PermissionError) and getattr(exc, "errno", None) not in (1,):
+            raise
+        if reload_env == "auto":
+            print(f"热重载启动失败({exc}), 回退为 reload=False")
+            uvicorn.run(
+                "main:app",
+                host=host,
+                port=port,
+                reload=False,
+                log_level="info"
+            )
+        else:
+            raise

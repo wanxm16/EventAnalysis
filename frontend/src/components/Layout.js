@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout as AntLayout, Menu, Typography, Button, Space } from 'antd';
-import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, CommentOutlined, LogoutOutlined } from '@ant-design/icons';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, LogoutOutlined, BookOutlined, FileTextOutlined, AuditOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -39,14 +39,24 @@ const Layout = ({ children }) => {
       label: '人员分析',
     },
     {
-      key: '/ai-chat',
-      icon: <CommentOutlined />,
-      label: '事件问答',
+      key: '/topics',
+      icon: <BookOutlined />,
+      label: '事件主题',
     },
     {
       key: '/statistics-report',
       icon: <BarChartOutlined />,
       label: '统计报告',
+    },
+    {
+      key: '/reports',
+      icon: <FileTextOutlined />,
+      label: '月度报告',
+    },
+    {
+      key: '/operation-logs',
+      icon: <AuditOutlined />,
+      label: '操作日志',
     },
   ];
 

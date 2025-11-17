@@ -10,7 +10,7 @@
 #   --prod                生产模式
 #   --port-backend PORT   指定后端端口（默认8000）
 #   --port-frontend PORT  指定前端端口（默认3000）
-#   --init-vector         强制重新初始化向量数据库
+#   # 已移除AI/向量相关选项
 #   --no-browser          不自动打开浏览器
 #   --help               显示帮助信息
 
@@ -23,11 +23,7 @@ load_config() {
         source config.env
     fi
     
-    # 加载AI配置文件（可选）
-    if [ -f "ai_config.env" ]; then
-        print_info "加载AI配置文件: ai_config.env"
-        source ai_config.env
-    fi
+    # 已移除: AI配置文件加载
 }
 
 # 默认配置
@@ -99,7 +95,7 @@ show_help() {
     echo "  --prod                   生产模式"
     echo "  --port-backend PORT      指定后端端口（默认8000）"
     echo "  --port-frontend PORT     指定前端端口（默认3000）"
-    echo "  --init-vector            强制重新初始化向量数据库"
+    # 已移除AI/向量相关选项
     echo "  --no-browser             不自动打开浏览器"
     echo "  --status                 快速检查服务状态"
     echo "  --help                   显示此帮助信息"
@@ -166,10 +162,7 @@ parse_args() {
                 FRONTEND_PORT="$2"
                 shift 2
                 ;;
-            --init-vector)
-                INIT_VECTOR=true
-                shift
-                ;;
+            # 已移除AI/向量相关参数
             --no-browser)
                 NO_BROWSER=true
                 shift
@@ -387,12 +380,7 @@ advanced_health_check() {
                 return 1
             fi
             
-            # 检查AI聊天API
-            if curl -s --max-time 5 "http://localhost:$port/api/chat/health" > /dev/null 2>&1; then
-                print_success "✓ AI聊天API可用"
-            else
-                print_warning "✗ AI聊天API不可用"
-            fi
+            # 已移除: AI聊天API检查
             
             print_success "后端服务功能检查完成"
             return 0
@@ -435,7 +423,7 @@ install_dependencies() {
             fi
             
             # 检查关键依赖是否已安装
-            local key_deps=("fastapi" "uvicorn" "pandas" "duckdb" "chromadb" "openai")
+            local key_deps=("fastapi" "uvicorn" "pandas" "pydantic" "dateutil" "openpyxl")
             local missing_deps=()
             
             for dep in "${key_deps[@]}"; do
@@ -507,6 +495,7 @@ install_dependencies() {
             
             # 检查node_modules是否存在
             local needs_install=false
+            local ORIGINAL_REGISTRY=""
             if [ ! -d "node_modules" ] || [ ! -f ".deps_installed" ] || [ "package.json" -nt ".deps_installed" ]; then
                 needs_install=true
             fi
@@ -518,26 +507,66 @@ install_dependencies() {
                 case $pkg_manager in
                     "pnpm")
                         print_info "配置pnpm使用淘宝镜像"
+                        ORIGINAL_REGISTRY=$(pnpm config get registry 2>/dev/null || echo "")
                         pnpm config set registry https://registry.npmmirror.com/
                         ;;
                     "yarn")
                         print_info "配置yarn使用淘宝镜像"
+                        ORIGINAL_REGISTRY=$(yarn config get registry 2>/dev/null || echo "")
                         yarn config set registry https://registry.npmmirror.com/
                         ;;
                     "npm")
                         print_info "配置npm使用淘宝镜像"
+                        ORIGINAL_REGISTRY=$(npm config get registry 2>/dev/null || echo "")
                         npm config set registry https://registry.npmmirror.com/
                         ;;
                 esac
-                
+
                 if $pkg_manager install; then
                     touch .deps_installed
                     print_success "前端依赖安装完成"
                 else
-                    print_error "前端依赖安装失败"
-                    cd ..
-                    return 1
+                    print_warning "前端依赖安装失败，尝试使用官方源重新安装"
+
+                    case $pkg_manager in
+                        "pnpm")
+                            pnpm config set registry https://registry.npmjs.org/
+                            ;;
+                        "yarn")
+                            yarn config set registry https://registry.yarnpkg.com/
+                            ;;
+                        "npm")
+                            npm config set registry https://registry.npmjs.org/
+                            ;;
+                    esac
+
+                    if $pkg_manager install; then
+                        touch .deps_installed
+                        print_success "前端依赖安装完成"
+                    else
+                        print_error "前端依赖安装失败"
+                        cd ..
+                        return 1
+                    fi
                 fi
+
+                # 还原 registry 配置，避免影响开发者全局配置
+                if [ -n "$ORIGINAL_REGISTRY" ]; then
+                    case $pkg_manager in
+                        "pnpm")
+                            pnpm config set registry "$ORIGINAL_REGISTRY" >/dev/null 2>&1 || true
+                            ;;
+                        "yarn")
+                            yarn config set registry "$ORIGINAL_REGISTRY" >/dev/null 2>&1 || true
+                            ;;
+                        "npm")
+                            npm config set registry "$ORIGINAL_REGISTRY" >/dev/null 2>&1 || true
+                            ;;
+                    esac
+                fi
+
+                # 清理临时变量，避免后续步骤误用
+                unset ORIGINAL_REGISTRY
             else
                 print_info "前端依赖已是最新，跳过安装"
             fi
@@ -572,28 +601,7 @@ start_backend() {
         export DEBUG=true
     fi
     
-    # 导出AI配置环境变量
-    if [ -n "$AI_PROVIDER" ]; then
-        export AI_PROVIDER
-    fi
-    if [ -n "$AI_API_KEY" ]; then
-        export AI_API_KEY
-    fi
-    if [ -n "$AI_MODEL" ]; then
-        export AI_MODEL
-    fi
-    if [ -n "$AI_BASE_URL" ]; then
-        export AI_BASE_URL
-    fi
-    if [ -n "$AI_MAX_TOKENS" ]; then
-        export AI_MAX_TOKENS
-    fi
-    if [ -n "$AI_TEMPERATURE" ]; then
-        export AI_TEMPERATURE
-    fi
-    if [ -n "$AI_TIMEOUT" ]; then
-        export AI_TIMEOUT
-    fi
+    # 已移除: AI配置环境变量导出
     
     # 启动服务并捕获输出
     print_progress "正在启动后端服务 (端口: $BACKEND_PORT)..."
@@ -665,7 +673,8 @@ start_frontend() {
     # 设置环境变量
     export PORT=$FRONTEND_PORT
     export REACT_APP_API_URL="http://localhost:$BACKEND_PORT"
-    
+    export BROWSER=none  # 禁用 React 自动打开浏览器
+
     # 启动服务
     print_progress "正在启动前端服务 (端口: $FRONTEND_PORT)..."
     
@@ -811,19 +820,7 @@ main() {
         check_port $FRONTEND_PORT "前端服务"
     fi
     
-    # 初始化向量数据库（如果需要）
-    if [ "$INIT_VECTOR" = true ] && [ "$FRONTEND_ONLY" != true ]; then
-        print_step "初始化向量数据库..."
-        if [ -n "$VENV_PATH" ]; then
-            source "$VENV_PATH/bin/activate"
-        fi
-        
-        if python backend/manage_vector_db.py --clean; then
-            print_success "向量数据库清理完成"
-        else
-            print_warning "向量数据库清理失败"
-        fi
-    fi
+    # 已移除: 向量数据库初始化
     
     # 设置信号处理
     trap cleanup SIGINT SIGTERM
@@ -858,7 +855,7 @@ main() {
     if [ "$FRONTEND_ONLY" != true ]; then
         echo "  🔧 后端API: http://localhost:$BACKEND_PORT"
         echo "  📚 API文档: http://localhost:$BACKEND_PORT/docs"
-        echo "  🤖 AI聊天: http://localhost:$BACKEND_PORT/api/chat/health"
+        # 已移除: AI聊天健康检查链接
     fi
     
     if [ "$BACKEND_ONLY" != true ]; then
@@ -872,12 +869,7 @@ main() {
         echo ""
     fi
     
-    # 显示向量数据库状态
-    if [ "$FRONTEND_ONLY" != true ]; then
-        echo "  📊 向量数据库状态: python backend/manage_vector_db.py --status"
-        echo "  🔄 重新初始化: ./start.sh --init-vector"
-        echo ""
-    fi
+    # 已移除: 向量数据库状态与初始化提示
     
     print_warning "按 Ctrl+C 停止所有服务"
     echo "========================================"

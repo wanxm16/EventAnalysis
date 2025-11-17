@@ -28,5 +28,45 @@
     "source_cluster": "",
     "target_cluster": "cluster_3961",
     "description": "事件 XMEW202505010102 添加到cluster cluster_3961（原本不属于任何cluster）"
+  },
+  {
+    "operation_id": "09e3e3fa-d1e9-406d-9b1f-63dced2c8dcc",
+    "event_id": "XMEW202505011103",
+    "operation_type": "delete",
+    "timestamp": "2025-10-30T15:52:41.862284",
+    "operator": "管理员",
+    "source_cluster": "cluster_3962",
+    "target_cluster": "",
+    "description": "事件 XMEW202505011103 从cluster cluster_3962 中删除，现在为独立事件"
+  },
+  {
+    "operation_id": "087d8fc9-56b0-46bd-ad53-4348e04765aa",
+    "event_id": "XMEW202505011103",
+    "operation_type": "add",
+    "timestamp": "2025-10-30T15:52:44.090563",
+    "operator": "管理员",
+    "source_cluster": "",
+    "target_cluster": "cluster_3962",
+    "description": "事件 XMEW202505011103 添加到cluster cluster_3962（原本不属于任何cluster）"
+  },
+  {
+    "operation_id": "46df72b7-dc9f-425d-bf64-f05c9b18459d",
+    "event_id": "HJW202505310201",
+    "operation_type": "delete",
+    "timestamp": "2025-11-05T14:35:13.344827",
+    "operator": "管理员",
+    "source_cluster": "cluster_1809",
+    "target_cluster": "",
+    "description": "事件 HJW202505310201 从cluster cluster_1809 中删除，现在为独立事件"
+  },
+  {
+    "operation_id": "e7e558e0-f8a8-42a7-9f3c-3e7ecda2e79f",
+    "event_id": "HJW202505310201",
+    "operation_type": "add",
+    "timestamp": "2025-11-05T14:35:30.990457",
+    "operator": "管理员",
+    "source_cluster": "",
+    "target_cluster": "cluster_1809",
+    "description": "事件 HJW202505310201 添加到cluster cluster_1809（原本不属于任何cluster）"
   }
 ]

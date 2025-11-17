@@ -19,6 +19,8 @@ import {
   Popconfirm,
   Select,
   Tooltip,
+  DatePicker,
+  Switch,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -32,9 +34,13 @@ import {
   PlusOutlined,
   UndoOutlined,
   ExclamationCircleOutlined,
+  CopyOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { eventAPI } from '../services/api';
+
+const { Option } = Select;
 
 const ClusterDetail = () => {
   const { eventUID } = useParams();
@@ -50,12 +56,36 @@ const ClusterDetail = () => {
   const [addEventForm] = Form.useForm();
   const [availableClusters, setAvailableClusters] = useState([]);
   const [operations, setOperations] = useState([]);
-  
+
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0
   });
+
+  // 时间线筛选状态
+  const [timelineFilters, setTimelineFilters] = useState({
+    towns: [],
+    eventTypes: [],
+    categories: [],
+    reportTimeRange: null,
+    searchText: '',
+  });
+
+  // 筛选选项
+  const [filterOptions, setFilterOptions] = useState({
+    towns: [],
+    event_types: [],
+    categories: [],
+  });
+
+  // 筛选后的时间线数据
+  const [filteredTimeline, setFilteredTimeline] = useState([]);
+
+  // 去重状态
+  const [dedupEnabled, setDedupEnabled] = useState(true);
+  const [duplicateDetailVisible, setDuplicateDetailVisible] = useState(false);
+  const [selectedDuplicateGroup, setSelectedDuplicateGroup] = useState(null);
 
   // 加载聚类事件详情
   const loadClusterDetail = async () => {
@@ -63,11 +93,165 @@ const ClusterDetail = () => {
     try {
       const detail = await eventAPI.getClusterDetail(eventUID);
       setClusterDetail(detail);
+      setFilteredTimeline(detail.timeline || []);
     } catch (error) {
       message.error('加载聚类事件详情失败: ' + error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 加载筛选选项
+  const loadFilterOptions = async () => {
+    try {
+      const options = await eventAPI.getFilterOptions();
+      setFilterOptions(options);
+    } catch (error) {
+      console.error('加载筛选选项失败:', error);
+    }
+  };
+
+  // 处理时间线筛选
+  const handleTimelineFilterChange = (filterType, values) => {
+    const newTimelineFilters = {
+      ...timelineFilters,
+      [filterType]: values
+    };
+    setTimelineFilters(newTimelineFilters);
+    applyFilters(newTimelineFilters);
+  };
+
+  // 应用筛选条件
+  const applyFilters = (filters) => {
+    if (!clusterDetail || !clusterDetail.timeline) {
+      setFilteredTimeline([]);
+      return;
+    }
+
+    let filtered = clusterDetail.timeline;
+
+    // 按街镇筛选
+    if (filters.towns && filters.towns.length > 0) {
+      filtered = filtered.filter(item =>
+        filters.towns.includes(item.镇街名称)
+      );
+    }
+
+    // 按事件类型筛选
+    if (filters.eventTypes && filters.eventTypes.length > 0) {
+      filtered = filtered.filter(item =>
+        filters.eventTypes.includes(item.事件类型)
+      );
+    }
+
+    // 按二级分类筛选
+    if (filters.categories && filters.categories.length > 0) {
+      filtered = filtered.filter(item =>
+        filters.categories.includes(item.二级分类)
+      );
+    }
+
+    // 按上报时间筛选
+    if (filters.reportTimeRange && filters.reportTimeRange.length === 2) {
+      const [start, end] = filters.reportTimeRange;
+      filtered = filtered.filter(item => {
+        if (!item.上报时间) return false;
+        try {
+          const reportTime = new Date(item.上报时间);
+          const startTime = start ? start.toDate() : null;
+          const endTime = end ? end.toDate() : null;
+
+          if (startTime && reportTime < startTime) return false;
+          if (endTime && reportTime > endTime) return false;
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    // 按搜索文本筛选（搜索事件描述和处置结果）
+    if (filters.searchText && filters.searchText.trim()) {
+      const searchTerm = filters.searchText.trim().toLowerCase();
+      filtered = filtered.filter(item => {
+        const description = (item.事件描述 || '').toLowerCase();
+        const result = (item.处置结果 || '').toLowerCase();
+        return description.includes(searchTerm) || result.includes(searchTerm);
+      });
+    }
+
+    setFilteredTimeline(filtered);
+  };
+
+  // 清除筛选条件
+  const clearTimelineFilters = () => {
+    const clearedFilters = {
+      towns: [],
+      eventTypes: [],
+      categories: [],
+      reportTimeRange: null,
+      searchText: '',
+    };
+    setTimelineFilters(clearedFilters);
+    setFilteredTimeline(clusterDetail?.timeline || []);
+  };
+
+  // 事件去重逻辑
+  const deduplicateEvents = (events) => {
+    if (!dedupEnabled || !events?.length) return events;
+
+    // 按事件描述分组
+    const groups = {};
+    events.forEach(event => {
+      const desc = (event.事件描述 || '').trim();
+      if (!desc) {
+        // 无描述的事件单独处理
+        groups[`no_desc_${event.事件编号}`] = [event];
+        return;
+      }
+
+      if (!groups[desc]) {
+        groups[desc] = [];
+      }
+      groups[desc].push(event);
+    });
+
+    // 生成去重后的数据
+    const dedupedEvents = [];
+    Object.entries(groups).forEach(([description, eventsInGroup]) => {
+      if (eventsInGroup.length === 1) {
+        // 单个事件，直接添加
+        dedupedEvents.push({
+          ...eventsInGroup[0],
+          isDuplicate: false,
+          duplicateCount: 1,
+          duplicateEvents: eventsInGroup
+        });
+      } else {
+        // 多个重复事件，选择最早的作为代表
+        const sortedEvents = eventsInGroup.sort((a, b) => {
+          const timeA = parseTime(a.上报时间) || new Date(0);
+          const timeB = parseTime(b.上报时间) || new Date(0);
+          return timeA - timeB;
+        });
+
+        const representative = sortedEvents[0];
+        dedupedEvents.push({
+          ...representative,
+          isDuplicate: true,
+          duplicateCount: eventsInGroup.length,
+          duplicateEvents: sortedEvents
+        });
+      }
+    });
+
+    return dedupedEvents;
+  };
+
+  // 查看重复详情
+  const viewDuplicateDetail = (duplicateGroup) => {
+    setSelectedDuplicateGroup(duplicateGroup);
+    setDuplicateDetailVisible(true);
   };
 
   // ============ Cluster编辑相关方法 ============
@@ -337,31 +521,77 @@ const ClusterDetail = () => {
 
   // 构建时间线项目
   const buildTimelineItems = () => {
-    if (!clusterDetail?.timeline) return [];
-    
-    return clusterDetail.timeline.map((item, index) => ({
+    if (!filteredTimeline.length) return [];
+
+    // 应用去重逻辑
+    const eventsToDisplay = deduplicateEvents(filteredTimeline);
+
+    return eventsToDisplay.map((item, index) => ({
       key: index,
       dot: item.办结时间 ? (
-        <CheckCircleOutlined style={{ color: '#52c41a' }} />
+        <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '16px' }} />
       ) : (
-        <ClockCircleOutlined style={{ color: '#1890ff' }} />
+        <ClockCircleOutlined style={{ color: '#1890ff', fontSize: '16px' }} />
       ),
       children: (
-        <div className="timeline-item">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <div style={{ flex: 1 }}>
-              <strong 
-                style={{ cursor: 'pointer' }}
+        <div style={{
+          background: '#fff',
+          padding: '16px 20px',
+          borderRadius: '8px',
+          border: '1px solid #f0f0f0',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          transition: 'all 0.3s ease',
+          cursor: 'pointer',
+          marginBottom: '8px'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+          e.currentTarget.style.borderColor = '#1890ff';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)';
+          e.currentTarget.style.borderColor = '#f0f0f0';
+        }}>
+          {/* 头部：事件编号和状态 */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '12px',
+            paddingBottom: '12px',
+            borderBottom: '1px solid #f5f5f5'
+          }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <Button
+                type="link"
+                style={{
+                  padding: 0,
+                  height: 'auto',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: '#1890ff'
+                }}
                 onClick={() => handleViewEvent(item.事件编号)}
+                icon={<EyeOutlined />}
               >
                 {item.事件编号}
-              </strong>
-              <Tag 
-                color={item.办结时间 ? 'green' : 'blue'} 
-                style={{ marginLeft: 8 }}
+              </Button>
+              <Tag
+                color={item.办结时间 ? 'success' : 'processing'}
+                style={{ margin: 0, fontSize: '12px' }}
               >
                 {item.办结时间 ? '已办结' : '处理中'}
               </Tag>
+              {item.isDuplicate && (
+                <Tag
+                  color="warning"
+                  icon={<CopyOutlined />}
+                  style={{ margin: 0, cursor: 'pointer' }}
+                  onClick={() => viewDuplicateDetail(item.duplicateEvents)}
+                >
+                  重复 {item.duplicateCount}
+                </Tag>
+              )}
               {editMode && (
                 <Tooltip title="从此cluster中删除事件">
                   <Popconfirm
@@ -376,47 +606,116 @@ const ClusterDetail = () => {
                       size="small"
                       danger
                       icon={<DeleteOutlined />}
-                      style={{ marginLeft: 8 }}
                       loading={editLoading}
                     />
                   </Popconfirm>
                 </Tooltip>
               )}
             </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>
+            <div style={{
+              fontSize: '12px',
+              color: '#999',
+              whiteSpace: 'nowrap',
+              marginLeft: '12px'
+            }}>
               {formatShortTime(item.上报时间)}
             </div>
           </div>
-          
-          <div style={{ marginBottom: 8, lineHeight: '1.5' }}>
+
+          {/* 事件描述 */}
+          <div style={{
+            marginBottom: '12px',
+            padding: '10px 14px',
+            background: '#fafafa',
+            borderRadius: '6px',
+            borderLeft: '3px solid #1890ff',
+            fontSize: '14px',
+            lineHeight: '1.6',
+            color: '#333'
+          }}>
             {item.事件描述}
           </div>
-          
-          {/* 报警人信息 */}
-          {item.报警人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#e6f7ff', borderRadius: '4px', marginBottom: 4 }}>
-              <strong style={{ color: '#1890ff' }}>报警人:</strong> {item.报警人信息}
-            </div>
-          )}
-          
-          {/* 当事人信息 */}
-          {item.当事人信息 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#fff7e6', borderRadius: '4px', marginBottom: 4 }}>
-              <strong style={{ color: '#fa8c16' }}>当事人:</strong> {item.当事人信息}
-            </div>
-          )}
-          
-          {item.处置结果 && (
-            <div style={{ fontSize: '12px', color: '#666', padding: '4px 8px', background: '#f5f5f5', borderRadius: '4px' }}>
-              <strong>处置结果:</strong> {item.处置结果}
-            </div>
-          )}
-          
-          {item.办结时间 && (
-            <div style={{ fontSize: '12px', color: '#52c41a', marginTop: 4 }}>
-              办结时间: {formatShortTime(item.办结时间)}
-            </div>
-          )}
+
+          {/* 标签信息 */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '6px',
+            marginBottom: '12px'
+          }}>
+            {item.镇街名称 && (
+              <Tag color="blue" style={{ margin: 0 }}>
+                {item.镇街名称}
+              </Tag>
+            )}
+            {item.事件类型 && (
+              <Tag color="orange" style={{ margin: 0 }}>
+                {item.事件类型}
+              </Tag>
+            )}
+            {item.二级分类 && (
+              <Tag color="purple" style={{ margin: 0 }}>
+                {item.二级分类}
+              </Tag>
+            )}
+          </div>
+
+          {/* 详细信息 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {item.报警人信息 && (
+              <div style={{
+                fontSize: '13px',
+                color: '#666',
+                padding: '8px 12px',
+                background: '#e6f7ff',
+                borderRadius: '6px',
+                borderLeft: '3px solid #1890ff'
+              }}>
+                <span style={{ color: '#1890ff', fontWeight: 600 }}>报警人：</span>
+                {item.报警人信息}
+              </div>
+            )}
+
+            {item.当事人信息 && (
+              <div style={{
+                fontSize: '13px',
+                color: '#666',
+                padding: '8px 12px',
+                background: '#fff7e6',
+                borderRadius: '6px',
+                borderLeft: '3px solid #fa8c16'
+              }}>
+                <span style={{ color: '#fa8c16', fontWeight: 600 }}>当事人：</span>
+                {item.当事人信息}
+              </div>
+            )}
+
+            {item.处置结果 && (
+              <div style={{
+                fontSize: '13px',
+                color: '#666',
+                padding: '8px 12px',
+                background: '#f6ffed',
+                borderRadius: '6px',
+                borderLeft: '3px solid #52c41a'
+              }}>
+                <span style={{ color: '#52c41a', fontWeight: 600 }}>处置结果：</span>
+                {item.处置结果}
+              </div>
+            )}
+
+            {item.办结时间 && (
+              <div style={{
+                fontSize: '12px',
+                color: '#52c41a',
+                fontWeight: 500,
+                marginTop: '4px'
+              }}>
+                <CheckCircleOutlined style={{ marginRight: '6px' }} />
+                办结时间: {formatShortTime(item.办结时间)}
+              </div>
+            )}
+          </div>
         </div>
       ),
     }));
@@ -427,8 +726,16 @@ const ClusterDetail = () => {
       loadClusterDetail();
       loadAvailableClusters();
       loadOperations();
+      loadFilterOptions();
     }
   }, [eventUID]);
+
+  // 当clusterDetail变化时，重新设置筛选数据
+  useEffect(() => {
+    if (clusterDetail?.timeline) {
+      setFilteredTimeline(clusterDetail.timeline);
+    }
+  }, [clusterDetail]);
 
   if (loading) {
     return (
@@ -460,172 +767,464 @@ const ClusterDetail = () => {
   return (
     <div className="page-container">
       {/* 页面头部 */}
-      <div className="page-header">
-        <Space>
+      <div className="page-header" style={{
+        marginBottom: '24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '16px'
+      }}>
+        <Space size="large">
           <Button
             icon={<ArrowLeftOutlined />}
             onClick={handleBack}
+            size="large"
           >
             返回列表
           </Button>
-          <h1 className="page-title">聚类事件详情</h1>
+          <div>
+            <h1 className="page-title" style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+              聚类事件详情
+            </h1>
+            <div style={{ fontSize: '14px', color: '#666', marginTop: '4px' }}>
+              <ClusterOutlined style={{ marginRight: '6px' }} />
+              <code style={{ fontSize: '14px', fontWeight: 'bold', color: '#1890ff' }}>
+                {clusterDetail.EventUID}
+              </code>
+            </div>
+          </div>
         </Space>
       </div>
 
-      {/* 基本信息 */}
+      {/* 概览信息卡片 */}
       <Card
-        title={
-          <Space>
-            <ClusterOutlined />
-            聚类事件基本信息
-          </Space>
-        }
-        className="detail-card"
+        style={{
+          marginBottom: '20px',
+          borderRadius: '12px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          overflow: 'hidden'
+        }}
+        bodyStyle={{ padding: 0 }}
       >
-        <Descriptions column={1} bordered>
-          <Descriptions.Item label="聚类事件ID">
-            <code style={{ fontSize: '16px', fontWeight: 'bold' }}>
-              {clusterDetail.EventUID}
-            </code>
-          </Descriptions.Item>
-          
-          <Descriptions.Item label="事件描述">
-            {clusterDetail.Event_description}
-          </Descriptions.Item>
-          
-          <Descriptions.Item label="时间范围">
-            <Space direction="vertical" size="small">
-              <div>
-                <strong>开始时间:</strong> {formatTime(clusterDetail.first_report_time)}
+        {/* 顶部统计数据区 */}
+        <div style={{
+          background: '#fafafa',
+          padding: '24px',
+          color: '#424242',
+          borderBottom: '1px solid #f0f0f0'
+        }}>
+          <Row gutter={16}>
+            <Col xs={12} sm={6}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '4px' }}>
+                  {clusterDetail.participant_count}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  <UserOutlined style={{ marginRight: '4px' }} />
+                  参与人数
+                </div>
               </div>
-              <div>
-                <strong>结束时间:</strong> {formatTime(clusterDetail.last_report_time)}
+            </Col>
+
+            <Col xs={12} sm={6}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '4px' }}>
+                  {dedupEnabled ? deduplicateEvents(clusterDetail.timeline || []).length : (clusterDetail.timeline?.length || 0)}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  <ClusterOutlined style={{ marginRight: '4px' }} />
+                  {dedupEnabled ? "去重后事件" : "事件总数"}
+                </div>
+                {dedupEnabled && clusterDetail.timeline?.length > 0 && deduplicateEvents(clusterDetail.timeline).length !== clusterDetail.timeline.length && (
+                  <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '2px' }}>
+                    原始: {clusterDetail.timeline.length} 个
+                  </div>
+                )}
               </div>
-            </Space>
-          </Descriptions.Item>
-        </Descriptions>
+            </Col>
+
+            <Col xs={12} sm={6}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '4px' }}>
+                  {clusterDetail.timeline?.filter(item => item.办结时间).length || 0}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  <CheckCircleOutlined style={{ marginRight: '4px' }} />
+                  已办结事件
+                </div>
+              </div>
+            </Col>
+
+            <Col xs={12} sm={6}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '4px' }}>
+                  {clusterDetail.timeline?.filter(item => !item.办结时间).length || 0}
+                </div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                  <ClockCircleOutlined style={{ marginRight: '4px' }} />
+                  处理中事件
+                </div>
+              </div>
+            </Col>
+          </Row>
+        </div>
+
+        {/* 主要内容区 */}
+        <div style={{ padding: '24px' }}>
+          {/* 事件描述 */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '12px'
+            }}>
+              <div style={{
+                width: '4px',
+                height: '18px',
+                background: '#667eea',
+                borderRadius: '2px'
+              }} />
+              <span style={{ fontSize: '15px', fontWeight: 600, color: '#333' }}>
+                事件描述
+              </span>
+            </div>
+            <div style={{
+              padding: '14px 16px',
+              background: '#f8f9fa',
+              borderRadius: '8px',
+              border: '1px solid #e9ecef',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              color: '#495057'
+            }}>
+              {clusterDetail.Event_description}
+            </div>
+          </div>
+
+          {/* 时间信息 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '12px'
+          }}>
+            <div style={{
+              padding: '14px 16px',
+              background: '#fff',
+              border: '1px solid #e9ecef',
+              borderRadius: '8px',
+              transition: 'all 0.3s'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#868e96',
+                marginBottom: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <CalendarOutlined />
+                开始时间
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#212529' }}>
+                {formatTime(clusterDetail.first_report_time)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '14px 16px',
+              background: '#fff',
+              border: '1px solid #e9ecef',
+              borderRadius: '8px',
+              transition: 'all 0.3s'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#868e96',
+                marginBottom: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <CalendarOutlined />
+                结束时间
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: '#212529' }}>
+                {formatTime(clusterDetail.last_report_time)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '14px 16px',
+              background: 'linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%)',
+              border: '1px solid #ffeaa7',
+              borderRadius: '8px',
+              transition: 'all 0.3s'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#2d3436',
+                marginBottom: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <ClockCircleOutlined />
+                持续时长
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#d63031' }}>
+                {clusterDetail.duration_days || 0} <span style={{ fontSize: '13px', fontWeight: 500 }}>天</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </Card>
 
-      {/* 统计信息 */}
+      {/* 时间线筛选组件 */}
       <Card
-        title={
-          <Space>
-            <CalendarOutlined />
-            统计信息
-          </Space>
-        }
-        className="detail-card"
+        style={{
+          marginBottom: '20px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          background: '#fafafa'
+        }}
+        bodyStyle={{ padding: '20px' }}
       >
-        <Row gutter={24}>
-          <Col span={6}>
-            <div className="stat-item">
-              <Statistic
-                title="参与人数"
-                value={clusterDetail.participant_count}
-                prefix={<UserOutlined />}
-                suffix="人"
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </div>
+        <div style={{
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '4px',
+              height: '20px',
+              background: '#1890ff',
+              borderRadius: '2px'
+            }} />
+            <span style={{ fontSize: '16px', fontWeight: 600, color: '#333' }}>
+              事件筛选与搜索
+            </span>
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              disabled={
+                !timelineFilters.towns.length &&
+                !timelineFilters.eventTypes.length &&
+                !timelineFilters.categories.length &&
+                !timelineFilters.reportTimeRange &&
+                !timelineFilters.searchText.trim()
+              }
+              onClick={() => {
+                message.success('筛选条件已应用');
+              }}
+            >
+              应用筛选
+            </Button>
+            <Button onClick={clearTimelineFilters} size="small">
+              清除筛选
+            </Button>
+            {filteredTimeline.length !== (clusterDetail?.timeline?.length || 0) && (
+              <Tag color="blue" style={{ margin: 0 }}>
+                显示 {filteredTimeline.length} / {clusterDetail?.timeline?.length || 0}
+              </Tag>
+            )}
+          </Space>
+        </div>
+
+        <Row gutter={[12, 12]}>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 6, fontSize: '13px', color: '#666', fontWeight: 500 }}>街镇</div>
+            <Select
+              mode="multiple"
+              placeholder="选择街镇"
+              value={timelineFilters.towns}
+              onChange={(values) => handleTimelineFilterChange('towns', values)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              maxTagCount="responsive"
+            >
+              {filterOptions.towns.map(town => (
+                <Option key={town} value={town}>{town}</Option>
+              ))}
+            </Select>
           </Col>
-          
-          <Col span={6}>
-            <div className="stat-item">
-              <Statistic
-                title="事件总数"
-                value={clusterDetail.timeline?.length || 0}
-                prefix={<ClusterOutlined />}
-                suffix="个"
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </div>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 6, fontSize: '13px', color: '#666', fontWeight: 500 }}>事件类型</div>
+            <Select
+              mode="multiple"
+              placeholder="选择事件类型"
+              value={timelineFilters.eventTypes}
+              onChange={(values) => handleTimelineFilterChange('eventTypes', values)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              maxTagCount="responsive"
+            >
+              {filterOptions.event_types.map(type => (
+                <Option key={type} value={type}>{type}</Option>
+              ))}
+            </Select>
           </Col>
-          
-          <Col span={6}>
-            <div className="stat-item">
-              <Statistic
-                title="持续时间"
-                value={clusterDetail.duration_days || 0}
-                prefix={<ClockCircleOutlined />}
-                suffix="天"
-                precision={2}
-                valueStyle={{ color: '#fa8c16' }}
-              />
-            </div>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 6, fontSize: '13px', color: '#666', fontWeight: 500 }}>二级分类</div>
+            <Select
+              mode="multiple"
+              placeholder="选择二级分类"
+              value={timelineFilters.categories}
+              onChange={(values) => handleTimelineFilterChange('categories', values)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              maxTagCount="responsive"
+            >
+              {filterOptions.categories.map(category => (
+                <Option key={category} value={category}>{category}</Option>
+              ))}
+            </Select>
           </Col>
-          
-          <Col span={6}>
-            <div className="stat-item">
-              <Statistic
-                title="已办结事件"
-                value={clusterDetail.timeline?.filter(item => item.办结时间).length || 0}
-                prefix={<CheckCircleOutlined />}
-                suffix="个"
-                valueStyle={{ color: '#722ed1' }}
-              />
-            </div>
+          <Col xs={24} sm={12} md={6}>
+            <div style={{ marginBottom: 6, fontSize: '13px', color: '#666', fontWeight: 500 }}>上报时间</div>
+            <DatePicker.RangePicker
+              value={timelineFilters.reportTimeRange}
+              onChange={(dates) => handleTimelineFilterChange('reportTimeRange', dates)}
+              style={{ width: '100%' }}
+              placeholder={['开始', '结束']}
+              showTime
+              format="YYYY-MM-DD HH:mm"
+            />
+          </Col>
+          <Col xs={24}>
+            <div style={{ marginBottom: 6, fontSize: '13px', color: '#666', fontWeight: 500 }}>搜索事件描述/处置结果</div>
+            <Input.Search
+              placeholder="输入关键词搜索事件描述或处置结果..."
+              value={timelineFilters.searchText}
+              onChange={(e) => handleTimelineFilterChange('searchText', e.target.value)}
+              onSearch={() => {
+                if (timelineFilters.searchText.trim()) {
+                  message.success('搜索条件已应用');
+                }
+              }}
+              allowClear
+              size="large"
+              style={{ width: '100%' }}
+            />
           </Col>
         </Row>
       </Card>
 
       {/* 事件时间线 */}
       <Card
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Space>
-              <CalendarOutlined />
-              事件时间线
-              {editMode && <Tag color="orange">编辑模式</Tag>}
-            </Space>
-            
-            <Space>
-              <Button
-                type={editMode ? "default" : "primary"}
-                icon={<EditOutlined />}
-                onClick={() => setEditMode(!editMode)}
-                size="small"
-              >
-                {editMode ? '退出编辑' : '编辑Cluster'}
-              </Button>
-              
-              {editMode && (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => setAddEventModalVisible(true)}
-                    size="small"
-                  >
-                    添加事件
-                  </Button>
-                  
-                  {operations.length > 0 && (
-                    <Button
-                      icon={<UndoOutlined />}
-                      onClick={() => undoOperation(operations[0].id)}
-                      loading={editLoading}
-                      size="small"
-                    >
-                      撤销上次操作
-                    </Button>
-                  )}
-                </>
-              )}
-            </Space>
-          </div>
-        }
-        className="detail-card"
+        style={{
+          marginBottom: '20px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+        }}
+        bodyStyle={{ padding: '24px' }}
       >
-        {clusterDetail.timeline && clusterDetail.timeline.length > 0 ? (
-          <Timeline
-            items={buildTimelineItems()}
-            mode="left"
-          />
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+          marginBottom: '24px',
+          paddingBottom: '16px',
+          borderBottom: '2px solid #f0f0f0'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '4px',
+                height: '24px',
+                background: '#1890ff',
+                borderRadius: '2px'
+              }} />
+              <span style={{ fontSize: '18px', fontWeight: 600, color: '#333' }}>
+                <CalendarOutlined style={{ marginRight: '8px' }} />
+                事件时间线
+              </span>
+            </div>
+            {editMode && <Tag color="orange" style={{ fontSize: '13px', padding: '2px 10px' }}>编辑模式</Tag>}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: '#f0f0f0',
+              borderRadius: '6px'
+            }}>
+              <span style={{ fontSize: '13px', color: '#666', fontWeight: 500 }}>事件去重</span>
+              <Switch
+                checked={dedupEnabled}
+                onChange={setDedupEnabled}
+                size="small"
+              />
+            </div>
+          </div>
+
+          <Space wrap>
+            <Button
+              type={editMode ? "default" : "primary"}
+              icon={<EditOutlined />}
+              onClick={() => setEditMode(!editMode)}
+            >
+              {editMode ? '退出编辑' : '编辑Cluster'}
+            </Button>
+
+            {editMode && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setAddEventModalVisible(true)}
+                >
+                  添加事件
+                </Button>
+
+                {operations.length > 0 && (
+                  <Button
+                    icon={<UndoOutlined />}
+                    onClick={() => undoOperation(operations[0].id)}
+                    loading={editLoading}
+                  >
+                    撤销上次操作
+                  </Button>
+                )}
+              </>
+            )}
+          </Space>
+        </div>
+
+        {filteredTimeline.length > 0 ? (
+          <div style={{
+            background: '#fff',
+            padding: '20px',
+            borderRadius: '8px',
+            border: '1px solid #f0f0f0'
+          }}>
+            <Timeline
+              items={buildTimelineItems()}
+              mode="left"
+            />
+          </div>
         ) : (
           <Alert
-            message="暂无时间线数据"
+            message={clusterDetail?.timeline?.length > 0 ? "没有符合筛选条件的事件" : "暂无时间线数据"}
+            description={clusterDetail?.timeline?.length > 0 ? "请调整筛选条件或清除筛选以查看更多事件" : "此聚类事件暂无时间线数据"}
             type="info"
             showIcon
+            style={{
+              borderRadius: '8px',
+              border: '1px solid #91d5ff'
+            }}
           />
         )}
       </Card>
@@ -633,62 +1232,257 @@ const ClusterDetail = () => {
       {/* 操作历史 */}
       {editMode && operations.length > 0 && (
         <Card
-          title="操作历史"
-          className="detail-card"
+          style={{
+            marginBottom: '20px',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+          }}
+          bodyStyle={{ padding: '24px' }}
         >
-          <Table
-            dataSource={operations}
-            columns={[
-              {
-                title: '操作类型',
-                dataIndex: 'type',
-                key: 'type',
-                width: 100,
-                render: (type) => (
-                  <Tag color={type === '删除' ? 'red' : 'blue'}>{type}</Tag>
-                )
-              },
-              {
-                title: '事件ID',
-                dataIndex: 'eventId',
-                key: 'eventId',
-                width: 150,
-              },
-              {
-                title: '操作时间',
-                dataIndex: 'timestamp',
-                key: 'timestamp',
-                width: 180,
-              },
-              {
-                title: '描述',
-                dataIndex: 'description',
-                key: 'description',
-              },
-              {
-                title: '操作',
-                key: 'action',
-                width: 100,
-                render: (_, record) => (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '20px',
+            paddingBottom: '16px',
+            borderBottom: '2px solid #f0f0f0'
+          }}>
+            <div style={{
+              width: '4px',
+              height: '24px',
+              background: '#fa8c16',
+              borderRadius: '2px'
+            }} />
+            <span style={{ fontSize: '18px', fontWeight: 600, color: '#333' }}>
+              <ClockCircleOutlined style={{ marginRight: '8px', color: '#fa8c16' }} />
+              操作历史
+            </span>
+            <Tag color="orange" style={{ marginLeft: '8px' }}>
+              共 {operations.length} 条记录
+            </Tag>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {operations.map((record, index) => (
+              <div
+                key={record.id}
+                style={{
+                  background: index % 2 === 0 ? '#fafafa' : '#fff',
+                  padding: '16px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid #f0f0f0',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  flexWrap: 'wrap'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+                  e.currentTarget.style.borderColor = '#d9d9d9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.borderColor = '#f0f0f0';
+                }}
+              >
+                {/* 操作类型 */}
+                <div style={{ minWidth: '80px' }}>
+                  <Tag
+                    color={record.type === '删除' ? 'error' : record.type === '添加' ? 'success' : 'processing'}
+                    style={{
+                      fontSize: '13px',
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontWeight: 500
+                    }}
+                  >
+                    {record.type}
+                  </Tag>
+                </div>
+
+                {/* 事件ID */}
+                <div style={{ minWidth: '150px' }}>
+                  <div style={{ fontSize: '12px', color: '#999', marginBottom: '2px' }}>事件ID</div>
+                  <div style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: '#1890ff',
+                    fontFamily: 'monospace'
+                  }}>
+                    {record.eventId}
+                  </div>
+                </div>
+
+                {/* 操作时间 */}
+                <div style={{ flex: '1 1 180px' }}>
+                  <div style={{ fontSize: '12px', color: '#999', marginBottom: '2px' }}>操作时间</div>
+                  <div style={{ fontSize: '13px', color: '#666', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ClockCircleOutlined style={{ fontSize: '12px' }} />
+                    {record.timestamp}
+                  </div>
+                </div>
+
+                {/* 描述 */}
+                <div style={{ flex: '2 1 200px' }}>
+                  <div style={{ fontSize: '12px', color: '#999', marginBottom: '2px' }}>操作描述</div>
+                  <div style={{ fontSize: '13px', color: '#333', lineHeight: '1.5' }}>
+                    {record.description}
+                  </div>
+                </div>
+
+                {/* 撤销按钮 */}
+                <div style={{ marginLeft: 'auto' }}>
                   <Button
-                    size="small"
+                    type="primary"
+                    danger
+                    ghost
                     icon={<UndoOutlined />}
                     onClick={() => undoOperation(record.id)}
                     loading={editLoading}
+                    style={{
+                      borderRadius: '6px',
+                      fontWeight: 500
+                    }}
                   >
-                    撤销
+                    撤销操作
                   </Button>
-                )
-              }
-            ]}
-            pagination={false}
-            size="small"
-            rowKey="id"
-          />
+                </div>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
 
+
+      {/* 重复事件详情模态框 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CopyOutlined style={{ color: '#fa8c16' }} />
+            <span>重复事件详情</span>
+          </div>
+        }
+        open={duplicateDetailVisible}
+        onCancel={() => {
+          setDuplicateDetailVisible(false);
+          setSelectedDuplicateGroup(null);
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setDuplicateDetailVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1000}
+      >
+        {selectedDuplicateGroup && (
+          <div>
+            <Alert
+              message={`找到 ${selectedDuplicateGroup.length} 个描述相同的重复事件`}
+              description="以下事件具有相同的事件描述，已自动合并显示。点击事件编号可查看详情。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 20 }}
+            />
+
+            {/* 事件描述卡片 */}
+            <Card
+              title={<span style={{ fontSize: '14px', fontWeight: 'bold' }}>共同描述</span>}
+              size="small"
+              style={{ marginBottom: 16, backgroundColor: '#fafafa' }}
+            >
+              <div style={{ fontSize: '14px', lineHeight: '1.6', color: '#333' }}>
+                {selectedDuplicateGroup[0]?.事件描述 || '无描述'}
+              </div>
+            </Card>
+
+            {/* 事件列表 */}
+            <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#666' }}>
+              重复事件列表 ({selectedDuplicateGroup.length} 个)
+            </div>
+
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              {selectedDuplicateGroup.map((event, index) => (
+                <Card
+                  key={event.事件编号}
+                  size="small"
+                  style={{
+                    marginBottom: 12,
+                    border: index === 0 ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                    backgroundColor: index === 0 ? '#e6f7ff' : '#fff'
+                  }}
+                  title={
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Button
+                          type="link"
+                          icon={<EyeOutlined />}
+                          onClick={() => handleViewEvent(event.事件编号)}
+                          style={{ padding: 0, height: 'auto', fontSize: '14px', fontWeight: 'bold' }}
+                        >
+                          {event.事件编号}
+                        </Button>
+                        {index === 0 && (
+                          <Tag color="blue" size="small">代表事件</Tag>
+                        )}
+                        <Tag
+                          color={event.办结时间 ? 'green' : 'orange'}
+                          size="small"
+                        >
+                          {event.办结时间 ? '已办结' : '处理中'}
+                        </Tag>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        {formatTime(event.上报时间)}
+                      </div>
+                    </div>
+                  }
+                  extra={null}
+                >
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>镇街名称</div>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>{event.镇街名称 || '-'}</div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>事件级别</div>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>{event.事件级别 || '-'}</div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>二级分类</div>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>{event.二级分类 || '-'}</div>
+                    </Col>
+                  </Row>
+
+                  {(event.报警人信息 || event.当事人信息 || event.处置结果) && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+                      {event.报警人信息 && (
+                        <div style={{ fontSize: '12px', marginBottom: 4 }}>
+                          <span style={{ color: '#1890ff', fontWeight: 'bold' }}>报警人：</span>
+                          <span style={{ color: '#666' }}>{event.报警人信息}</span>
+                        </div>
+                      )}
+                      {event.当事人信息 && (
+                        <div style={{ fontSize: '12px', marginBottom: 4 }}>
+                          <span style={{ color: '#fa8c16', fontWeight: 'bold' }}>当事人：</span>
+                          <span style={{ color: '#666' }}>{event.当事人信息}</span>
+                        </div>
+                      )}
+                      {event.处置结果 && (
+                        <div style={{ fontSize: '12px', marginBottom: 4 }}>
+                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>处置结果：</span>
+                          <span style={{ color: '#666' }}>{event.处置结果}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 添加事件模态框 */}
       <Modal
