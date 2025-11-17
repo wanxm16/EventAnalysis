@@ -31,7 +31,11 @@ from models import (
     Topic, TopicCreateRequest, TopicUpdateRequest, TopicListResponse, TopicEventsQuery, TopicStatsResponse,
     IndicatorSearchResponse, IndicatorValueResponse, ReportListResponse, ReportCreateRequest, ReportUpdateRequest, Report, ReportPreviewRequest, ReportPreviewResponse,
     ChartRenderRequest, ChartRenderResponse,
-    OperationLogQuery, OperationLogResponse, OperationStatsResponse, OperationLogFilterOptions
+    OperationLogQuery, OperationLogResponse, OperationStatsResponse, OperationLogFilterOptions,
+    # 智能分类相关模型
+    ClassifySingleRequest, ClassifySingleResponse, ClassifyBatchRequest,
+    ClassifyBatchTaskResponse, ClassifyBatchStatusResponse, ClassificationFeedback,
+    CategoryListResponse, FewShotExamplesResponse, ClassificationStatsResponse
 )
 from services import event_service, operation_log_service
 
@@ -808,6 +812,311 @@ async def get_operation_stats():
 async def get_operation_filter_options():
     """获取操作日志筛选选项"""
     return operation_log_service.get_filter_options()
+
+
+# ==================== 智能事件分类API ====================
+
+# 全局分类器实例（延迟初始化）
+_classifier = None
+_batch_tasks = {}  # 批量任务存储
+
+def get_classifier():
+    """获取分类器实例（单例模式）"""
+    global _classifier
+    if _classifier is None:
+        from qwen_classifier import QwenClassifier
+        _classifier = QwenClassifier()
+    return _classifier
+
+
+@app.post("/api/classify/single", response_model=ClassifySingleResponse, summary="单事件智能分类")
+async def classify_single_event(request: ClassifySingleRequest):
+    """
+    单事件智能分类
+    使用千问大模型对单个事件进行二级分类预测
+    """
+    try:
+        classifier = get_classifier()
+
+        event_data = {
+            '事件描述': request.event_description,
+            '事件类型': request.event_type,
+            '区县名称': request.district,
+            '镇街名称': request.street
+        }
+
+        predicted_category, confidence, reasoning = classifier.classify_single(event_data)
+
+        if predicted_category is None:
+            raise HTTPException(status_code=500, detail="分类失败，请检查输入或稍后重试")
+
+        return ClassifySingleResponse(
+            predicted_category=predicted_category,
+            confidence=confidence,
+            reasoning=reasoning,
+            timestamp=datetime.now().isoformat()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分类错误: {str(e)}")
+
+
+@app.post("/api/classify/batch", response_model=ClassifyBatchTaskResponse, summary="批量事件分类")
+async def classify_batch_events(file: UploadFile = File(...)):
+    """
+    批量事件分类
+    上传CSV文件进行批量分类，返回任务ID用于查询进度
+
+    CSV文件格式要求：
+    - 必须包含列: 事件描述, 事件类型
+    - 可选列: 区县名称, 镇街名称
+    """
+    import uuid
+    import pandas as pd
+    from io import BytesIO
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        # 读取CSV文件
+        contents = await file.read()
+        df = pd.read_csv(BytesIO(contents), encoding='utf-8')
+
+        # 验证必需列
+        required_columns = ['事件描述', '事件类型']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise HTTPException(status_code=400, detail=f"CSV文件缺少必需列: {', '.join(missing_columns)}")
+
+        # 生成任务ID
+        task_id = str(uuid.uuid4())
+        total = len(df)
+
+        # 初始化任务状态
+        _batch_tasks[task_id] = {
+            "task_id": task_id,
+            "status": "pending",
+            "total": total,
+            "processed": 0,
+            "success_count": 0,
+            "results": [],
+            "created_at": datetime.now().isoformat(),
+            "completed_at": None
+        }
+
+        # 在后台线程处理批量分类
+        async def process_batch():
+            try:
+                classifier = get_classifier()
+                _batch_tasks[task_id]["status"] = "processing"
+
+                results = []
+                success_count = 0
+
+                for idx, row in df.iterrows():
+                    event_data = {
+                        '事件描述': str(row.get('事件描述', '')),
+                        '事件类型': str(row.get('事件类型', '')),
+                        '区县名称': str(row.get('区县名称', '')),
+                        '镇街名称': str(row.get('镇街名称', ''))
+                    }
+
+                    predicted_category, confidence, reasoning = classifier.classify_single(event_data)
+
+                    if predicted_category:
+                        success_count += 1
+
+                    results.append({
+                        'index': int(idx),
+                        'event_description': event_data['事件描述'],
+                        'event_type': event_data['事件类型'],
+                        'predicted_category': predicted_category,
+                        'confidence': float(confidence) if confidence else 0.0,
+                        'reasoning': reasoning
+                    })
+
+                    _batch_tasks[task_id]["processed"] = int(idx) + 1
+
+                _batch_tasks[task_id]["status"] = "completed"
+                _batch_tasks[task_id]["success_count"] = success_count
+                _batch_tasks[task_id]["results"] = results
+                _batch_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+
+            except Exception as e:
+                _batch_tasks[task_id]["status"] = "failed"
+                _batch_tasks[task_id]["error"] = str(e)
+                _batch_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+
+        # 启动后台任务
+        asyncio.create_task(process_batch())
+
+        return ClassifyBatchTaskResponse(
+            task_id=task_id,
+            message="批量分类任务已创建",
+            total=total
+        )
+
+    except pd.errors.ParserError:
+        raise HTTPException(status_code=400, detail="CSV文件格式错误")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+
+
+@app.get("/api/classify/batch/{task_id}", response_model=ClassifyBatchStatusResponse, summary="查询批量分类任务状态")
+async def get_batch_task_status(task_id: str):
+    """
+    查询批量分类任务状态
+    """
+    if task_id not in _batch_tasks:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    task = _batch_tasks[task_id]
+
+    return ClassifyBatchStatusResponse(
+        task_id=task["task_id"],
+        status=task["status"],
+        total=task["total"],
+        processed=task["processed"],
+        success_count=task["success_count"],
+        results=task.get("results") if task["status"] == "completed" else None,
+        created_at=task["created_at"],
+        completed_at=task.get("completed_at")
+    )
+
+
+@app.post("/api/classify/feedback", summary="提交分类反馈")
+async def submit_classification_feedback(feedback: ClassificationFeedback):
+    """
+    提交分类结果反馈
+    用于收集错误分类案例，用于后续模型优化
+    """
+    try:
+        # 保存反馈到文件
+        import json
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        feedback_dir = os.path.join(parent_dir, 'data', 'classification', 'feedback')
+        os.makedirs(feedback_dir, exist_ok=True)
+
+        feedback_file = os.path.join(feedback_dir, 'feedback.jsonl')
+
+        feedback_data = feedback.dict()
+        feedback_data['feedback_time'] = datetime.now().isoformat()
+
+        with open(feedback_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(feedback_data, ensure_ascii=False) + '\n')
+
+        return {"message": "反馈提交成功", "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"反馈提交失败: {str(e)}")
+
+
+@app.get("/api/classify/categories", response_model=CategoryListResponse, summary="获取所有分类")
+async def get_all_categories():
+    """
+    获取所有可用的二级分类列表
+    """
+    try:
+        classifier = get_classifier()
+
+        # 获取分类和事件类型映射
+        categories = classifier.available_categories
+        by_event_type = classifier.event_type_mapping
+
+        return CategoryListResponse(
+            categories=categories,
+            total=len(categories),
+            by_event_type=by_event_type if by_event_type else None
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类失败: {str(e)}")
+
+
+@app.get("/api/classify/few-shot/{category}", response_model=FewShotExamplesResponse, summary="获取Few-shot示例")
+async def get_few_shot_examples(category: str):
+    """
+    获取指定分类的Few-shot示例
+    """
+    try:
+        classifier = get_classifier()
+
+        if category not in classifier.few_shot_examples:
+            raise HTTPException(status_code=404, detail=f"分类 '{category}' 不存在")
+
+        examples = classifier.few_shot_examples[category]
+
+        # 转换为响应格式
+        formatted_examples = [
+            {
+                'category': category,
+                'event_description': ex.get('事件描述', ''),
+                'event_type': ex.get('事件类型', ''),
+                'district': ex.get('区县名称', ''),
+                'street': ex.get('镇街名称', '')
+            }
+            for ex in examples
+        ]
+
+        return FewShotExamplesResponse(
+            category=category,
+            examples=formatted_examples,
+            total=len(formatted_examples)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取示例失败: {str(e)}")
+
+
+@app.get("/api/classify/stats", response_model=ClassificationStatsResponse, summary="获取分类统计")
+async def get_classification_stats():
+    """
+    获取分类统计数据
+    """
+    try:
+        # 从批量任务中统计
+        total_predictions = sum(task["processed"] for task in _batch_tasks.values())
+        total_success = sum(task["success_count"] for task in _batch_tasks.values())
+
+        # 统计分类分布
+        category_dist = {}
+        event_type_dist = {}
+        recent_predictions = []
+
+        for task in _batch_tasks.values():
+            if task.get("results"):
+                for result in task["results"][:10]:  # 只取前10个最近结果
+                    category = result.get("predicted_category")
+                    event_type = result.get("event_type")
+
+                    if category:
+                        category_dist[category] = category_dist.get(category, 0) + 1
+                    if event_type:
+                        event_type_dist[event_type] = event_type_dist.get(event_type, 0) + 1
+
+                    recent_predictions.append(result)
+
+        accuracy = total_success / total_predictions if total_predictions > 0 else 0.0
+
+        # 计算平均置信度
+        all_confidences = [
+            result.get("confidence", 0.0)
+            for task in _batch_tasks.values()
+            if task.get("results")
+            for result in task["results"]
+            if result.get("confidence") is not None
+        ]
+        avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
+
+        return ClassificationStatsResponse(
+            total_predictions=total_predictions,
+            accuracy=accuracy,
+            avg_confidence=avg_confidence,
+            category_distribution=category_dist,
+            event_type_distribution=event_type_dist,
+            recent_predictions=recent_predictions[:20]  # 最近20个预测
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
 
 
 if __name__ == "__main__":

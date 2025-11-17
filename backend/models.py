@@ -488,3 +488,96 @@ class OperationLogFilterOptions(BaseModel):
     operators: List[str]
     operation_types: List[str]
     resource_types: List[str]
+
+
+# ==================== 事件智能分类相关模型 ====================
+
+class ClassifySingleRequest(BaseModel):
+    """单事件分类请求"""
+    event_description: str
+    event_type: str
+    district: Optional[str] = ""
+    street: Optional[str] = ""
+
+
+class ClassifySingleResponse(BaseModel):
+    """单事件分类响应"""
+    predicted_category: str
+    confidence: float
+    reasoning: Optional[str] = None
+    timestamp: str
+
+
+class ClassifyBatchRequest(BaseModel):
+    """批量分类请求（用于JSON请求，CSV通过file upload）"""
+    events: List[Dict[str, str]]
+
+
+class ClassifyBatchTaskResponse(BaseModel):
+    """批量分类任务响应"""
+    task_id: str
+    message: str
+    total: int
+
+
+class ClassifyBatchStatusResponse(BaseModel):
+    """批量分类任务状态响应"""
+    task_id: str
+    status: str  # pending, processing, completed, failed
+    total: int
+    processed: int
+    success_count: int
+    results: Optional[List[Dict]] = None
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+class ClassificationFeedback(BaseModel):
+    """分类反馈模型"""
+    event_description: str
+    event_type: str
+    predicted_category: str
+    correct_category: str
+    confidence: float
+    feedback_time: Optional[str] = None
+
+
+class CategoryInfo(BaseModel):
+    """分类信息"""
+    category_name: str
+    event_types: List[str]
+    enabled: bool = True
+    example_count: int = 0
+
+
+class CategoryListResponse(BaseModel):
+    """分类列表响应"""
+    categories: List[str]
+    total: int
+    by_event_type: Optional[Dict[str, List[str]]] = None
+
+
+class FewShotExample(BaseModel):
+    """Few-shot示例"""
+    category: str
+    event_description: str
+    event_type: str
+    district: Optional[str] = ""
+    street: Optional[str] = ""
+
+
+class FewShotExamplesResponse(BaseModel):
+    """Few-shot示例列表响应"""
+    category: str
+    examples: List[FewShotExample]
+    total: int
+
+
+class ClassificationStatsResponse(BaseModel):
+    """分类统计响应"""
+    total_predictions: int
+    accuracy: Optional[float] = None
+    avg_confidence: float
+    category_distribution: Dict[str, int]
+    event_type_distribution: Dict[str, int]
+    recent_predictions: List[Dict]

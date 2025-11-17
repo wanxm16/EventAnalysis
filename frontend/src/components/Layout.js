@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout as AntLayout, Menu, Typography, Button, Space } from 'antd';
-import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, LogoutOutlined, BookOutlined, FileTextOutlined, AuditOutlined } from '@ant-design/icons';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, LogoutOutlined, BookOutlined, FileTextOutlined, AuditOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -57,6 +57,25 @@ const Layout = ({ children }) => {
       key: '/operation-logs',
       icon: <AuditOutlined />,
       label: '操作日志',
+    },
+    {
+      key: 'classification-submenu',
+      icon: <ThunderboltOutlined />,
+      label: '智能分类',
+      children: [
+        {
+          key: '/event-classification',
+          label: '单个事件分类',
+        },
+        {
+          key: '/event-classification/batch',
+          label: '批量分类',
+        },
+        {
+          key: '/event-classification/categories',
+          label: '定义分类',
+        },
+      ],
     },
   ];
 
