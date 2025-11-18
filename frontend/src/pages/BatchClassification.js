@@ -13,7 +13,8 @@ import {
   message,
   Tag,
   Typography,
-  Divider
+  Divider,
+  Tooltip
 } from 'antd';
 import {
   InboxOutlined,
@@ -27,6 +28,7 @@ import axios from 'axios';
 
 const { Dragger } = Upload;
 const { Text, Title } = Typography;
+const API_BASE_URL = 'http://localhost:8000';
 
 function BatchClassification() {
   const [taskStatus, setTaskStatus] = useState(null);
@@ -55,7 +57,7 @@ function BatchClassification() {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await axios.post('http://localhost:8000/api/classify/batch', formData, {
+        const response = await axios.post(`${API_BASE_URL}/api/classify/batch`, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -77,7 +79,7 @@ function BatchClassification() {
     setPolling(true);
     const timer = setInterval(async () => {
       try {
-        const response = await axios.get(`http://localhost:8000/api/classify/batch/${taskId}`);
+        const response = await axios.get(`${API_BASE_URL}/api/classify/batch/${taskId}`);
         const status = response.data;
         setTaskStatus(status);
 
@@ -108,7 +110,8 @@ function BatchClassification() {
       '事件类型',
       '预测分类',
       '置信度',
-      '分类依据'
+      '分类依据',
+      '标签建议'
     ];
 
     const csvContent = [
@@ -121,6 +124,10 @@ function BatchClassification() {
           r.predicted_category || '分类失败',
           r.confidence ? r.confidence.toFixed(2) : '0',
           `"${(r.reasoning || '').replace(/"/g, '""')}"`,
+          `"${(r.tags || [])
+            .map((tag) => `${tag.label || tag.tag_id}:${Math.round((tag.confidence || 0) * 100)}%`)
+            .join(' / ')
+            .replace(/"/g, '""')}"`
         ].join(',')
       ),
     ].join('\n');
@@ -191,6 +198,36 @@ function BatchClassification() {
           {confidence ? `${(confidence * 100).toFixed(1)}%` : '-'}
         </span>
       ),
+    },
+    {
+      title: '标签建议',
+      dataIndex: 'tags',
+      key: 'tags',
+      width: 240,
+      render: (tags) => {
+        if (!tags || tags.length === 0) {
+          return <Text type="secondary">-</Text>;
+        }
+        return (
+          <Space size={[4, 4]} wrap>
+            {tags.slice(0, 3).map((tag, index) => {
+              const percent = `${Math.round((tag.confidence || 0) * 100)}%`;
+              const tooltip = [
+                tag.label || tag.tag_id,
+                `置信度：${percent}`,
+                tag.reason
+              ]
+                .filter(Boolean)
+                .join(' | ');
+              return (
+                <Tooltip title={tooltip} key={`${tag.tag_id}-${index}`}>
+                  <Tag color="geekblue">{tag.label || tag.tag_id}</Tag>
+                </Tooltip>
+              );
+            })}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -345,7 +382,7 @@ function BatchClassification() {
               showQuickJumper: true,
               showTotal: (total) => `共 ${total} 条`,
             }}
-            scroll={{ x: 1000 }}
+            scroll={{ x: 1200 }}
           />
         </Card>
       )}

@@ -11,9 +11,11 @@ import time
 import logging
 import requests
 import os
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+
+from tag_service import merge_tag_library
 
 
 class QwenClassifier:
@@ -39,15 +41,20 @@ class QwenClassifier:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         parent_dir = os.path.dirname(current_dir)
         self.data_dir = os.path.join(parent_dir, 'data', 'classification')
+        self.custom_tag_file = os.path.join(self.data_dir, 'custom_tags.json')
 
         # 确保数据目录存在
         os.makedirs(self.data_dir, exist_ok=True)
 
         # 加载配置数据
+        self._ensure_custom_tag_storage()
+
         self.few_shot_examples = self._load_few_shot_examples()
         self.available_categories = list(self.few_shot_examples.keys()) if self.few_shot_examples else []
         self.event_type_mapping = self._load_event_type_mapping()
         self.category_aliases = self._load_category_aliases()
+        self.tag_library = self._load_tag_library()
+        self._apply_tag_library(self.tag_library)
 
         # 并发控制
         self.progress_lock = Lock()
@@ -96,6 +103,65 @@ class QwenClassifier:
             self.logger.error(f"加载分类别名失败: {e}")
             return {}
 
+    def _ensure_custom_tag_storage(self) -> None:
+        """确保自定义标签文件存在"""
+        if not os.path.exists(self.custom_tag_file):
+            with open(self.custom_tag_file, 'w', encoding='utf-8') as fp:
+                json.dump({"groups": [], "tags": []}, fp, ensure_ascii=False, indent=2)
+
+    def _load_custom_tags(self) -> Dict:
+        """加载自定义标签数据"""
+        try:
+            if not os.path.exists(self.custom_tag_file):
+                self._ensure_custom_tag_storage()
+            with open(self.custom_tag_file, 'r', encoding='utf-8') as fp:
+                data = json.load(fp)
+                data.setdefault('groups', [])
+                data.setdefault('tags', [])
+                return data
+        except Exception as e:
+            self.logger.error(f"加载自定义标签失败: {e}")
+            return {"groups": [], "tags": []}
+
+    def _apply_tag_library(self, tag_library: Dict) -> None:
+        """应用标签库数据到实例属性"""
+        self.tag_groups = tag_library.get('tag_groups', [])
+        self.tag_catalog = {
+            tag['id']: tag
+            for group in self.tag_groups
+            for tag in group.get('tags', [])
+        }
+        self.tag_catalog_by_label = {
+            tag.get('label'): tag
+            for tag in self.tag_catalog.values()
+            if tag.get('label')
+        }
+        self.event_type_tag_map = tag_library.get('event_type_recommendations', {})
+        self.category_tag_map = tag_library.get('category_recommendations', {})
+        self.default_tag_ids = tag_library.get('default_recommendations', [])
+
+    def reload_tag_library(self) -> None:
+        """重新加载标签库配置"""
+        self.tag_library = self._load_tag_library()
+        self._apply_tag_library(self.tag_library)
+
+    def _load_tag_library(self) -> Dict:
+        """加载并合并系统标签库与自定义标签"""
+        try:
+            file_path = os.path.join(self.data_dir, 'tag_library.json')
+            system_data = {}
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    system_data = json.load(f)
+            else:
+                self.logger.warning(f"标签库文件不存在: {file_path}")
+
+            custom_data = self._load_custom_tags()
+            return merge_tag_library(system_data, custom_data, include_inactive=False)
+        except Exception as e:
+            self.logger.error(f"加载标签库失败: {e}")
+            return {"tag_groups": []}
+
     def _get_valid_categories_for_event_type(self, event_type: str) -> List[str]:
         """
         根据事件类型获取有效的二级分类列表
@@ -117,51 +183,101 @@ class QwenClassifier:
 
         return valid_categories
 
+    def _get_tag_candidates(self, event_type: str = "", valid_categories: Optional[List[str]] = None) -> List[Dict]:
+        """
+        根据事件类型和候选分类获取推荐标签列表
+        """
+        candidate_ids: List[str] = []
+
+        if event_type and event_type in self.event_type_tag_map:
+            candidate_ids.extend(self.event_type_tag_map[event_type])
+
+        if valid_categories:
+            for category in valid_categories[:3]:
+                candidate_ids.extend(self.category_tag_map.get(category, []))
+
+        candidate_ids.extend(self.default_tag_ids)
+
+        # 去重并保留顺序
+        unique_ids = []
+        for tag_id in candidate_ids:
+            if tag_id not in unique_ids:
+                unique_ids.append(tag_id)
+
+        tags = [
+            self.tag_catalog[tag_id]
+            for tag_id in unique_ids
+            if tag_id in self.tag_catalog
+        ]
+
+        # 限制展示数量，避免提示词过长
+        return tags[:12]
+
+    def _format_tag_candidates_for_prompt(self, tags: List[Dict]) -> str:
+        """构造提示词中的标签说明"""
+        if not tags:
+            return "暂无预置标签，请根据事件描述自行拟合3-5个中文标签。"
+
+        formatted = []
+        for tag in tags:
+            label = tag.get('label', tag.get('id'))
+            tag_id = tag.get('id')
+            description = tag.get('description', '')
+            formatted.append(f"- {tag_id}（{label}）：{description}")
+
+        return "\n".join(formatted)
+
     def _build_prompt(self, event_description: str, event_type: str = "") -> str:
         """
-        构建分类提示词
-
-        Args:
-            event_description: 事件描述
-            event_type: 事件类型
-
-        Returns:
-            构建好的提示词
+        构建分类与标签提示词
         """
         valid_categories = self._get_valid_categories_for_event_type(event_type)
+        tag_candidates = self._get_tag_candidates(event_type, valid_categories)
 
-        prompt = f"""你是一个专业的事件分类专家，需要根据事件描述将事件分类到正确的二级分类中。
+        prompt = [
+            "你是一个专业的事件分类与标签标注专家，需要根据事件描述完成以下任务：",
+            "1. 从候选的二级分类中选择最合适的一个分类；",
+            "2. 结合标签库给出3-5个最能反映事件属性的标签。"
+        ]
 
-当前事件类型：{event_type if event_type else '未指定'}
+        prompt.append(f"\n当前事件类型：{event_type if event_type else '未指定'}")
+        prompt.append("可选的二级分类（必须从中选择一个）：")
+        for idx, category in enumerate(valid_categories[:30], start=1):
+            prompt.append(f"{idx}. {category}")
 
-该事件类型下可选的二级分类包括：
-"""
+        tag_text = self._format_tag_candidates_for_prompt(tag_candidates)
+        prompt.append("\n常用标签（TagID：含义），请选择最贴切的3-5个标签，可复用也可补充新的：")
+        prompt.append(tag_text)
 
-        categories_list = "、".join(valid_categories[:30])  # 限制显示前30个分类
-        prompt += f"{categories_list}\n\n"
-
-        # 添加Few-shot示例（选择最相关的5个）
         if self.few_shot_examples and valid_categories:
-            prompt += "以下是一些参考示例：\n\n"
+            prompt.append("\n以下是参考示例：")
             example_count = 0
-            for category in valid_categories[:5]:  # 只显示前5个分类的示例
+            for category in valid_categories[:5]:
                 examples = self.few_shot_examples.get(category, [])
                 if examples and example_count < 5:
-                    example = examples[0]  # 取第一个示例
-                    prompt += f"【分类：{category}】\n"
-                    prompt += f"事件描述：{example.get('事件描述', '')}\n\n"
+                    example = examples[0]
+                    prompt.append(f"【分类：{category}】事件描述：{example.get('事件描述', '')}")
                     example_count += 1
 
-        # 添加待分类事件
-        prompt += f"现在请分类以下事件：\n\n"
-        prompt += f"事件描述：{event_description}\n\n"
-        prompt += f"输出要求：\n"
-        prompt += f"1. 只输出最匹配的二级分类名称\n"
-        prompt += f"2. 必须从上述可选分类中选择一个\n"
-        prompt += f"3. 不要输出任何解释或其他内容\n\n"
-        prompt += f"二级分类："
+        prompt.append("\n请分析下方事件描述，并严格输出合法的 JSON：")
+        prompt.append(json.dumps({
+            "category": "<二级分类名称>",
+            "category_confidence": 0.0,
+            "tags": [
+                {"id": "tag_id", "confidence": 0.0, "reason": "简要原因"}
+            ],
+            "summary": "一句话解释分类依据"
+        }, ensure_ascii=False, indent=2))
 
-        return prompt
+        prompt.append("注意：")
+        prompt.append("1. category 必须来自候选分类；")
+        prompt.append("2. tags 至少提供3个，最多5个，id 使用上方提供的 tag_id，若新增标签请给出中文名称；")
+        prompt.append("3. 置信度为0-1之间的小数；")
+        prompt.append("4. 只输出 JSON，不要额外文字。")
+
+        prompt.append(f"\n事件描述：{event_description}")
+
+        return "\n".join(prompt)
 
     def _call_qwen_api(self, prompt: str) -> Optional[str]:
         """
@@ -296,7 +412,140 @@ class QwenClassifier:
 
         return best_match
 
-    def classify_single(self, event_data: Dict) -> Tuple[Optional[str], float, Optional[str]]:
+    def _clip_confidence(self, value: Any, default: float = 0.8) -> float:
+        """将置信度裁剪为0-1之间"""
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            return default
+        confidence = max(0.0, min(confidence, 1.0))
+        return confidence
+
+    def _extract_json_block(self, text: str) -> Optional[str]:
+        """从模型输出中提取JSON片段"""
+        if not text:
+            return None
+
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            return text[start:end + 1]
+        return None
+
+    def _normalize_tag_suggestions(self, tag_entries: Any) -> List[Dict[str, Any]]:
+        """将模型输出的标签转换为统一结构"""
+        if not tag_entries:
+            return []
+
+        normalized = []
+        seen_ids = set()
+
+        if isinstance(tag_entries, dict):
+            tag_entries = [tag_entries]
+
+        for entry in tag_entries:
+            tag_id = None
+            label = None
+            confidence = 0.75
+            reason = ""
+
+            if isinstance(entry, str):
+                tag_id = entry.strip()
+            elif isinstance(entry, dict):
+                tag_id = entry.get('id') or entry.get('tag_id')
+                label = entry.get('label') or entry.get('name')
+                reason = entry.get('reason') or entry.get('note') or ''
+                confidence = entry.get('confidence') or entry.get('score') or 0.75
+
+                # 如果模型错误地输出百分比
+                if isinstance(confidence, (int, float)) and confidence > 1:
+                    confidence = confidence / 100.0
+            else:
+                continue
+
+            if not tag_id and label:
+                tag_meta = self.tag_catalog_by_label.get(label)
+                if tag_meta:
+                    tag_id = tag_meta['id']
+
+            tag_meta = self.tag_catalog.get(tag_id) if tag_id else None
+
+            if not tag_meta and label:
+                tag_meta = self.tag_catalog_by_label.get(label)
+
+            resolved_id = tag_meta['id'] if tag_meta else (tag_id or label)
+            resolved_label = tag_meta.get('label') if tag_meta else (label or tag_id)
+
+            if not resolved_id or resolved_id in seen_ids:
+                continue
+
+            seen_ids.add(resolved_id)
+
+            normalized.append({
+                'tag_id': resolved_id,
+                'label': resolved_label,
+                'confidence': self._clip_confidence(confidence),
+                'reason': reason or (tag_meta.get('description') if tag_meta else "模型推荐"),
+                'source': 'ai_suggestion' if tag_meta else 'ai_custom'
+            })
+
+        return normalized[:5]
+
+    def _build_default_tag_suggestions(self, event_type: str, predicted_category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """在模型未输出标签时提供兜底标签"""
+        candidates = self._get_tag_candidates(
+            event_type,
+            [predicted_category] if predicted_category else None
+        )
+        suggestions = []
+        for tag in candidates[:3]:
+            suggestions.append({
+                'tag_id': tag.get('id'),
+                'label': tag.get('label', tag.get('id')),
+                'confidence': 0.6,
+                'reason': "策略推荐",
+                'source': 'system'
+            })
+        return suggestions
+
+    def _parse_model_output(
+        self,
+        raw_output: str,
+        valid_categories: List[str],
+        event_type: str
+    ) -> Optional[Tuple[Optional[str], float, str, List[Dict[str, Any]]]]:
+        """解析模型输出，返回分类和标签结果"""
+        if not raw_output:
+            return None
+
+        data = None
+        try:
+            data = json.loads(raw_output)
+        except json.JSONDecodeError:
+            json_block = self._extract_json_block(raw_output)
+            if json_block:
+                try:
+                    data = json.loads(json_block)
+                except json.JSONDecodeError:
+                    self.logger.warning("JSON解析失败，尝试回退到纯文本匹配")
+                    data = None
+
+        if not isinstance(data, dict):
+            return None
+
+        category_text = data.get('category') or data.get('predicted_category')
+        predicted_category = self._match_category(category_text or "", valid_categories) if category_text else None
+
+        confidence = self._clip_confidence(data.get('category_confidence') or data.get('confidence') or 0.8)
+        summary = data.get('summary') or data.get('reasoning') or f"模型输出: {raw_output}"
+        tags = self._normalize_tag_suggestions(data.get('tags') or data.get('tag_suggestions'))
+
+        if not tags:
+            tags = self._build_default_tag_suggestions(event_type, predicted_category)
+
+        return predicted_category, confidence, summary, tags
+
+    def classify_single(self, event_data: Dict) -> Tuple[Optional[str], float, Optional[str], List[Dict[str, Any]]]:
         """
         单事件分类
 
@@ -304,14 +553,14 @@ class QwenClassifier:
             event_data: 事件数据字典，包含 '事件描述' 和 '事件类型'
 
         Returns:
-            (predicted_category, confidence, reasoning) 三元组
+            (predicted_category, confidence, reasoning, tags)
         """
         event_description = event_data.get('事件描述', '')
         event_type = event_data.get('事件类型', '')
 
         if not event_description:
             self.logger.warning("事件描述为空")
-            return None, 0.0, "事件描述为空"
+            return None, 0.0, "事件描述为空", []
 
         # 构建提示词
         prompt = self._build_prompt(event_description, event_type)
@@ -320,21 +569,26 @@ class QwenClassifier:
         raw_output = self._call_qwen_api(prompt)
 
         if not raw_output:
-            return None, 0.0, "API调用失败"
+            return None, 0.0, "API调用失败", []
 
         # 获取有效分类
         valid_categories = self._get_valid_categories_for_event_type(event_type)
 
-        # 匹配分类
+        parsed_result = self._parse_model_output(raw_output, valid_categories, event_type)
+
+        if parsed_result:
+            return parsed_result
+
+        # 如果无法解析JSON，则退回到旧的匹配逻辑
         predicted_category = self._match_category(raw_output, valid_categories)
 
         if predicted_category:
-            # 简单的置信度估计：完全匹配为0.95，模糊匹配为0.80
             confidence = 0.95 if raw_output.strip() == predicted_category else 0.80
-            return predicted_category, confidence, f"模型输出: {raw_output}"
-        else:
-            self.logger.warning(f"无法匹配分类，模型输出: {raw_output}")
-            return None, 0.0, f"无法匹配，模型输出: {raw_output}"
+            tags = self._build_default_tag_suggestions(event_type, predicted_category)
+            return predicted_category, confidence, f"模型输出: {raw_output}", tags
+
+        self.logger.warning(f"无法匹配分类，模型输出: {raw_output}")
+        return None, 0.0, f"无法匹配，模型输出: {raw_output}", []
 
     def classify_batch(self, events: List[Dict], max_workers: int = 10) -> List[Dict]:
         """
@@ -359,13 +613,14 @@ class QwenClassifier:
             for future in as_completed(future_to_event):
                 idx = future_to_event[future]
                 try:
-                    predicted_category, confidence, reasoning = future.result()
+                    predicted_category, confidence, reasoning, tags = future.result()
                     results.append({
                         'index': idx,
                         'event': events[idx],
                         'predicted_category': predicted_category,
                         'confidence': confidence,
-                        'reasoning': reasoning
+                        'reasoning': reasoning,
+                        'tags': tags
                     })
 
                     with self.progress_lock:
@@ -379,7 +634,8 @@ class QwenClassifier:
                         'event': events[idx],
                         'predicted_category': None,
                         'confidence': 0.0,
-                        'reasoning': f"分类失败: {str(e)}"
+                        'reasoning': f"分类失败: {str(e)}",
+                        'tags': []
                     })
 
         # 按索引排序

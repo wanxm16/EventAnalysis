@@ -75,6 +75,10 @@ const Layout = ({ children }) => {
           key: '/event-classification/categories',
           label: '定义分类',
         },
+        {
+          key: '/event-classification/tags',
+          label: '标签管理',
+        },
       ],
     },
   ];

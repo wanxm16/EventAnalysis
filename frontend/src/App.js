@@ -18,9 +18,8 @@ import ClusterList from './pages/ClusterList';
 import PersonAnalysisList from './pages/PersonAnalysisList';
 import PersonAnalysisDetail from './pages/PersonAnalysisDetail';
 import StatisticsReport from './pages/StatisticsReport';
-import ReportList from './pages/ReportList';
-import ReportEdit from './pages/ReportEdit';
 // 已移除：AIChatPage
+// 已移除旧报告系统：ReportList, ReportEdit
 import TopicList from './pages/TopicList';
 import TopicCreate from './pages/TopicCreate';
 import TopicDetail from './pages/TopicDetail';
@@ -29,6 +28,8 @@ import OperationLogList from './pages/OperationLogList';
 import EventClassification from './pages/EventClassification';
 import BatchClassification from './pages/BatchClassification';
 import CategoryManagement from './pages/CategoryManagement';
+import ReportGenerator from './pages/ReportGenerator';
+import TagManagement from './pages/TagManagement';
 
 function App() {
   return (
@@ -99,14 +100,7 @@ function App() {
             <Route path="/reports" element={
               <ProtectedRoute>
                 <Layout>
-                  <ReportList />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            <Route path="/reports/:reportId/edit" element={
-              <ProtectedRoute>
-                <Layout>
-                  <ReportEdit />
+                  <ReportGenerator />
                 </Layout>
               </ProtectedRoute>
             } />
@@ -170,6 +164,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <CategoryManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/event-classification/tags" element={
+              <ProtectedRoute>
+                <Layout>
+                  <TagManagement />
                 </Layout>
               </ProtectedRoute>
             } />

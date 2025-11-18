@@ -1,0 +1,66 @@
+{
+  "groups": [
+    {
+      "id": "business",
+      "name": "业务标签",
+      "description": "与业务流程、处置节点相关的标签",
+      "type": "custom",
+      "max_tags": 20,
+      "order": 40,
+      "created_at": "2024-05-01T09:00:00+08:00",
+      "updated_at": "2024-05-01T09:00:00+08:00"
+    },
+    {
+      "id": "sentiment",
+      "name": "情感标签",
+      "description": "反映舆情、情绪和风险态势的标签",
+      "type": "custom",
+      "max_tags": 12,
+      "order": 50,
+      "created_at": "2024-05-01T09:05:00+08:00",
+      "updated_at": "2025-11-17T17:29:32.320386"
+    }
+  ],
+  "tags": [
+    {
+      "id": "business_material_missing",
+      "label": "材料缺失",
+      "group_id": "business",
+      "color": "#faad14",
+      "description": "上报材料不完整，需要补齐佐证信息",
+      "type": "custom",
+      "created_at": "2024-05-01T09:10:00+08:00",
+      "updated_at": "2024-05-01T09:10:00+08:00"
+    },
+    {
+      "id": "business_multi_department",
+      "label": "多部门协同",
+      "group_id": "business",
+      "color": "#1890ff",
+      "description": "事件需要跨部门联合处理",
+      "type": "custom",
+      "created_at": "2024-05-01T09:15:00+08:00",
+      "updated_at": "2024-05-01T09:15:00+08:00"
+    },
+    {
+      "id": "sentiment_public_opinion",
+      "label": "舆情敏感",
+      "group_id": "sentiment",
+      "color": "#722ed1",
+      "description": "事件易在网络扩散或被媒体关注",
+      "type": "custom",
+      "created_at": "2024-05-01T09:20:00+08:00",
+      "updated_at": "2024-05-01T09:20:00+08:00"
+    },
+    {
+      "id": "sentiment_high_emotion",
+      "label": "情绪激烈",
+      "group_id": "sentiment",
+      "color": "#f5222d",
+      "description": "当事人情绪激动，存在升级可能",
+      "type": "custom",
+      "created_at": "2024-05-01T09:25:00+08:00",
+      "updated_at": "2024-05-01T09:25:00+08:00"
+    }
+  ]
+}

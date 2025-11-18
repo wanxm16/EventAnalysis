@@ -1,0 +1,142 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "智能分类与多标签推荐的标签库，按照优先级、风险、跟进动作进行分组。",
+    "last_updated": "2024-05-01"
+  },
+  "tag_groups": [
+    {
+      "id": "priority",
+      "name": "处理优先级",
+      "description": "标记事件的紧急程度，指导派单顺序。",
+      "tags": [
+        {
+          "id": "priority_high",
+          "label": "高优先级",
+          "color": "#f5222d",
+          "description": "可能影响安全或舆情，需要立即处理。",
+          "type": "system"
+        },
+        {
+          "id": "priority_medium",
+          "label": "中优先级",
+          "color": "#faad14",
+          "description": "推荐在24小时内解决，存在升级风险。",
+          "type": "system"
+        },
+        {
+          "id": "priority_low",
+          "label": "低优先级",
+          "color": "#52c41a",
+          "description": "可按计划排期处理，对影响较小。",
+          "type": "system"
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "name": "风险识别",
+      "description": "辅助识别事件涉及的人群或领域风险。",
+      "tags": [
+        {
+          "id": "risk_sensitive",
+          "label": "敏感纠纷",
+          "color": "#722ed1",
+          "description": "涉及邻里/劳资等矛盾，可能激化。",
+          "type": "system"
+        },
+        {
+          "id": "risk_population",
+          "label": "重点人群",
+          "color": "#eb2f96",
+          "description": "涉及重点关注人员或复合型人群。",
+          "type": "system"
+        },
+        {
+          "id": "risk_safety",
+          "label": "安全隐患",
+          "color": "#1890ff",
+          "description": "涉及消防、设施或生产安全风险。",
+          "type": "system"
+        }
+      ]
+    },
+    {
+      "id": "workflow",
+      "name": "跟进动作",
+      "description": "提示办案人员下一步需要执行的动作。",
+      "tags": [
+        {
+          "id": "needs_followup",
+          "label": "需持续跟进",
+          "color": "#13c2c2",
+          "description": "事件需要持续跟踪回访。",
+          "type": "system"
+        },
+        {
+          "id": "waiting_info",
+          "label": "信息待补充",
+          "color": "#2f54eb",
+          "description": "描述不完整，需要补齐关键要素。",
+          "type": "system"
+        },
+        {
+          "id": "repeat_report",
+          "label": "疑似重复报案",
+          "color": "#a0d911",
+          "description": "与历史事件高度相似，需要核实。",
+          "type": "system"
+        }
+      ]
+    }
+  ],
+  "default_recommendations": [
+    "needs_followup",
+    "priority_medium",
+    "waiting_info"
+  ],
+  "event_type_recommendations": {
+    "矛盾纠纷": [
+      "priority_high",
+      "risk_sensitive",
+      "needs_followup"
+    ],
+    "消防安全": [
+      "risk_safety",
+      "priority_high",
+      "repeat_report"
+    ],
+    "城市管理": [
+      "priority_medium",
+      "needs_followup",
+      "waiting_info"
+    ],
+    "环境保护": [
+      "priority_medium",
+      "needs_followup",
+      "risk_safety"
+    ],
+    "安全生产": [
+      "priority_high",
+      "risk_safety",
+      "needs_followup"
+    ]
+  },
+  "category_recommendations": {
+    "物业管理-矛盾调解": [
+      "priority_medium",
+      "risk_sensitive",
+      "needs_followup"
+    ],
+    "市政设施-安全隐患": [
+      "priority_high",
+      "risk_safety",
+      "repeat_report"
+    ],
+    "生态环境-污染投诉": [
+      "priority_medium",
+      "needs_followup",
+      "waiting_info"
+    ]
+  }
+}

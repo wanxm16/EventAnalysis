@@ -35,9 +35,13 @@ from models import (
     # 智能分类相关模型
     ClassifySingleRequest, ClassifySingleResponse, ClassifyBatchRequest,
     ClassifyBatchTaskResponse, ClassifyBatchStatusResponse, ClassificationFeedback,
-    CategoryListResponse, FewShotExamplesResponse, ClassificationStatsResponse
+    CategoryListResponse, FewShotExamplesResponse, ClassificationStatsResponse, TagLibraryResponse,
+    TagDefinition,
+    TagListResponse, TagCreateRequest, TagUpdateRequest,
+    TagGroupCreateRequest, TagGroupUpdateRequest, TagGroupListResponse
 )
 from services import event_service, operation_log_service
+from tag_service import TagService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -819,6 +823,7 @@ async def get_operation_filter_options():
 # 全局分类器实例（延迟初始化）
 _classifier = None
 _batch_tasks = {}  # 批量任务存储
+_tag_service = TagService(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'classification'))
 
 def get_classifier():
     """获取分类器实例（单例模式）"""
@@ -845,7 +850,7 @@ async def classify_single_event(request: ClassifySingleRequest):
             '镇街名称': request.street
         }
 
-        predicted_category, confidence, reasoning = classifier.classify_single(event_data)
+        predicted_category, confidence, reasoning, tags = classifier.classify_single(event_data)
 
         if predicted_category is None:
             raise HTTPException(status_code=500, detail="分类失败，请检查输入或稍后重试")
@@ -854,6 +859,7 @@ async def classify_single_event(request: ClassifySingleRequest):
             predicted_category=predicted_category,
             confidence=confidence,
             reasoning=reasoning,
+            tags=tags,
             timestamp=datetime.now().isoformat()
         )
     except Exception as e:
@@ -920,7 +926,7 @@ async def classify_batch_events(file: UploadFile = File(...)):
                         '镇街名称': str(row.get('镇街名称', ''))
                     }
 
-                    predicted_category, confidence, reasoning = classifier.classify_single(event_data)
+                    predicted_category, confidence, reasoning, tags = classifier.classify_single(event_data)
 
                     if predicted_category:
                         success_count += 1
@@ -931,7 +937,8 @@ async def classify_batch_events(file: UploadFile = File(...)):
                         'event_type': event_data['事件类型'],
                         'predicted_category': predicted_category,
                         'confidence': float(confidence) if confidence else 0.0,
-                        'reasoning': reasoning
+                        'reasoning': reasoning,
+                        'tags': tags
                     })
 
                     _batch_tasks[task_id]["processed"] = int(idx) + 1
@@ -1031,6 +1038,138 @@ async def get_all_categories():
         raise HTTPException(status_code=500, detail=f"获取分类失败: {str(e)}")
 
 
+@app.get("/api/classify/tag-library", response_model=TagLibraryResponse, summary="获取标签库")
+async def get_tag_library():
+    """
+    获取智能分类的标签库定义
+    """
+    try:
+        classifier = get_classifier()
+        tag_groups = []
+
+        for group in classifier.tag_groups:
+            tags = [
+                {
+                    "tag_id": tag.get("id"),
+                    "label": tag.get("label"),
+                    "group_id": group.get("id"),
+                    "color": tag.get("color"),
+                    "description": tag.get("description"),
+                    "type": tag.get("type", "system")
+                }
+                for tag in group.get("tags", [])
+            ]
+            tag_groups.append({
+                "group_id": group.get("id"),
+                "name": group.get("name"),
+                "description": group.get("description"),
+                "tags": tags
+            })
+
+        return TagLibraryResponse(
+            metadata=classifier.tag_library.get("metadata"),
+            groups=tag_groups,
+            default_recommendations=classifier.tag_library.get("default_recommendations"),
+            event_type_recommendations=classifier.tag_library.get("event_type_recommendations"),
+            category_recommendations=classifier.tag_library.get("category_recommendations")
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取标签库失败: {str(e)}")
+
+
+@app.get("/api/classify/tags", response_model=TagListResponse, summary="查询标签列表")
+async def list_tags(
+    group_id: Optional[str] = Query(None, description="标签组ID"),
+    search: Optional[str] = Query(None, description="按名称/描述模糊搜索"),
+    include_system: bool = Query(False, description="是否包含系统标签")
+):
+    try:
+        tags, stats = _tag_service.list_tags(
+            group_id=group_id,
+            search=search,
+            include_system=include_system
+        )
+        return TagListResponse(tags=tags, total=len(tags), stats=stats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取标签失败: {str(e)}")
+
+
+@app.post("/api/classify/tags", response_model=TagDefinition, summary="创建标签")
+async def create_tag(request: TagCreateRequest):
+    try:
+        record = _tag_service.create_tag(request.dict())
+        classifier = get_classifier()
+        classifier.reload_tag_library()
+        tag = _tag_service.get_tag(record.get('id'))
+        return TagDefinition(**tag) if tag else TagDefinition(
+            tag_id=record.get('id'),
+            label=record.get('label'),
+            group_id=record.get('group_id'),
+            type="custom"
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建标签失败: {str(e)}")
+
+
+@app.put("/api/classify/tags/{tag_id}", response_model=TagDefinition, summary="更新标签")
+async def update_tag(tag_id: str, request: TagUpdateRequest):
+    try:
+        _tag_service.update_tag(tag_id, request.dict(exclude_unset=True))
+        classifier = get_classifier()
+        classifier.reload_tag_library()
+        tag = _tag_service.get_tag(tag_id)
+        if not tag:
+            raise HTTPException(status_code=404, detail="标签不存在")
+        return TagDefinition(**tag)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新标签失败: {str(e)}")
+
+
+@app.get("/api/classify/tag-groups", response_model=TagGroupListResponse, summary="查询标签组")
+async def list_tag_groups(include_system: bool = Query(True, description="是否包含系统标签组")):
+    try:
+        groups = _tag_service.list_groups(include_system=include_system)
+        return TagGroupListResponse(groups=groups, total=len(groups))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取标签组失败: {str(e)}")
+
+
+@app.post("/api/classify/tag-groups", response_model=TagGroupListResponse, summary="创建标签组")
+async def create_tag_group(request: TagGroupCreateRequest):
+    try:
+        _tag_service.create_group(request.dict())
+        classifier = get_classifier()
+        classifier.reload_tag_library()
+        groups = _tag_service.list_groups(include_system=True)
+        return TagGroupListResponse(groups=groups, total=len(groups))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建标签组失败: {str(e)}")
+
+
+@app.put("/api/classify/tag-groups/{group_id}", response_model=TagGroupListResponse, summary="更新标签组")
+async def update_tag_group(group_id: str, request: TagGroupUpdateRequest):
+    try:
+        _tag_service.update_group(group_id, request.dict(exclude_unset=True))
+        classifier = get_classifier()
+        classifier.reload_tag_library()
+        groups = _tag_service.list_groups(include_system=True)
+        return TagGroupListResponse(groups=groups, total=len(groups))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新标签组失败: {str(e)}")
+
+
 @app.get("/api/classify/few-shot/{category}", response_model=FewShotExamplesResponse, summary="获取Few-shot示例")
 async def get_few_shot_examples(category: str):
     """
@@ -1117,6 +1256,21 @@ async def get_classification_stats():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
+
+
+# ==================== AI报告生成系统 API ====================
+# 集成 EventReport 报告生成功能
+
+from report_gen.api import projects as report_projects
+from report_gen.api import prompts as report_prompts
+from report_gen.api import report as report_generation
+from report_gen.api import upload as report_upload
+
+# Include EventReport routers with /api prefix
+app.include_router(report_projects.router, prefix="/api", tags=["报告-项目管理"])
+app.include_router(report_prompts.router, prefix="/api", tags=["报告-Prompt管理"])
+app.include_router(report_generation.router, prefix="/api", tags=["报告-生成"])
+app.include_router(report_upload.router, prefix="/api", tags=["报告-文件上传"])
 
 
 if __name__ == "__main__":

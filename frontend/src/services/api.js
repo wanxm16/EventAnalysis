@@ -134,4 +134,17 @@ export const reportAPI = {
     api.get(`/reports/${id}/export`, { params: { format: 'docx', month }, responseType: 'blob' }),
 };
 
+// AI报告生成API
+export { default as reportApi } from './reportApi';
+
+export const tagAPI = {
+  getTagLibrary: () => api.get('/classify/tag-library'),
+  getTags: (params = {}) => api.get('/classify/tags', { params: serializeParams(params) }),
+  createTag: (payload) => api.post('/classify/tags', payload),
+  updateTag: (tagId, payload) => api.put(`/classify/tags/${tagId}`, payload),
+  getGroups: (includeSystem = true) => api.get('/classify/tag-groups', { params: { include_system: includeSystem } }),
+  createGroup: (payload) => api.post('/classify/tag-groups', payload),
+  updateGroup: (groupId, payload) => api.put(`/classify/tag-groups/${groupId}`, payload)
+};
+
 export default api; 

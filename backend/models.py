@@ -500,11 +500,21 @@ class ClassifySingleRequest(BaseModel):
     street: Optional[str] = ""
 
 
+class TagSuggestion(BaseModel):
+    """标签建议"""
+    tag_id: str
+    label: str
+    confidence: float
+    source: str
+    reason: Optional[str] = None
+
+
 class ClassifySingleResponse(BaseModel):
     """单事件分类响应"""
     predicted_category: str
     confidence: float
     reasoning: Optional[str] = None
+    tags: List[TagSuggestion]
     timestamp: str
 
 
@@ -581,3 +591,87 @@ class ClassificationStatsResponse(BaseModel):
     category_distribution: Dict[str, int]
     event_type_distribution: Dict[str, int]
     recent_predictions: List[Dict]
+
+
+class TagDefinition(BaseModel):
+    """标签定义"""
+    tag_id: str
+    label: str
+    group_id: Optional[str] = None
+    group_name: Optional[str] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+    source: Optional[str] = None
+    editable: Optional[bool] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TagGroup(BaseModel):
+    """标签分组"""
+    group_id: str
+    name: str
+    description: Optional[str] = None
+    source: Optional[str] = "system"
+    max_tags: Optional[int] = None
+    order: Optional[int] = None
+    editable: Optional[bool] = None
+    tag_count: Optional[int] = None
+    active_tag_count: Optional[int] = None
+    tags: List[TagDefinition]
+
+
+class TagLibraryResponse(BaseModel):
+    """标签库响应"""
+    metadata: Optional[Dict[str, Any]] = None
+    groups: List[TagGroup]
+    default_recommendations: Optional[List[str]] = None
+    event_type_recommendations: Optional[Dict[str, List[str]]] = None
+    category_recommendations: Optional[Dict[str, List[str]]] = None
+
+
+class TagListResponse(BaseModel):
+    """标签列表响应"""
+    tags: List[TagDefinition]
+    total: int
+    stats: Optional[Dict[str, Any]] = None
+
+
+class TagCreateRequest(BaseModel):
+    """创建标签请求"""
+    label: str
+    group_id: str
+    color: Optional[str] = "#1890ff"
+    description: Optional[str] = None
+
+
+class TagUpdateRequest(BaseModel):
+    """更新标签请求"""
+    label: Optional[str] = None
+    group_id: Optional[str] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class TagGroupCreateRequest(BaseModel):
+    """创建标签组请求"""
+    name: str
+    group_id: Optional[str] = None
+    description: Optional[str] = None
+    max_tags: Optional[int] = None
+    order: Optional[int] = None
+
+
+class TagGroupUpdateRequest(BaseModel):
+    """更新标签组请求"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    max_tags: Optional[int] = None
+    order: Optional[int] = None
+
+
+class TagGroupListResponse(BaseModel):
+    """标签组列表响应"""
+    groups: List[TagGroup]
+    total: int
