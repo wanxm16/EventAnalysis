@@ -33,6 +33,9 @@ import ReportList from './pages/ReportList';
 import ExampleManagement from './pages/ExampleManagement';
 import PromptManagement from './pages/PromptManagement';
 import TagManagement from './pages/TagManagement';
+import ClassificationTaskList from './pages/ClassificationTaskList';
+import ClassificationTaskCreate from './pages/ClassificationTaskCreate';
+import ClassificationTaskDetail from './pages/ClassificationTaskDetail';
 
 function App() {
   return (
@@ -195,6 +198,27 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <TagManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/event-classification/tasks" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ClassificationTaskList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/event-classification/tasks/create" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ClassificationTaskCreate />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/event-classification/tasks/:taskId" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ClassificationTaskDetail />
                 </Layout>
               </ProtectedRoute>
             } />

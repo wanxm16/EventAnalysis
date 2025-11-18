@@ -675,3 +675,65 @@ class TagGroupListResponse(BaseModel):
     """标签组列表响应"""
     groups: List[TagGroup]
     total: int
+
+
+# ==================== 分类任务管理相关模型 ====================
+
+class ClassificationTask(BaseModel):
+    """分类任务"""
+    id: str
+    name: str
+    task_type: str  # 'classify' 或 'tag'
+    status: str  # 'pending', 'running', 'completed', 'failed'
+    category_id: Optional[str] = None  # 分类任务使用
+    category_name: Optional[str] = None
+    tag_ids: Optional[List[str]] = None  # 打标任务使用
+    tag_names: Optional[List[str]] = None
+    file_name: str
+    total_count: int = 0
+    processed_count: int = 0
+    success_count: int = 0
+    failed_count: int = 0
+    created_by: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class ClassificationTaskCreate(BaseModel):
+    """创建分类任务请求"""
+    name: str
+    task_type: str  # 'classify' 或 'tag'
+    category_id: Optional[str] = None  # 分类任务必填
+    tag_ids: Optional[List[str]] = None  # 打标任务必填
+    created_by: str = "admin"
+
+
+class ClassificationTaskResult(BaseModel):
+    """分类任务结果"""
+    id: str
+    task_id: str
+    event_id: Optional[str] = None
+    event_title: str
+    event_description: str
+    predicted_category: Optional[str] = None  # 分类结果
+    predicted_tags: Optional[List[str]] = None  # 打标结果
+    confidence: float
+    reasoning: str  # 分类/打标依据
+    status: str  # 'success', 'failed'
+    error_message: Optional[str] = None
+    processed_at: str
+
+
+class ClassificationTaskListResponse(BaseModel):
+    """任务列表响应"""
+    tasks: List[ClassificationTask]
+    total: int
+
+
+class ClassificationTaskDetailResponse(BaseModel):
+    """任务详情响应"""
+    task: ClassificationTask
+    results: List[ClassificationTaskResult]
+    total_results: int

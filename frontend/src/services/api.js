@@ -147,4 +147,36 @@ export const tagAPI = {
   updateGroup: (groupId, payload) => api.put(`/classify/tag-groups/${groupId}`, payload)
 };
 
+// 分类任务管理API
+export const taskAPI = {
+  // 获取任务列表
+  getTasks: (params = {}) => api.get('/classify/tasks', { params: serializeParams(params) }),
+
+  // 创建任务
+  createTask: (payload) => api.post('/classify/tasks', payload),
+
+  // 上传Excel文件
+  uploadFile: (taskId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/classify/tasks/${taskId}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // 启动任务
+  startTask: (taskId) => api.post(`/classify/tasks/${taskId}/start`),
+
+  // 获取任务详情
+  getTaskDetail: (taskId, params = {}) =>
+    api.get(`/classify/tasks/${taskId}`, { params: serializeParams(params) }),
+
+  // 删除任务
+  deleteTask: (taskId) => api.delete(`/classify/tasks/${taskId}`),
+
+  // 导出结果
+  exportResults: (taskId) =>
+    api.get(`/classify/tasks/${taskId}/export`, { responseType: 'blob' })
+};
+
 export default api; 

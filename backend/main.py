@@ -38,10 +38,14 @@ from models import (
     CategoryListResponse, FewShotExamplesResponse, ClassificationStatsResponse, TagLibraryResponse,
     TagDefinition,
     TagListResponse, TagCreateRequest, TagUpdateRequest,
-    TagGroupCreateRequest, TagGroupUpdateRequest, TagGroupListResponse
+    TagGroupCreateRequest, TagGroupUpdateRequest, TagGroupListResponse,
+    # 分类任务相关
+    ClassificationTask, ClassificationTaskCreate, ClassificationTaskListResponse,
+    ClassificationTaskDetailResponse, ClassificationTaskResult
 )
 from services import event_service, operation_log_service
 from tag_service import TagService
+from classification_task_service import task_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1256,6 +1260,161 @@ async def get_classification_stats():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
+
+
+# ==================== 分类任务管理 API ====================
+
+@app.get("/api/classify/tasks", response_model=ClassificationTaskListResponse, summary="获取任务列表")
+async def get_classification_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100)
+):
+    """获取分类任务列表"""
+    try:
+        result = task_service.get_tasks(page=page, page_size=page_size)
+        return ClassificationTaskListResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+
+
+@app.post("/api/classify/tasks", response_model=ClassificationTask, summary="创建分类任务")
+async def create_classification_task(request: ClassificationTaskCreate):
+    """创建新的分类任务"""
+    try:
+        # 验证任务类型和参数
+        if request.task_type == 'classify' and not request.category_id:
+            raise HTTPException(status_code=400, detail="分类任务必须指定 category_id")
+
+        if request.task_type == 'tag' and not request.tag_ids:
+            raise HTTPException(status_code=400, detail="打标任务必须指定 tag_ids")
+
+        task_id = task_service.create_task(
+            name=request.name,
+            task_type=request.task_type,
+            category_id=request.category_id,
+            tag_ids=request.tag_ids,
+            created_by=request.created_by
+        )
+
+        task = task_service.get_task(task_id)
+        return ClassificationTask(**task)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建任务失败: {str(e)}")
+
+
+@app.post("/api/classify/tasks/{task_id}/upload", summary="上传Excel文件")
+async def upload_task_file(
+    task_id: str,
+    file: UploadFile = File(...)
+):
+    """上传任务的Excel文件"""
+    try:
+        # 验证文件类型
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="只支持Excel文件 (.xlsx, .xls)")
+
+        # 读取文件内容
+        content = await file.read()
+
+        # 上传并解析文件
+        result = task_service.upload_file(task_id, content, file.filename)
+
+        if not result.get('success'):
+            raise HTTPException(status_code=400, detail=result.get('error', '上传失败'))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"上传文件失败: {str(e)}")
+
+
+@app.post("/api/classify/tasks/{task_id}/start", summary="启动任务")
+async def start_classification_task(task_id: str):
+    """启动分类/打标任务"""
+    try:
+        task = task_service.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        if task['status'] != 'pending':
+            raise HTTPException(status_code=400, detail=f"任务状态为 {task['status']}，无法启动")
+
+        if not task.get('file_name'):
+            raise HTTPException(status_code=400, detail="请先上传Excel文件")
+
+        # 异步启动任务
+        task_service.start_task(task_id)
+
+        return {"success": True, "message": "任务已启动"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"启动任务失败: {str(e)}")
+
+
+@app.get("/api/classify/tasks/{task_id}", response_model=ClassificationTaskDetailResponse, summary="获取任务详情")
+async def get_classification_task_detail(
+    task_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200)
+):
+    """获取任务详情和结果"""
+    try:
+        result = task_service.get_task_detail(task_id, page=page, page_size=page_size)
+        if not result:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        return ClassificationTaskDetailResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
+
+
+@app.delete("/api/classify/tasks/{task_id}", summary="删除任务")
+async def delete_classification_task(task_id: str):
+    """删除分类任务"""
+    try:
+        success = task_service.delete_task(task_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        return {"success": True, "message": "任务已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
+
+
+@app.get("/api/classify/tasks/{task_id}/export", summary="导出任务结果")
+async def export_task_results(task_id: str):
+    """导出任务结果为Excel"""
+    try:
+        df = task_service.export_results(task_id)
+        if df is None:
+            raise HTTPException(status_code=404, detail="任务结果不存在")
+
+        # 导出为Excel
+        from io import BytesIO
+        output = BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+
+        task = task_service.get_task(task_id)
+        filename = f"{task['name']}_结果.xlsx"
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出结果失败: {str(e)}")
 
 
 # ==================== AI报告生成系统 API ====================

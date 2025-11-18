@@ -86,6 +86,10 @@ const Layout = ({ children }) => {
           label: '批量分类',
         },
         {
+          key: '/event-classification/tasks',
+          label: '分类任务',
+        },
+        {
           key: '/event-classification/categories',
           label: '定义分类',
         },
