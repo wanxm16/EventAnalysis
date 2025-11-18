@@ -21,7 +21,7 @@ import {
   CheckOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import eventAPI, { taskAPI, tagAPI } from '../services/api';
+import { eventAPI, taskAPI, tagAPI } from '../services/api';
 
 const { Title, Text, Paragraph } = Typography;
 const { Step } = Steps;
