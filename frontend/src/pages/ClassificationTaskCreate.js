@@ -55,9 +55,10 @@ function ClassificationTaskCreate() {
   const loadTagLibrary = async () => {
     try {
       const response = await tagAPI.getTagLibrary();
-      setTagLibrary(response.data);
+      setTagLibrary(response.data || { tags: [], groups: [] });
     } catch (error) {
       console.error('加载标签库失败:', error);
+      setTagLibrary({ tags: [], groups: [] });
     }
   };
 
@@ -213,7 +214,7 @@ function ClassificationTaskCreate() {
                   option.children.toLowerCase().includes(input.toLowerCase())
                 }
               >
-                {tagLibrary.tags.map((tag) => (
+                {(tagLibrary?.tags || []).map((tag) => (
                   <Select.Option key={tag.id} value={tag.id}>
                     {tag.label}
                   </Select.Option>
@@ -302,7 +303,7 @@ function ClassificationTaskCreate() {
               <p>
                 <Text strong>目标标签：</Text>
                 {form.getFieldValue('tag_ids')?.map(tagId =>
-                  tagLibrary.tags.find(t => t.id === tagId)?.label
+                  (tagLibrary?.tags || []).find(t => t.id === tagId)?.label
                 ).join(', ')}
               </p>
             )}
