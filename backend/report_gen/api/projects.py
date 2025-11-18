@@ -9,7 +9,7 @@ from ..services.project_initializer import ProjectInitializer
 from ..services.example_manager import ExampleManager
 from ..services.project_storage import ProjectStorage
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.get("", response_model=List[Project])

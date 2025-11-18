@@ -1,0 +1,22 @@
+[
+  {
+    "id": "chapter_1",
+    "title": "一、全区社会治理基本情况",
+    "order": 0
+  },
+  {
+    "id": "chapter_2",
+    "title": "二、高频社会治理问题隐患分析研判",
+    "order": 1
+  },
+  {
+    "id": "chapter_3",
+    "title": "三、社情民意热点问题分析预警",
+    "order": 2
+  },
+  {
+    "id": "chapter_4",
+    "title": "四、事件处置解决情况分析",
+    "order": 3
+  }
+]

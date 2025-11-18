@@ -9,7 +9,7 @@ from ..services.project_manager import ProjectManager
 from ..services.project_initializer import ProjectInitializer
 from ..utils import save_upload_file
 
-router = APIRouter(prefix="/api/upload", tags=["upload"])
+router = APIRouter(prefix="/upload", tags=["upload"])
 
 
 @router.post("/data", response_model=UploadResponse)

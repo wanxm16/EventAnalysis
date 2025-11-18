@@ -13,7 +13,7 @@ from ..utils import markdown_to_docx
 import tempfile
 import os
 
-router = APIRouter(prefix="/api/report", tags=["report"])
+router = APIRouter(prefix="/report", tags=["report"])
 
 @router.post("/generate", response_model=GenerateReportResponse)
 async def generate_report_chapter(request: GenerateReportRequest):

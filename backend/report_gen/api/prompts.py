@@ -16,7 +16,7 @@ from ..services.example_manager import ExampleManager
 from ..services.chapter_parser import ChapterParser
 from ..services.data_processor import DataProcessor
 
-router = APIRouter(prefix="/api/prompts", tags=["prompts"])
+router = APIRouter(prefix="/prompts", tags=["prompts"])
 
 
 class GeneratePromptRequest(BaseModel):
