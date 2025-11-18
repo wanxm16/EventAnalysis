@@ -21,7 +21,7 @@ function ExampleManagement() {
   const [exampleFiles, setExampleFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const projectId = 'default'; // (ؤy�ID
+  const projectId = 'default'; // 默认项目ID
 
   useEffect(() => {
     loadExampleFiles();
@@ -33,8 +33,8 @@ function ExampleManagement() {
       const files = await reportApi.getAllExamples(projectId);
       setExampleFiles(files || []);
     } catch (error) {
-      console.error('�}:��c1%:', error);
-      message.error('�}:��c1%');
+      console.error('加载示例文档失败:', error);
+      message.error('加载示例文档失败');
     } finally {
       setLoading(false);
     }
@@ -47,7 +47,7 @@ function ExampleManagement() {
     );
 
     if (!isAllowed) {
-      message.error('�/ Markdown (.md, .markdown) � Word (.docx, .doc) ��');
+      message.error('只支持 Markdown (.md, .markdown) 和 Word (.docx, .doc) 文件');
       return false;
     }
 
@@ -55,33 +55,28 @@ function ExampleManagement() {
     try {
       const response = await reportApi.uploadExampleFile(file, projectId);
       if (response.success) {
-        message.success(':��c
- �');
+        message.success('示例文档上传成功');
         loadExampleFiles();
       } else {
-        message.error(response.error || '
- 1%');
+        message.error(response.error || '上传失败');
       }
     } catch (error) {
-      console.error('
- 1%:', error);
-      message.error(error.response?.data?.detail || '
- 1%');
+      console.error('上传失败:', error);
+      message.error(error.response?.data?.detail || '上传失败');
     } finally {
       setUploading(false);
     }
-    return false; // ;bؤ
- L:
+    return false; // 阻止自动上传
   };
 
   const handleDelete = async (fileId) => {
     try {
       await reportApi.deleteExampleFile(fileId, projectId);
-      message.success(':��c� d');
+      message.success('示例文档已删除');
       loadExampleFiles();
     } catch (error) {
-      console.error(' d1%:', error);
-      message.error(' d1%');
+      console.error('删除失败:', error);
+      message.error('删除失败');
     }
   };
 
@@ -90,7 +85,7 @@ function ExampleManagement() {
       <div style={{ textAlign: 'center', padding: '100px 0' }}>
         <Spin size="large" />
         <div style={{ marginTop: 16 }}>
-          <Text type="secondary">�}-...</Text>
+          <Text type="secondary">加载中...</Text>
         </div>
       </div>
     );
@@ -98,14 +93,13 @@ function ExampleManagement() {
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <Title level={2}>:��c�</Title>
+      <Title level={2}>示例文档管理</Title>
       <Text type="secondary">
-        
- �:��c(��J.� AI f`��<���/ Markdown (.md) � Word (.docx, .doc) <
+        上传示例文档（已有报告样本），帮助 AI 学习报告格式和风格。支持 Markdown (.md) 和 Word (.docx, .doc) 格式。
       </Text>
 
       <Card
-        title=":��ch"
+        title="示例文件列表"
         extra={
           <Upload
             accept=".md,.markdown,.docx,.doc"
@@ -117,8 +111,7 @@ function ExampleManagement() {
               icon={<UploadOutlined />}
               loading={uploading}
             >
-              
- :��c
+              上传示例文档
             </Button>
           </Upload>
         }
@@ -127,11 +120,9 @@ function ExampleManagement() {
         {exampleFiles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
             <FileMarkdownOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-            <div>��:��c</div>
+            <div>暂无示例文档</div>
             <div style={{ fontSize: 12, marginTop: 8 }}>
-              ���
-�"
- :��c"	���
+              请点击"上传示例文档"按钮添加
             </div>
           </div>
         ) : (
@@ -146,7 +137,7 @@ function ExampleManagement() {
                     icon={<DeleteOutlined />}
                     onClick={() => handleDelete(item.id)}
                   >
-                     d
+                    删除
                   </Button>
                 ]}
               >
@@ -157,7 +148,7 @@ function ExampleManagement() {
                     />
                   }
                   title={item.name}
-                  description={`�c ID: ${item.id}`}
+                  description={`文档 ID: ${item.id}`}
                 />
               </List.Item>
             )}
