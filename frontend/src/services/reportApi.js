@@ -48,6 +48,11 @@ export const getAllExamples = async (projectId) => {
   return response.data;
 };
 
+export const deleteExampleFile = async (fileId, projectId) => {
+  const response = await axios.delete(`${API_BASE_URL}/upload/example/${fileId}?project_id=${projectId}`);
+  return response.data;
+};
+
 // 报告生成
 export const generateReportWithText = async (chapterId, textData, projectId, exampleFileIds = [], templateId = null) => {
   const response = await axios.post(`${API_BASE_URL}/report/generate-with-text`, {
@@ -78,6 +83,7 @@ export default {
   saveChapterData,
   uploadExampleFile,
   getAllExamples,
+  deleteExampleFile,
   generateReportWithText,
   exportToWord
 };

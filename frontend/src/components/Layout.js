@@ -49,9 +49,23 @@ const Layout = ({ children }) => {
       label: '统计报告',
     },
     {
-      key: '/reports',
+      key: 'reports-submenu',
       icon: <FileTextOutlined />,
       label: '月度报告',
+      children: [
+        {
+          key: '/reports',
+          label: '报告列表',
+        },
+        {
+          key: '/reports/examples',
+          label: '示例文档',
+        },
+        {
+          key: '/reports/prompts',
+          label: 'Prompt配置',
+        },
+      ],
     },
     {
       key: '/operation-logs',

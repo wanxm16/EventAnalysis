@@ -30,6 +30,8 @@ import BatchClassification from './pages/BatchClassification';
 import CategoryManagement from './pages/CategoryManagement';
 import ReportGenerator from './pages/ReportGenerator';
 import ReportList from './pages/ReportList';
+import ExampleManagement from './pages/ExampleManagement';
+import PromptManagement from './pages/PromptManagement';
 import TagManagement from './pages/TagManagement';
 
 function App() {
@@ -109,6 +111,20 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <ReportGenerator />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports/examples" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ExampleManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports/prompts" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PromptManagement />
                 </Layout>
               </ProtectedRoute>
             } />
