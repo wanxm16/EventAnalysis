@@ -258,8 +258,12 @@ class ClassificationTaskService:
                             '事件类型': event_type
                         }
 
-                        # 调用分类器
-                        predicted_category, confidence, reasoning, tags = self.classifier.classify_single(event_data)
+                        # 调用分类器，传入用户选择的分类列表
+                        custom_categories = task.get('category_names')
+                        predicted_category, confidence, reasoning, tags = self.classifier.classify_single(
+                            event_data,
+                            custom_categories=custom_categories
+                        )
 
                         task_result = {
                             "id": str(uuid.uuid4()),

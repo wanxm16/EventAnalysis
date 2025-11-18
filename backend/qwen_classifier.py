@@ -279,6 +279,55 @@ class QwenClassifier:
 
         return "\n".join(prompt)
 
+    def _build_custom_prompt(self, event_description: str, event_type: str, valid_categories: List[str], tag_candidates: List[Dict]) -> str:
+        """
+        构建使用自定义分类的提示词
+        """
+        prompt = [
+            "你是一个专业的事件分类与标签标注专家，需要根据事件描述完成以下任务：",
+            "1. 从候选的二级分类中选择最合适的一个分类；",
+            "2. 结合标签库给出3-5个最能反映事件属性的标签。"
+        ]
+
+        prompt.append(f"\n当前事件类型：{event_type if event_type else '未指定'}")
+        prompt.append("可选的二级分类（必须从中选择一个）：")
+        for idx, category in enumerate(valid_categories[:30], start=1):
+            prompt.append(f"{idx}. {category}")
+
+        tag_text = self._format_tag_candidates_for_prompt(tag_candidates)
+        prompt.append("\n常用标签（TagID：含义），请选择最贴切的3-5个标签，可复用也可补充新的：")
+        prompt.append(tag_text)
+
+        if self.few_shot_examples and valid_categories:
+            prompt.append("\n以下是参考示例：")
+            example_count = 0
+            for category in valid_categories[:5]:
+                examples = self.few_shot_examples.get(category, [])
+                if examples and example_count < 5:
+                    example = examples[0]
+                    prompt.append(f"【分类：{category}】事件描述：{example.get('事件描述', '')}")
+                    example_count += 1
+
+        prompt.append("\n请分析下方事件描述，并严格输出合法的 JSON：")
+        prompt.append(json.dumps({
+            "category": "<二级分类名称>",
+            "category_confidence": 0.0,
+            "tags": [
+                {"id": "tag_id", "confidence": 0.0, "reason": "简要原因"}
+            ],
+            "summary": "一句话解释分类依据"
+        }, ensure_ascii=False, indent=2))
+
+        prompt.append("注意：")
+        prompt.append("1. category 必须来自候选分类；")
+        prompt.append("2. tags 至少提供3个，最多5个，id 使用上方提供的 tag_id，若新增标签请给出中文名称；")
+        prompt.append("3. 置信度为0-1之间的小数；")
+        prompt.append("4. 只输出 JSON，不要额外文字。")
+
+        prompt.append(f"\n事件描述：{event_description}")
+
+        return "\n".join(prompt)
+
     def _call_qwen_api(self, prompt: str) -> Optional[str]:
         """
         调用千问API
@@ -545,12 +594,13 @@ class QwenClassifier:
 
         return predicted_category, confidence, summary, tags
 
-    def classify_single(self, event_data: Dict) -> Tuple[Optional[str], float, Optional[str], List[Dict[str, Any]]]:
+    def classify_single(self, event_data: Dict, custom_categories: Optional[List[str]] = None) -> Tuple[Optional[str], float, Optional[str], List[Dict[str, Any]]]:
         """
         单事件分类
 
         Args:
             event_data: 事件数据字典，包含 '事件描述' 和 '事件类型'
+            custom_categories: 可选的自定义分类列表，用于限制分类范围
 
         Returns:
             (predicted_category, confidence, reasoning, tags)
@@ -562,17 +612,25 @@ class QwenClassifier:
             self.logger.warning("事件描述为空")
             return None, 0.0, "事件描述为空", []
 
-        # 构建提示词
-        prompt = self._build_prompt(event_description, event_type)
+        # 获取有效分类 - 优先使用自定义分类
+        if custom_categories:
+            valid_categories = custom_categories
+        else:
+            valid_categories = self._get_valid_categories_for_event_type(event_type)
+
+        # 构建提示词（传入自定义分类作为event_type的替代）
+        if custom_categories:
+            # 临时修改_build_prompt的行为以使用自定义分类
+            tag_candidates = self._get_tag_candidates(event_type, valid_categories)
+            prompt = self._build_custom_prompt(event_description, event_type, valid_categories, tag_candidates)
+        else:
+            prompt = self._build_prompt(event_description, event_type)
 
         # 调用API
         raw_output = self._call_qwen_api(prompt)
 
         if not raw_output:
             return None, 0.0, "API调用失败", []
-
-        # 获取有效分类
-        valid_categories = self._get_valid_categories_for_event_type(event_type)
 
         parsed_result = self._parse_model_output(raw_output, valid_categories, event_type)
 
