@@ -248,14 +248,18 @@ class ClassificationTaskService:
                     event_title = str(row.get('事件标题', ''))
                     event_description = str(row.get('事件描述', ''))
                     event_id = str(row.get('事件ID', '')) if '事件ID' in row else None
+                    event_type = str(row.get('事件类型', '')) if '事件类型' in row else ''
 
                     if task['task_type'] == 'classify':
                         # 分类任务
-                        result = self.classifier.classify_single(
-                            event_title=event_title,
-                            event_description=event_description,
-                            category_id=task['category_id']
-                        )
+                        # 构建符合classifier期望的事件数据格式
+                        event_data = {
+                            '事件描述': f"{event_title}\n{event_description}" if event_title else event_description,
+                            '事件类型': event_type
+                        }
+
+                        # 调用分类器
+                        predicted_category, confidence, reasoning, tags = self.classifier.classify_single(event_data)
 
                         task_result = {
                             "id": str(uuid.uuid4()),
@@ -263,10 +267,10 @@ class ClassificationTaskService:
                             "event_id": event_id,
                             "event_title": event_title,
                             "event_description": event_description,
-                            "predicted_category": result.get('predicted_category'),
+                            "predicted_category": predicted_category,
                             "predicted_tags": None,
-                            "confidence": result.get('confidence', 0.0),
-                            "reasoning": result.get('reasoning', ''),
+                            "confidence": confidence,
+                            "reasoning": reasoning,
                             "status": "success",
                             "error_message": None,
                             "processed_at": datetime.now().isoformat()
@@ -275,11 +279,16 @@ class ClassificationTaskService:
 
                     else:  # tag
                         # 打标任务
-                        result = self.classifier.tag_event(
-                            event_title=event_title,
-                            event_description=event_description,
-                            tag_ids=task['tag_ids']
-                        )
+                        # 复用classify_single方法，从返回的tags中提取标签
+                        event_data = {
+                            '事件描述': f"{event_title}\n{event_description}" if event_title else event_description,
+                            '事件类型': event_type
+                        }
+
+                        predicted_category, confidence, reasoning, tags = self.classifier.classify_single(event_data)
+
+                        # 提取标签标签
+                        matched_tags = [tag['label'] for tag in tags if tag.get('label')]
 
                         task_result = {
                             "id": str(uuid.uuid4()),
@@ -288,9 +297,9 @@ class ClassificationTaskService:
                             "event_title": event_title,
                             "event_description": event_description,
                             "predicted_category": None,
-                            "predicted_tags": result.get('matched_tags', []),
-                            "confidence": result.get('confidence', 0.0),
-                            "reasoning": result.get('reasoning', ''),
+                            "predicted_tags": matched_tags,
+                            "confidence": confidence,
+                            "reasoning": reasoning,
                             "status": "success",
                             "error_message": None,
                             "processed_at": datetime.now().isoformat()
