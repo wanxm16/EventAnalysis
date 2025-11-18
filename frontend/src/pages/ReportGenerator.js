@@ -11,36 +11,67 @@ import {
   Upload,
   Tag,
   Row,
-  Col
+  Col,
+  PageHeader
 } from 'antd';
 import {
   ThunderboltOutlined,
   FileWordOutlined,
   UploadOutlined,
   DeleteOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  ArrowLeftOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import axios from 'axios';
-import { reportApi } from '../services/api';
+import { reportApi, reportAPI } from '../services/api';
 
 const { TextArea } = Input;
 const { Title, Text, Paragraph } = Typography;
 
 function ReportGenerator() {
+  const { id: reportId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [reportInfo, setReportInfo] = useState({
+    title: location.state?.title || '',
+    month: location.state?.month || ''
+  });
   const [inputData, setInputData] = useState('');
   const [generatedContent, setGeneratedContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exampleFiles, setExampleFiles] = useState([]);
-  const [projectId, setProjectId] = useState('default');
+  const [projectId, setProjectId] = useState(reportId || 'default');
   const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
+    if (reportId) {
+      loadReportData();
+    }
     loadExampleFiles();
     loadSavedData();
-  }, []);
+  }, [reportId]);
+
+  const loadReportData = async () => {
+    try {
+      const report = await reportAPI.getReport(reportId);
+      setReportInfo({
+        title: report.title || '',
+        month: report.month || ''
+      });
+      if (report.content_md_draft) {
+        setGeneratedContent(report.content_md_draft);
+      }
+    } catch (error) {
+      console.error('加载报告数据失败:', error);
+      message.warning('加载报告数据失败，使用默认配置');
+    }
+  };
 
   const loadExampleFiles = async () => {
     try {
@@ -172,14 +203,42 @@ function ReportGenerator() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Title level={2}>
-        <FileTextOutlined /> AI月度报告生成
-      </Title>
-      <Text type="secondary">
-        基于 DeepSeek 大模型的智能月度报告生成系统，输入数据即可自动生成专业报告
-      </Text>
+      {reportInfo.title && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/reports')}
+            >
+              返回报告列表
+            </Button>
+          </div>
+          <Card style={{ marginBottom: 24, background: '#f5f5f5' }}>
+            <Space direction="vertical" size="small">
+              <Title level={3} style={{ margin: 0 }}>
+                <FileTextOutlined /> {reportInfo.title}
+              </Title>
+              {reportInfo.month && (
+                <Text type="secondary">
+                  <CalendarOutlined /> 报告月份：{reportInfo.month}
+                </Text>
+              )}
+            </Space>
+          </Card>
+        </>
+      )}
 
-      <Divider />
+      {!reportInfo.title && (
+        <>
+          <Title level={2}>
+            <FileTextOutlined /> AI月度报告生成
+          </Title>
+          <Text type="secondary">
+            基于 DeepSeek 大模型的智能月度报告生成系统，输入数据即可自动生成专业报告
+          </Text>
+          <Divider />
+        </>
+      )}
 
       <Row gutter={24}>
         <Col span={24}>

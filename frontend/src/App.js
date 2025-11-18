@@ -29,6 +29,7 @@ import EventClassification from './pages/EventClassification';
 import BatchClassification from './pages/BatchClassification';
 import CategoryManagement from './pages/CategoryManagement';
 import ReportGenerator from './pages/ReportGenerator';
+import ReportList from './pages/ReportList';
 import TagManagement from './pages/TagManagement';
 
 function App() {
@@ -98,6 +99,13 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/reports" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ReportList />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports/:id/edit" element={
               <ProtectedRoute>
                 <Layout>
                   <ReportGenerator />
