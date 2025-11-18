@@ -104,20 +104,8 @@ class ClassificationTaskService:
         tag_names = None
 
         if task_type == 'classify' and category_ids:
-            # 从custom_categories.json获取分类名称
-            try:
-                custom_categories_file = self.data_dir / "custom_categories.json"
-                if custom_categories_file.exists():
-                    with open(custom_categories_file, 'r', encoding='utf-8') as f:
-                        categories = json.load(f)
-                        category_names = []
-                        for category_id in category_ids:
-                            for cat in categories:
-                                if cat['id'] == category_id:
-                                    category_names.append(cat['name'])
-                                    break
-            except Exception:
-                pass
+            # category_ids现在直接就是分类名称列表
+            category_names = category_ids
 
         elif task_type == 'tag' and tag_ids:
             # 从tag_library.json获取标签名称

@@ -195,8 +195,8 @@ function ClassificationTaskCreate() {
                 }
               >
                 {categories.map((cat) => (
-                  <Select.Option key={cat.id} value={cat.id}>
-                    {cat.name}
+                  <Select.Option key={cat} value={cat}>
+                    {cat}
                   </Select.Option>
                 ))}
               </Select>
