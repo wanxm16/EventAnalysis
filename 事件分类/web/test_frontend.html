@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 数据测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1890ff;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #1890ff;
+            padding-bottom: 10px;
+        }
+        .stat {
+            display: inline-block;
+            background: #e6f7ff;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .tag {
+            background: #1890ff;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .example {
+            background: #f0f0f0;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #52c41a;
+        }
+        .example-title {
+            font-weight: bold;
+            color: #52c41a;
+            margin-bottom: 8px;
+        }
+        .example-content {
+            color: #666;
+            line-height: 1.6;
+        }
+        button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #40a9ff;
+        }
+        .loading {
+            color: #999;
+            font-style: italic;
+        }
+        .error {
+            color: #f5222d;
+            padding: 10px;
+            background: #fff2f0;
+            border-radius: 4px;
+            border: 1px solid #ffccc7;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 事件分类系统 - API 数据测试</h1>
+
+    <div class="section">
+        <button onclick="loadAllData()">🔄 加载所有数据</button>
+        <button onclick="loadCategories()">📋 加载分类</button>
+        <button onclick="loadEventTypes()">📝 加载事件类型</button>
+        <button onclick="loadMapping()">🔗 加载映射关系</button>
+        <button onclick="loadFewShot()">💡 加载Few-shot示例</button>
+    </div>
+
+    <!-- 分类统计 -->
+    <div class="section" id="stats-section" style="display:none;">
+        <h2>📊 数据统计</h2>
+        <div id="stats"></div>
+    </div>
+
+    <!-- 分类列表 -->
+    <div class="section" id="categories-section" style="display:none;">
+        <h2>📋 所有二级分类</h2>
+        <div class="list" id="categories"></div>
+    </div>
+
+    <!-- 事件类型 -->
+    <div class="section" id="event-types-section" style="display:none;">
+        <h2>📝 所有事件类型</h2>
+        <div class="list" id="event-types"></div>
+    </div>
+
+    <!-- 映射关系 -->
+    <div class="section" id="mapping-section" style="display:none;">
+        <h2>🔗 事件类型与分类映射关系 (前3个)</h2>
+        <div id="mapping"></div>
+    </div>
+
+    <!-- Few-shot示例 -->
+    <div class="section" id="few-shot-section" style="display:none;">
+        <h2>💡 Few-shot 示例 (前3个分类)</h2>
+        <div id="few-shot"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+
+        async function loadCategories() {
+            try {
+                const response = await fetch(`${API_BASE}/categories`);
+                const data = await response.json();
+
+                document.getElementById('categories-section').style.display = 'block';
+                document.getElementById('categories').innerHTML =
+                    data.categories.map(cat => `<div class="tag">${cat}</div>`).join('');
+
+                updateStats('categories', data.total);
+            } catch (error) {
+                showError('categories', error);
+            }
+        }
+
+        async function loadEventTypes() {
+            try {
+                const response = await fetch(`${API_BASE}/event-types`);
+                const data = await response.json();
+
+                document.getElementById('event-types-section').style.display = 'block';
+                document.getElementById('event-types').innerHTML =
+                    data.event_types.map(type => `<div class="tag">${type}</div>`).join('');
+
+                updateStats('event-types', data.total);
+            } catch (error) {
+                showError('event-types', error);
+            }
+        }
+
+        async function loadMapping() {
+            try {
+                const response = await fetch(`${API_BASE}/categories/mapping`);
+                const data = await response.json();
+
+                document.getElementById('mapping-section').style.display = 'block';
+
+                let html = '';
+                const entries = Object.entries(data).slice(0, 3);
+                entries.forEach(([eventType, categories]) => {
+                    html += `<div class="example">
+                        <div class="example-title">📌 ${eventType} (${categories.length}个分类)</div>
+                        <div class="example-content">${categories.join('、')}</div>
+                    </div>`;
+                });
+
+                document.getElementById('mapping').innerHTML = html;
+                updateStats('mapping', Object.keys(data).length);
+            } catch (error) {
+                showError('mapping', error);
+            }
+        }
+
+        async function loadFewShot() {
+            try {
+                const response = await fetch(`${API_BASE}/few-shot`);
+                const data = await response.json();
+
+                document.getElementById('few-shot-section').style.display = 'block';
+
+                let html = '';
+                const entries = Object.entries(data).slice(0, 3);
+                entries.forEach(([category, examples]) => {
+                    html += `<div class="example">
+                        <div class="example-title">✨ ${category} (${examples.length}个示例)</div>`;
+
+                    if (examples.length > 0) {
+                        const ex = examples[0];
+                        html += `<div class="example-content">
+                            <strong>事件描述:</strong> ${ex['事件描述'].substring(0, 100)}...<br>
+                            <strong>事件类型:</strong> ${ex['事件类型']}<br>
+                            <strong>区县:</strong> ${ex['区县名称'] || '未指定'}<br>
+                            <strong>镇街:</strong> ${ex['镇街名称'] || '未指定'}
+                        </div>`;
+                    }
+                    html += `</div>`;
+                });
+
+                document.getElementById('few-shot').innerHTML = html;
+                updateStats('few-shot', Object.keys(data).length);
+            } catch (error) {
+                showError('few-shot', error);
+            }
+        }
+
+        async function loadAllData() {
+            document.getElementById('stats-section').style.display = 'block';
+            document.getElementById('stats').innerHTML = '<div class="loading">⏳ 正在加载所有数据...</div>';
+
+            await loadCategories();
+            await loadEventTypes();
+            await loadMapping();
+            await loadFewShot();
+
+            console.log('✅ 所有数据加载完成！');
+        }
+
+        function updateStats(name, value) {
+            const statsDiv = document.getElementById('stats');
+            const statElements = {
+                'categories': '二级分类总数',
+                'event-types': '事件类型总数',
+                'mapping': '映射关系数',
+                'few-shot': 'Few-shot分类数'
+            };
+
+            const existing = document.getElementById(`stat-${name}`);
+            const statHtml = `<div class="stat" id="stat-${name}">${statElements[name]}: <span style="color:#1890ff">${value}</span></div>`;
+
+            if (existing) {
+                existing.outerHTML = statHtml;
+            } else {
+                statsDiv.innerHTML += statHtml;
+            }
+        }
+
+        function showError(section, error) {
+            const el = document.getElementById(section);
+            if (el) {
+                el.innerHTML = `<div class="error">❌ 加载失败: ${error.message}</div>`;
+            }
+        }
+
+        // 页面加载时自动加载数据
+        window.onload = () => {
+            loadAllData();
+        };
+    </script>
+</body>
+</html>
