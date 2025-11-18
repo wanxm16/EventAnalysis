@@ -46,7 +46,7 @@ function ClassificationTaskCreate() {
   const loadCategories = async () => {
     try {
       const response = await eventAPI.getCategories();
-      setCategories(response.data.categories || []);
+      setCategories(response.categories || []);
     } catch (error) {
       console.error('加载分类列表失败:', error);
     }
@@ -55,7 +55,7 @@ function ClassificationTaskCreate() {
   const loadTagLibrary = async () => {
     try {
       const response = await tagAPI.getTagLibrary();
-      setTagLibrary(response.data || { tags: [], groups: [] });
+      setTagLibrary(response || { tags: [], groups: [] });
     } catch (error) {
       console.error('加载标签库失败:', error);
       setTagLibrary({ tags: [], groups: [] });
@@ -76,7 +76,7 @@ function ClassificationTaskCreate() {
       };
 
       const response = await taskAPI.createTask(payload);
-      setTaskId(response.data.id);
+      setTaskId(response.id);
       message.success('任务创建成功');
       setCurrent(1);
     } catch (error) {
@@ -101,13 +101,13 @@ function ClassificationTaskCreate() {
     try {
       const response = await taskAPI.uploadFile(taskId, file);
 
-      if (response.data.success) {
+      if (response.success) {
         message.success('文件上传成功');
-        setUploadPreview(response.data.preview);
+        setUploadPreview(response.preview);
         setFileList([file]);
         setCurrent(2);
       } else {
-        message.error(response.data.error || '文件上传失败');
+        message.error(response.error || '文件上传失败');
       }
     } catch (error) {
       console.error('上传文件失败:', error);

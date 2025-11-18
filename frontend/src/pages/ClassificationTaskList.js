@@ -54,10 +54,10 @@ function ClassificationTaskList() {
         page: pagination.current,
         page_size: pagination.pageSize
       });
-      setTasks(response.data.tasks);
+      setTasks(response.tasks);
       setPagination({
         ...pagination,
-        total: response.data.total
+        total: response.total
       });
     } catch (error) {
       console.error('加载任务列表失败:', error);

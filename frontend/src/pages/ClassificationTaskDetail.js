@@ -58,11 +58,11 @@ function ClassificationTaskDetail() {
         page_size: pagination.pageSize
       });
 
-      setTask(response.data.task);
-      setResults(response.data.results);
+      setTask(response.task);
+      setResults(response.results);
       setPagination({
         ...pagination,
-        total: response.data.total_results
+        total: response.total_results
       });
     } catch (error) {
       console.error('加载任务详情失败:', error);
