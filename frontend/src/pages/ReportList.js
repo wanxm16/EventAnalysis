@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Space, Table, Typography, Modal, Form, Input, DatePicker, message } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined, CloudUploadOutlined, FileWordOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, FileWordOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { reportAPI } from '../services/api';
@@ -51,7 +51,7 @@ const ReportList = () => {
     { title: '标题', dataIndex: 'title', key: 'title', render: (t, r) => <Button type="link" onClick={() => navigate(`/reports/${r.id}/edit`)}>{t}</Button> },
     { title: '月份', dataIndex: 'month', key: 'month', width: 120 },
     { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180 },
-    { title: '操作', key: 'op', width: 260, render: (_, r) => (
+    { title: '操作', key: 'op', width: 200, render: (_, r) => (
       <Space>
         <Button icon={<EditOutlined />} onClick={() => navigate(`/reports/${r.id}/edit`)}>编辑</Button>
         <Button icon={<EyeOutlined />} onClick={async () => {
@@ -63,9 +63,6 @@ const ReportList = () => {
             message.error('预览失败');
           }
         }}>预览</Button>
-        <Button icon={<CloudUploadOutlined />} disabled={r.status==='published'} onClick={async () => {
-          try { await reportAPI.publish(r.id, r.month); message.success('发布成功'); load(); } catch (e) { message.error('发布失败'); }
-        }}>发布</Button>
         <Button icon={<FileWordOutlined />} onClick={async () => {
           try {
             const blob = await reportAPI.exportDocx(r.id, r.month);
