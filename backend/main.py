@@ -1282,8 +1282,8 @@ async def create_classification_task(request: ClassificationTaskCreate):
     """创建新的分类任务"""
     try:
         # 验证任务类型和参数
-        if request.task_type == 'classify' and not request.category_id:
-            raise HTTPException(status_code=400, detail="分类任务必须指定 category_id")
+        if request.task_type == 'classify' and not request.category_ids:
+            raise HTTPException(status_code=400, detail="分类任务必须指定 category_ids")
 
         if request.task_type == 'tag' and not request.tag_ids:
             raise HTTPException(status_code=400, detail="打标任务必须指定 tag_ids")
@@ -1291,7 +1291,7 @@ async def create_classification_task(request: ClassificationTaskCreate):
         task_id = task_service.create_task(
             name=request.name,
             task_type=request.task_type,
-            category_id=request.category_id,
+            category_ids=request.category_ids,
             tag_ids=request.tag_ids,
             created_by=request.created_by
         )

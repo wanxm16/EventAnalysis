@@ -94,26 +94,28 @@ class ClassificationTaskService:
                 return task
         return None
 
-    def create_task(self, name: str, task_type: str, category_id: Optional[str] = None,
+    def create_task(self, name: str, task_type: str, category_ids: Optional[List[str]] = None,
                    tag_ids: Optional[List[str]] = None, created_by: str = "admin") -> str:
         """创建任务"""
         task_id = str(int(datetime.now().timestamp() * 1000))
 
         # 获取分类/标签名称
-        category_name = None
+        category_names = None
         tag_names = None
 
-        if task_type == 'classify' and category_id:
+        if task_type == 'classify' and category_ids:
             # 从custom_categories.json获取分类名称
             try:
                 custom_categories_file = self.data_dir / "custom_categories.json"
                 if custom_categories_file.exists():
                     with open(custom_categories_file, 'r', encoding='utf-8') as f:
                         categories = json.load(f)
-                        for cat in categories:
-                            if cat['id'] == category_id:
-                                category_name = cat['name']
-                                break
+                        category_names = []
+                        for category_id in category_ids:
+                            for cat in categories:
+                                if cat['id'] == category_id:
+                                    category_names.append(cat['name'])
+                                    break
             except Exception:
                 pass
 
@@ -139,8 +141,8 @@ class ClassificationTaskService:
             "name": name,
             "task_type": task_type,
             "status": "pending",
-            "category_id": category_id,
-            "category_name": category_name,
+            "category_ids": category_ids,
+            "category_names": category_names,
             "tag_ids": tag_ids,
             "tag_names": tag_names,
             "file_name": "",

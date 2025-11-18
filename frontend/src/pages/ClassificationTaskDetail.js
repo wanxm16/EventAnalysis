@@ -219,7 +219,11 @@ function ClassificationTaskDetail() {
           </Descriptions.Item>
           <Descriptions.Item label={task.task_type === 'classify' ? '目标分类' : '目标标签'}>
             {task.task_type === 'classify' ?
-              (task.category_name || '-') :
+              (task.category_names && task.category_names.length > 0 ?
+                task.category_names.map((cat, idx) => (
+                  <Tag key={idx} color="blue">{cat}</Tag>
+                )) : '-'
+              ) :
               (task.tag_names && task.tag_names.length > 0 ?
                 task.tag_names.map((tag, idx) => (
                   <Tag key={idx} color="green">{tag}</Tag>

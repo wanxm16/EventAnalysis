@@ -64,13 +64,13 @@ function ClassificationTaskCreate() {
 
   const handleStep1Next = async () => {
     try {
-      const values = await form.validateFields(['name', 'task_type', 'category_id', 'tag_ids']);
+      const values = await form.validateFields(['name', 'task_type', 'category_ids', 'tag_ids']);
 
       setLoading(true);
       const payload = {
         name: values.name,
         task_type: values.task_type,
-        category_id: values.task_type === 'classify' ? values.category_id : null,
+        category_ids: values.task_type === 'classify' ? values.category_ids : null,
         tag_ids: values.task_type === 'tag' ? values.tag_ids : null,
         created_by: 'admin'
       };
@@ -183,11 +183,12 @@ function ClassificationTaskCreate() {
           {taskType === 'classify' ? (
             <Form.Item
               label="选择分类"
-              name="category_id"
-              rules={[{ required: true, message: '请选择分类' }]}
+              name="category_ids"
+              rules={[{ required: true, message: '请选择至少一个分类' }]}
             >
               <Select
-                placeholder="请选择要识别的分类"
+                mode="multiple"
+                placeholder="请选择要识别的分类（可多选）"
                 showSearch
                 filterOption={(input, option) =>
                   option.children.toLowerCase().includes(input.toLowerCase())
@@ -297,7 +298,9 @@ function ClassificationTaskCreate() {
             {form.getFieldValue('task_type') === 'classify' ? (
               <p>
                 <Text strong>目标分类：</Text>
-                {categories.find(c => c.id === form.getFieldValue('category_id'))?.name}
+                {form.getFieldValue('category_ids')?.map(catId =>
+                  categories.find(c => c.id === catId)?.name
+                ).join(', ')}
               </p>
             ) : (
               <p>

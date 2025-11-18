@@ -86,6 +86,11 @@ export const eventAPI = {
     return api.get('/health');
   },
 
+  // 获取分类列表
+  getCategories: () => {
+    return api.get('/classify/categories');
+  },
+
   importEvents: (file, mode = 'append') => {
     const formData = new FormData();
     formData.append('file', file);

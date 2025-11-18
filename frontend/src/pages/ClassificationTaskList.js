@@ -142,7 +142,17 @@ function ClassificationTaskList() {
       width: 200,
       render: (_, record) => {
         if (record.task_type === 'classify') {
-          return <Text>{record.category_name || '-'}</Text>;
+          return (
+            <div>
+              {record.category_names && record.category_names.length > 0 ? (
+                record.category_names.map((cat, idx) => (
+                  <Tag key={idx} color="blue" style={{ marginBottom: 4 }}>
+                    {cat}
+                  </Tag>
+                ))
+              ) : '-'}
+            </div>
+          );
         } else {
           return (
             <div>

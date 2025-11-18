@@ -685,8 +685,8 @@ class ClassificationTask(BaseModel):
     name: str
     task_type: str  # 'classify' 或 'tag'
     status: str  # 'pending', 'running', 'completed', 'failed'
-    category_id: Optional[str] = None  # 分类任务使用
-    category_name: Optional[str] = None
+    category_ids: Optional[List[str]] = None  # 分类任务使用（支持多个）
+    category_names: Optional[List[str]] = None
     tag_ids: Optional[List[str]] = None  # 打标任务使用
     tag_names: Optional[List[str]] = None
     file_name: str
@@ -705,7 +705,7 @@ class ClassificationTaskCreate(BaseModel):
     """创建分类任务请求"""
     name: str
     task_type: str  # 'classify' 或 'tag'
-    category_id: Optional[str] = None  # 分类任务必填
+    category_ids: Optional[List[str]] = None  # 分类任务必填（支持多个）
     tag_ids: Optional[List[str]] = None  # 打标任务必填
     created_by: str = "admin"
 
