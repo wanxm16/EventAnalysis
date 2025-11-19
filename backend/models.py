@@ -737,3 +737,45 @@ class ClassificationTaskDetailResponse(BaseModel):
     task: ClassificationTask
     results: List[ClassificationTaskResult]
     total_results: int
+
+
+# 分类集合管理
+class CategorySet(BaseModel):
+    """分类集合"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    categories: List[str]  # 包含的分类名称列表
+    created_at: str
+    updated_at: str
+
+
+class CategorySetCreate(BaseModel):
+    """创建分类集合"""
+    name: str
+    description: Optional[str] = None
+    categories: List[str]
+
+
+class CategorySetUpdate(BaseModel):
+    """更新分类集合"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    categories: Optional[List[str]] = None
+
+
+class CategorySetResponse(BaseModel):
+    """分类集合响应"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    categories: List[str]
+    category_count: int
+    created_at: str
+    updated_at: str
+
+
+class CategorySetListResponse(BaseModel):
+    """分类集合列表响应"""
+    sets: List[CategorySetResponse]
+    total: int

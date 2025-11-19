@@ -41,11 +41,15 @@ from models import (
     TagGroupCreateRequest, TagGroupUpdateRequest, TagGroupListResponse,
     # 分类任务相关
     ClassificationTask, ClassificationTaskCreate, ClassificationTaskListResponse,
-    ClassificationTaskDetailResponse, ClassificationTaskResult
+    ClassificationTaskDetailResponse, ClassificationTaskResult,
+    # 分类集合相关
+    CategorySet, CategorySetCreate, CategorySetUpdate, CategorySetResponse,
+    CategorySetListResponse
 )
 from services import event_service, operation_log_service
 from tag_service import TagService
 from classification_task_service import task_service
+from category_set_service import category_set_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1415,6 +1419,88 @@ async def export_task_results(task_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"导出结果失败: {str(e)}")
+
+
+# ==================== 分类集合管理 ====================
+
+@app.get("/api/classify/category-sets", response_model=CategorySetListResponse, summary="获取所有分类集合")
+async def get_all_category_sets():
+    """获取所有分类集合"""
+    try:
+        result = category_set_service.get_all_sets()
+        return CategorySetListResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类集合失败: {str(e)}")
+
+
+@app.get("/api/classify/category-sets/{set_id}", response_model=CategorySetResponse, summary="获取单个分类集合")
+async def get_category_set(set_id: str):
+    """获取单个分类集合详情"""
+    try:
+        result = category_set_service.get_set(set_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="分类集合不存在")
+        return CategorySetResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类集合失败: {str(e)}")
+
+
+@app.post("/api/classify/category-sets", summary="创建分类集合")
+async def create_category_set(data: CategorySetCreate):
+    """创建新的分类集合"""
+    try:
+        if not data.categories or len(data.categories) == 0:
+            raise HTTPException(status_code=400, detail="分类列表不能为空")
+
+        set_id = category_set_service.create_set(
+            name=data.name,
+            description=data.description,
+            categories=data.categories
+        )
+
+        return {"success": True, "id": set_id, "message": "分类集合创建成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建分类集合失败: {str(e)}")
+
+
+@app.put("/api/classify/category-sets/{set_id}", summary="更新分类集合")
+async def update_category_set(set_id: str, data: CategorySetUpdate):
+    """更新分类集合"""
+    try:
+        success = category_set_service.update_set(
+            set_id=set_id,
+            name=data.name,
+            description=data.description,
+            categories=data.categories
+        )
+
+        if not success:
+            raise HTTPException(status_code=404, detail="分类集合不存在")
+
+        return {"success": True, "message": "分类集合更新成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新分类集合失败: {str(e)}")
+
+
+@app.delete("/api/classify/category-sets/{set_id}", summary="删除分类集合")
+async def delete_category_set(set_id: str):
+    """删除分类集合"""
+    try:
+        success = category_set_service.delete_set(set_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="分类集合不存在")
+
+        return {"success": True, "message": "分类集合已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除分类集合失败: {str(e)}")
 
 
 # ==================== AI报告生成系统 API ====================
