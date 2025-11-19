@@ -779,3 +779,68 @@ class CategorySetListResponse(BaseModel):
     """分类集合列表响应"""
     sets: List[CategorySetResponse]
     total: int
+
+
+# ==================== 分类树管理 ====================
+
+class CategoryTreeNode(BaseModel):
+    """分类树节点"""
+    id: str
+    name: str
+    level: int  # 层级：1, 2, 3
+    parent_id: Optional[str] = None
+    children: List['CategoryTreeNode'] = []
+
+
+class CategoryTree(BaseModel):
+    """分类树"""
+    id: str
+    name: str  # 分类树名称，如 "81890的分类"
+    description: Optional[str] = None
+    tree: List[CategoryTreeNode]  # 树的根节点列表
+    created_at: str
+    updated_at: str
+
+
+class CategoryTreeCreate(BaseModel):
+    """创建分类树"""
+    name: str
+    description: Optional[str] = None
+
+
+class CategoryTreeUpdate(BaseModel):
+    """更新分类树"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CategoryTreeNodeCreate(BaseModel):
+    """创建分类树节点"""
+    name: str
+    parent_id: Optional[str] = None  # None 表示根节点
+
+
+class CategoryTreeNodeUpdate(BaseModel):
+    """更新分类树节点"""
+    name: str
+
+
+class CategoryTreeResponse(BaseModel):
+    """分类树响应"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    tree: List[CategoryTreeNode]
+    node_count: int  # 节点总数
+    created_at: str
+    updated_at: str
+
+
+class CategoryTreeListResponse(BaseModel):
+    """分类树列表响应"""
+    trees: List[CategoryTreeResponse]
+    total: int
+
+
+# 解决前向引用问题
+CategoryTreeNode.model_rebuild()

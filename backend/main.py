@@ -1503,6 +1503,148 @@ async def delete_category_set(set_id: str):
         raise HTTPException(status_code=500, detail=f"删除分类集合失败: {str(e)}")
 
 
+# ==================== 分类树管理 API ====================
+
+from category_tree_service import category_tree_service
+from models import (
+    CategoryTreeListResponse, CategoryTreeResponse,
+    CategoryTreeCreate, CategoryTreeUpdate,
+    CategoryTreeNodeCreate, CategoryTreeNodeUpdate
+)
+
+
+@app.get("/api/classify/category-trees", response_model=CategoryTreeListResponse)
+async def get_all_category_trees():
+    """获取所有分类树"""
+    try:
+        result = category_tree_service.get_all_trees()
+        return CategoryTreeListResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类树列表失败: {str(e)}")
+
+
+@app.get("/api/classify/category-trees/{tree_id}")
+async def get_category_tree(tree_id: str):
+    """获取单个分类树"""
+    try:
+        tree = category_tree_service.get_tree(tree_id)
+        if not tree:
+            raise HTTPException(status_code=404, detail="分类树不存在")
+        return tree
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类树失败: {str(e)}")
+
+
+@app.post("/api/classify/category-trees")
+async def create_category_tree(data: CategoryTreeCreate):
+    """创建分类树"""
+    try:
+        tree_id = category_tree_service.create_tree(
+            name=data.name,
+            description=data.description
+        )
+        return {"success": True, "id": tree_id, "message": "分类树创建成功"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建分类树失败: {str(e)}")
+
+
+@app.put("/api/classify/category-trees/{tree_id}")
+async def update_category_tree(tree_id: str, data: CategoryTreeUpdate):
+    """更新分类树基本信息"""
+    try:
+        success = category_tree_service.update_tree(
+            tree_id=tree_id,
+            name=data.name,
+            description=data.description
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="分类树不存在")
+        return {"success": True, "message": "分类树更新成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新分类树失败: {str(e)}")
+
+
+@app.delete("/api/classify/category-trees/{tree_id}")
+async def delete_category_tree(tree_id: str):
+    """删除分类树"""
+    try:
+        success = category_tree_service.delete_tree(tree_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="分类树不存在")
+        return {"success": True, "message": "分类树已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除分类树失败: {str(e)}")
+
+
+@app.post("/api/classify/category-trees/{tree_id}/nodes")
+async def add_tree_node(tree_id: str, data: CategoryTreeNodeCreate):
+    """添加节点到分类树"""
+    try:
+        node_id = category_tree_service.add_node(
+            tree_id=tree_id,
+            name=data.name,
+            parent_id=data.parent_id
+        )
+        if not node_id:
+            raise HTTPException(status_code=400, detail="添加节点失败，请检查父节点是否存在或是否超过最大层级（3级）")
+        return {"success": True, "id": node_id, "message": "节点添加成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"添加节点失败: {str(e)}")
+
+
+@app.put("/api/classify/category-trees/{tree_id}/nodes/{node_id}")
+async def update_tree_node(tree_id: str, node_id: str, data: CategoryTreeNodeUpdate):
+    """更新节点名称"""
+    try:
+        success = category_tree_service.update_node(
+            tree_id=tree_id,
+            node_id=node_id,
+            name=data.name
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="节点不存在")
+        return {"success": True, "message": "节点更新成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新节点失败: {str(e)}")
+
+
+@app.delete("/api/classify/category-trees/{tree_id}/nodes/{node_id}")
+async def delete_tree_node(tree_id: str, node_id: str):
+    """删除节点（包括所有子节点）"""
+    try:
+        success = category_tree_service.delete_node(
+            tree_id=tree_id,
+            node_id=node_id
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="节点不存在")
+        return {"success": True, "message": "节点已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除节点失败: {str(e)}")
+
+
+@app.get("/api/classify/category-trees/{tree_id}/flat-categories")
+async def get_flat_categories(tree_id: str):
+    """获取分类树的扁平化分类列表"""
+    try:
+        categories = category_tree_service.get_flat_categories(tree_id)
+        return {"categories": categories, "total": len(categories)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类列表失败: {str(e)}")
+
+
 # ==================== AI报告生成系统 API ====================
 # 集成 EventReport 报告生成功能
 

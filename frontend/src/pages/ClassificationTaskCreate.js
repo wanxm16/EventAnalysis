@@ -21,7 +21,7 @@ import {
   CheckOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { eventAPI, taskAPI, tagAPI } from '../services/api';
+import { eventAPI, taskAPI, tagAPI, categorySetAPI } from '../services/api';
 
 const { Title, Text, Paragraph } = Typography;
 const { Step } = Steps;
@@ -33,6 +33,8 @@ function ClassificationTaskCreate() {
   const [loading, setLoading] = useState(false);
   const [taskType, setTaskType] = useState('classify');
   const [categories, setCategories] = useState([]);
+  const [categorySets, setCategorySets] = useState([]);
+  const [categorySelectionMode, setCategorySelectionMode] = useState('manual'); // 'manual' or 'set'
   const [tagLibrary, setTagLibrary] = useState({ tags: [], groups: [] });
   const [taskId, setTaskId] = useState(null);
   const [fileList, setFileList] = useState([]);
@@ -40,6 +42,7 @@ function ClassificationTaskCreate() {
 
   useEffect(() => {
     loadCategories();
+    loadCategorySets();
     loadTagLibrary();
   }, []);
 
@@ -49,6 +52,22 @@ function ClassificationTaskCreate() {
       setCategories(response.categories || []);
     } catch (error) {
       console.error('加载分类列表失败:', error);
+    }
+  };
+
+  const loadCategorySets = async () => {
+    try {
+      const response = await categorySetAPI.getAll();
+      setCategorySets(response.sets || []);
+    } catch (error) {
+      console.error('加载分类集合失败:', error);
+    }
+  };
+
+  const handleCategorySetChange = (setId) => {
+    const selectedSet = categorySets.find(set => set.id === setId);
+    if (selectedSet) {
+      form.setFieldsValue({ category_ids: selectedSet.categories });
     }
   };
 
@@ -181,26 +200,58 @@ function ClassificationTaskCreate() {
           </Form.Item>
 
           {taskType === 'classify' ? (
-            <Form.Item
-              label="选择分类"
-              name="category_ids"
-              rules={[{ required: true, message: '请选择至少一个分类' }]}
-            >
-              <Select
-                mode="multiple"
-                placeholder="请选择要识别的分类（可多选）"
-                showSearch
-                filterOption={(input, option) =>
-                  option.children.toLowerCase().includes(input.toLowerCase())
-                }
+            <>
+              <Form.Item label="分类选择方式">
+                <Radio.Group
+                  value={categorySelectionMode}
+                  onChange={(e) => setCategorySelectionMode(e.target.value)}
+                >
+                  <Radio value="manual">手动选择</Radio>
+                  <Radio value="set">从分类集合选择</Radio>
+                </Radio.Group>
+              </Form.Item>
+
+              {categorySelectionMode === 'set' && (
+                <Form.Item label="选择分类集合">
+                  <Select
+                    placeholder="请选择一个分类集合"
+                    onChange={handleCategorySetChange}
+                    showSearch
+                    filterOption={(input, option) =>
+                      option.children.toLowerCase().includes(input.toLowerCase())
+                    }
+                  >
+                    {categorySets.map((set) => (
+                      <Select.Option key={set.id} value={set.id}>
+                        {set.name} ({set.category_count} 个分类)
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              )}
+
+              <Form.Item
+                label="选择分类"
+                name="category_ids"
+                rules={[{ required: true, message: '请选择至少一个分类' }]}
               >
-                {categories.map((cat) => (
-                  <Select.Option key={cat} value={cat}>
-                    {cat}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
+                <Select
+                  mode="multiple"
+                  placeholder="请选择要识别的分类（可多选）"
+                  showSearch
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().includes(input.toLowerCase())
+                  }
+                  disabled={categorySelectionMode === 'set'}
+                >
+                  {categories.map((cat) => (
+                    <Select.Option key={cat} value={cat}>
+                      {cat}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </>
           ) : (
             <Form.Item
               label="选择标签"

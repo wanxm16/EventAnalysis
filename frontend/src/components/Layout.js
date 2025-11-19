@@ -78,20 +78,12 @@ const Layout = ({ children }) => {
       label: '智能分类',
       children: [
         {
-          key: '/event-classification',
-          label: '单个事件分类',
-        },
-        {
-          key: '/event-classification/batch',
-          label: '批量分类',
-        },
-        {
           key: '/event-classification/tasks',
           label: '分类任务',
         },
         {
-          key: '/event-classification/categories',
-          label: '定义分类',
+          key: '/event-classification/category-trees',
+          label: '分类树管理',
         },
         {
           key: '/event-classification/tags',

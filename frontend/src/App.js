@@ -25,9 +25,6 @@ import TopicCreate from './pages/TopicCreate';
 import TopicDetail from './pages/TopicDetail';
 import TopicStats from './pages/TopicStats';
 import OperationLogList from './pages/OperationLogList';
-import EventClassification from './pages/EventClassification';
-import BatchClassification from './pages/BatchClassification';
-import CategoryManagement from './pages/CategoryManagement';
 import ReportGenerator from './pages/ReportGenerator';
 import ReportList from './pages/ReportList';
 import ExampleManagement from './pages/ExampleManagement';
@@ -36,6 +33,7 @@ import TagManagement from './pages/TagManagement';
 import ClassificationTaskList from './pages/ClassificationTaskList';
 import ClassificationTaskCreate from './pages/ClassificationTaskCreate';
 import ClassificationTaskDetail from './pages/ClassificationTaskDetail';
+import CategoryTreeManagement from './pages/CategoryTreeManagement';
 
 function App() {
   return (
@@ -173,27 +171,6 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
-            <Route path="/event-classification" element={
-              <ProtectedRoute>
-                <Layout>
-                  <EventClassification />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            <Route path="/event-classification/batch" element={
-              <ProtectedRoute>
-                <Layout>
-                  <BatchClassification />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            <Route path="/event-classification/categories" element={
-              <ProtectedRoute>
-                <Layout>
-                  <CategoryManagement />
-                </Layout>
-              </ProtectedRoute>
-            } />
             <Route path="/event-classification/tags" element={
               <ProtectedRoute>
                 <Layout>
@@ -219,6 +196,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <ClassificationTaskDetail />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/event-classification/category-trees" element={
+              <ProtectedRoute>
+                <Layout>
+                  <CategoryTreeManagement />
                 </Layout>
               </ProtectedRoute>
             } />

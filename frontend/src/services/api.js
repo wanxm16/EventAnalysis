@@ -184,4 +184,22 @@ export const taskAPI = {
     api.get(`/classify/tasks/${taskId}/export`, { responseType: 'blob' })
 };
 
+// 分类集合管理API
+export const categorySetAPI = {
+  // 获取所有分类集合
+  getAll: () => api.get('/classify/category-sets'),
+
+  // 获取单个分类集合
+  getById: (setId) => api.get(`/classify/category-sets/${setId}`),
+
+  // 创建分类集合
+  create: (payload) => api.post('/classify/category-sets', payload),
+
+  // 更新分类集合
+  update: (setId, payload) => api.put(`/classify/category-sets/${setId}`, payload),
+
+  // 删除分类集合
+  delete: (setId) => api.delete(`/classify/category-sets/${setId}`)
+};
+
 export default api; 

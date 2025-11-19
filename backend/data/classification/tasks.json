@@ -1,1 +1,56 @@
-[]
+[
+  {
+    "id": "1763454896190",
+    "name": "chatgpt 生成",
+    "task_type": "classify",
+    "status": "pending",
+    "category_ids": [
+      "不文明交通行为"
+    ],
+    "category_names": [
+      "不文明交通行为"
+    ],
+    "tag_ids": null,
+    "tag_names": null,
+    "file_name": "",
+    "total_count": 0,
+    "processed_count": 0,
+    "success_count": 0,
+    "failed_count": 0,
+    "created_by": "admin",
+    "created_at": "2025-11-18T16:34:56.190575",
+    "started_at": null,
+    "completed_at": null,
+    "error_message": null
+  },
+  {
+    "id": "1763528959524",
+    "name": "jj",
+    "task_type": "classify",
+    "status": "pending",
+    "category_ids": [
+      "不文明交通行为",
+      "其他社区服务",
+      "占用、堵塞、封闭消防通道、消防登高场地",
+      "综合拉练"
+    ],
+    "category_names": [
+      "不文明交通行为",
+      "其他社区服务",
+      "占用、堵塞、封闭消防通道、消防登高场地",
+      "综合拉练"
+    ],
+    "tag_ids": null,
+    "tag_names": null,
+    "file_name": "",
+    "total_count": 0,
+    "processed_count": 0,
+    "success_count": 0,
+    "failed_count": 0,
+    "created_by": "admin",
+    "created_at": "2025-11-19T13:09:19.524337",
+    "started_at": null,
+    "completed_at": null,
+    "error_message": null
+  }
+]
