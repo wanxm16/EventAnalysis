@@ -19,6 +19,26 @@
       "order": 50,
       "created_at": "2024-05-01T09:05:00+08:00",
       "updated_at": "2025-11-17T17:29:32.320386"
+    },
+    {
+      "id": "1325f5d1",
+      "name": "噪音",
+      "description": "和噪音相关的标签",
+      "type": "custom",
+      "max_tags": 20,
+      "order": 200,
+      "created_at": "2025-11-20T12:40:04.507085",
+      "updated_at": "2025-11-20T12:40:04.507152"
+    },
+    {
+      "id": "noise",
+      "name": "噪声",
+      "description": "噪声相关问题",
+      "type": "custom",
+      "max_tags": 20,
+      "order": 60,
+      "created_at": "2025-11-20T12:44:00.000000",
+      "updated_at": "2025-11-20T12:44:00.000000"
     }
   ],
   "tags": [
@@ -61,6 +81,26 @@
       "type": "custom",
       "created_at": "2024-05-01T09:25:00+08:00",
       "updated_at": "2024-05-01T09:25:00+08:00"
+    },
+    {
+      "id": "noise_traffic",
+      "label": "交通噪声",
+      "group_id": "noise",
+      "color": "#1890ff",
+      "description": "道路交通、车辆鸣笛等产生的噪声",
+      "type": "custom",
+      "created_at": "2025-11-20T12:45:00.000000",
+      "updated_at": "2025-11-20T12:45:00.000000"
+    },
+    {
+      "id": "noise_renovation",
+      "label": "装修噪声",
+      "group_id": "noise",
+      "color": "#faad14",
+      "description": "装修施工产生的噪声",
+      "type": "custom",
+      "created_at": "2025-11-20T12:45:30.000000",
+      "updated_at": "2025-11-20T12:45:30.000000"
     }
   ]
 }

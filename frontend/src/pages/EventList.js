@@ -17,6 +17,7 @@ import {
   Form,
   Badge,
   Spin,
+  Radio,
 } from 'antd';
 import { SearchOutlined, EyeOutlined, FilterOutlined, BellOutlined, DeleteOutlined, SettingOutlined, CheckCircleOutlined, PauseCircleOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import Highlighter from 'react-highlight-words';
@@ -97,6 +98,7 @@ const EventList = () => {
 
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
   const fileInputRef = useRef(null);
 
   const saveVisibleColumns = (keys) => {
@@ -184,38 +186,80 @@ const EventList = () => {
   // 获取列搜索属性
   const getColumnSearchProps = (dataIndex, placeholder, apiParam) => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8, width: 300 }} onKeyDown={(e) => e.stopPropagation()}>
+      <div style={{ padding: 8, width: 320 }} onKeyDown={(e) => e.stopPropagation()}>
         {(() => {
-          let state = { include: [], exclude: [] };
+          let state = { include: [], exclude: [], logic: 'and', excludeLogic: 'or' };
           try {
             if (selectedKeys && selectedKeys[0]) {
               state = JSON.parse(selectedKeys[0]);
+              // 兼容旧数据，如果没有 logic 字段，默认为 'and'
+              if (!state.logic) state.logic = 'and';
+              if (!state.excludeLogic) state.excludeLogic = 'or';
             }
           } catch {}
           const update = (next) => {
-            const merged = { include: next.include ?? state.include, exclude: next.exclude ?? state.exclude };
+            const merged = {
+              include: next.include ?? state.include,
+              exclude: next.exclude ?? state.exclude,
+              logic: next.logic ?? state.logic,
+              excludeLogic: next.excludeLogic ?? state.excludeLogic
+            };
             setSelectedKeys([JSON.stringify(merged)]);
           };
           return (
             <div>
+              {/* 包含关键词输入框标题 */}
               <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>包含关键词（回车添加）</div>
+
+              {/* 包含关键词 AND/OR 逻辑选择 - 默认显示在输入框上方 */}
+              <div style={{ marginBottom: 8, paddingLeft: 4 }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>包含逻辑：</div>
+                <Radio.Group
+                  value={state.logic}
+                  onChange={(e) => update({ logic: e.target.value })}
+                  size="small"
+                >
+                  <Radio value="and">AND（同时包含）</Radio>
+                  <Radio value="or">OR（包含任一）</Radio>
+                </Radio.Group>
+              </div>
+
+              {/* 包含关键词输入框 */}
               <Select
                 mode="tags"
-                style={{ width: '100%', marginBottom: 8 }}
+                style={{ width: '100%', marginBottom: 12 }}
                 value={state.include}
                 onChange={(vals) => update({ include: vals })}
                 open={false}
                 placeholder={placeholder || '如：离婚 酒店'}
               />
+
+              {/* 排除关键词输入框标题 */}
               <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>排除关键词（回车添加）</div>
+
+              {/* 排除关键词 AND/OR 逻辑选择 - 默认显示在输入框上方 */}
+              <div style={{ marginBottom: 8, paddingLeft: 4 }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>排除逻辑：</div>
+                <Radio.Group
+                  value={state.excludeLogic}
+                  onChange={(e) => update({ excludeLogic: e.target.value })}
+                  size="small"
+                >
+                  <Radio value="and">AND（同时排除）</Radio>
+                  <Radio value="or">OR（排除任一）</Radio>
+                </Radio.Group>
+              </div>
+
+              {/* 排除关键词输入框 */}
               <Select
                 mode="tags"
-                style={{ width: '100%', marginBottom: 8 }}
+                style={{ width: '100%', marginBottom: 12 }}
                 value={state.exclude}
                 onChange={(vals) => update({ exclude: vals })}
                 open={false}
                 placeholder={'如：交通 群体'}
               />
+
               <Space>
                 <Button
                   type="primary"
@@ -235,7 +279,7 @@ const EventList = () => {
                 </Button>
               </Space>
               <div style={{ marginTop: 8, fontSize: 11, color: '#999' }}>
-                提示：类似 Excel，可添加多个包含/排除词
+                提示：可添加多个包含/排除词，支持 AND/OR 逻辑
               </div>
             </div>
           );
@@ -987,19 +1031,27 @@ const EventList = () => {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
+    setExportModalVisible(true);
+  };
+
+  const confirmExport = async (desensitized) => {
     try {
       setExporting(true);
+      setExportModalVisible(false);
       const params = buildExportParams();
+      // 添加脱敏参数（前端模拟，实际需要后端支持）
+      params.desensitized = desensitized;
       const blob = await eventAPI.exportEvents(params);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       const timestamp = dayjs().format('YYYYMMDD_HHmmss');
+      const suffix = desensitized ? '_脱敏' : '_非脱敏';
       link.href = url;
-      link.download = `事件列表_${timestamp}.csv`;
+      link.download = `事件列表${suffix}_${timestamp}.csv`;
       link.click();
       window.URL.revokeObjectURL(url);
-      message.success('导出成功');
+      message.success(`导出成功（${desensitized ? '脱敏' : '非脱敏'}）`);
     } catch (error) {
       const detail = error?.response?.data?.detail || error.message;
       message.error(`导出失败: ${detail}`);
@@ -1827,6 +1879,59 @@ const EventList = () => {
             ))}
           </div>
         )}
+      </Modal>
+
+      {/* 导出选择对话框 */}
+      <Modal
+        title="选择导出方式"
+        open={exportModalVisible}
+        onCancel={() => setExportModalVisible(false)}
+        footer={null}
+        width={500}
+      >
+        <div style={{ padding: '20px 0' }}>
+          <Alert
+            message="数据脱敏说明"
+            description="脱敏导出将对手机号、身份证等敏感信息进行遮蔽处理；非脱敏导出将显示完整信息。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Button
+              type="primary"
+              size="large"
+              block
+              onClick={() => confirmExport(true)}
+              loading={exporting}
+              style={{
+                height: '60px',
+                fontSize: '16px',
+                borderRadius: '8px'
+              }}
+            >
+              导出脱敏数据
+            </Button>
+            <Button
+              size="large"
+              block
+              onClick={() => confirmExport(false)}
+              loading={exporting}
+              style={{
+                height: '60px',
+                fontSize: '16px',
+                borderRadius: '8px',
+                borderColor: '#ff4d4f',
+                color: '#ff4d4f'
+              }}
+            >
+              导出非脱敏数据
+            </Button>
+          </Space>
+          <div style={{ marginTop: 16, textAlign: 'center', color: '#999', fontSize: '12px' }}>
+            提示：导出非脱敏数据需要相应权限，请谨慎使用
+          </div>
+        </div>
       </Modal>
 
     </div>

@@ -60,7 +60,7 @@ def merge_tag_library(
             "description": description or "",
             "source": source,
             "type": source,
-            "order": (extra or {}).get("order", 100 if source == "system" else 200),
+            "order": (extra or {}).get("order") or (100 if source == "system" else 200),
             "max_tags": (extra or {}).get("max_tags"),
             "editable": source != "system",
             "tags": []
@@ -74,7 +74,7 @@ def merge_tag_library(
         if not group_id:
             continue
         meta = {
-            "order": group.get('order', 50),
+            "order": group.get('order') or 50,
             "max_tags": group.get('max_tags')
         }
         entry = ensure_group(group_id, group.get('name', group_id), group.get('description', ''), "system", meta)
@@ -106,7 +106,7 @@ def merge_tag_library(
             group.get('description', ''),
             "custom",
             {
-                "order": group.get('order', 200),
+                "order": group.get('order') or 200,
                 "max_tags": group.get('max_tags')
             }
         )
@@ -137,7 +137,7 @@ def merge_tag_library(
         group['tag_count'] = len(group['tags'])
         group['active_tag_count'] = group['tag_count']
 
-    tag_groups.sort(key=lambda g: (g.get('order', 100), g.get('name', '')))
+    tag_groups.sort(key=lambda g: (g.get('order') or 100, g.get('name') or ''))
 
     return {
         "metadata": system_data.get('metadata') if system_data else None,
