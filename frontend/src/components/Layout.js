@@ -19,11 +19,6 @@ const Layout = ({ children }) => {
 
   const menuItems = [
     {
-      key: '/dashboard',
-      icon: <HomeOutlined />,
-      label: '首页',
-    },
-    {
       key: '/events',
       icon: <UnorderedListOutlined />,
       label: '事件列表',
@@ -114,8 +109,20 @@ const Layout = ({ children }) => {
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
         }}
       >
-        <Title level={4} style={{ margin: 0, marginRight: 24, color: '#1890ff', lineHeight: '1.2', textAlign: 'center', fontSize: '16px' }}>
-          海曙区社会治理中心<br />事件分析系统
+        <Title
+          level={4}
+          style={{
+            margin: 0,
+            marginRight: 24,
+            color: '#1890ff',
+            lineHeight: '1.2',
+            fontSize: '20px',
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+          onClick={() => navigate('/dashboard')}
+        >
+          智研通
         </Title>
         <Menu
           mode="horizontal"
@@ -143,7 +150,7 @@ const Layout = ({ children }) => {
       </Content>
       
       <Footer style={{ textAlign: 'center', background: '#f0f2f5' }}>
-        海曙区社会治理中心事件分析系统 ©2025 杭州量之技术支持
+        智研通 ©2025 杭州量之技术支持
       </Footer>
     </AntLayout>
   );
