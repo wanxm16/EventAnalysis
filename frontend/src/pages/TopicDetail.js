@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert, Radio, Tabs, Spin, Steps, Checkbox, Statistic, Empty } from 'antd';
-import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert, Radio, Tabs, Spin, Steps, Checkbox, Statistic, Empty, Collapse } from 'antd';
+import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined, UserOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { Line } from '@ant-design/plots';
 import Highlighter from 'react-highlight-words';
 import dayjs from 'dayjs';
@@ -130,6 +130,8 @@ const TopicDetail = () => {
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [aiSuggestedTags, setAiSuggestedTags] = useState([]);
   const [selectedSuggestedTags, setSelectedSuggestedTags] = useState([]);
+  const [editingTagId, setEditingTagId] = useState(null); // 正在编辑的标签ID
+  const [editingTagName, setEditingTagName] = useState(''); // 编辑中的标签名称
 
   // 标签分析 mock 数据
   const mockTagAnalysisData = useMemo(() => ({
@@ -262,6 +264,10 @@ const TopicDetail = () => {
   const [editTags, setEditTags] = useState([]);
   const [editGroups, setEditGroups] = useState([]);
   const [editTagsLoading, setEditTagsLoading] = useState(false);
+
+  // 标签事件列表Modal状态
+  const [tagEventsModalVisible, setTagEventsModalVisible] = useState(false);
+  const [selectedTag, setSelectedTag] = useState(null);
 
 
   // 模拟AI分类数据 - 随机标记一些事件为AI分类
@@ -1515,10 +1521,15 @@ const TopicDetail = () => {
           description: '涉及贷款催收方式不当、频繁骚扰等问题',
           eventCount: 8,
           confidence: 0.92,
-          sampleEvents: [
-            { id: 'NMW202505060002', desc: '#长效关注#转贷款租赁的车子...' },
-            { id: 'WCW202505050001', desc: '#长效关注#153****0394报...' },
-            { id: 'GLW202505010001', desc: '#长效关注#米粮也有声音，来...' },
+          allEvents: [
+            { id: 'NMW202505060002', desc: '#长效关注#转贷款租赁的车子被贷款公司拖走，要求归还车辆并支付拖车费用。反映催收方式不当，车辆被强行拖走造成经济损失。' },
+            { id: 'WCW202505050001', desc: '#长效关注#153****0394报称其因贷款逾期遭到多次电话骚扰，催收人员态度恶劣并威胁要上门催收，严重影响正常生活。' },
+            { id: 'GLW202505010001', desc: '#长效关注#米粮也有声音，来自贷款公司的催收电话每天十几个，已经严重骚扰到家人，要求停止骚扰行为。' },
+            { id: 'SQW202505020003', desc: '反映某贷款平台催收人员多次拨打其家人电话进行骚扰，并在微信群中公开其个人信息，侵犯隐私权。' },
+            { id: 'XCW202505030005', desc: '投诉贷款公司采用暴力催收手段，多次发送恐吓短信，威胁要到工作单位闹事，造成极大心理压力。' },
+            { id: 'YHW202505040002', desc: '因贷款逾期几天就遭到催收公司频繁电话骚扰，每天接到20多个催收电话，严重影响工作和生活。' },
+            { id: 'TMW202505050006', desc: '#重点关注#催收人员使用侮辱性语言进行电话催收，并威胁要曝光其个人信息，要求立即停止不当催收行为。' },
+            { id: 'PJW202505060004', desc: '贷款公司在未经同意的情况下联系其紧急联系人进行催收，泄露其贷款信息，侵犯个人隐私。' },
           ]
         },
         {
@@ -1527,9 +1538,13 @@ const TopicDetail = () => {
           description: '贷款合同条款理解、违约责任等争议',
           eventCount: 6,
           confidence: 0.88,
-          sampleEvents: [
-            { id: 'SQW202505310004', desc: '因为买车贷款的事情产生纠...' },
-            { id: 'GLW202505300008', desc: '我（在长沙，手机号：187*...' },
+          allEvents: [
+            { id: 'SQW202505310004', desc: '因为买车贷款的事情产生纠纷，认为贷款合同中存在霸王条款，要求解除合同并退还已支付的费用。' },
+            { id: 'GLW202505300008', desc: '我（在长沙，手机号：187****5432）办理的汽车贷款合同中利率与口头承诺不符，要求按照原承诺执行合同。' },
+            { id: 'XCW202505290012', desc: '签订贷款合同时未被充分告知违约责任条款，现因逾期产生高额违约金，认为不合理要求重新协商。' },
+            { id: 'YHW202505280015', desc: '贷款合同到期后公司单方面修改还款方式，未经本人同意就从银行卡扣款，要求恢复原合同约定。' },
+            { id: 'TMW202505270009', desc: '对贷款合同中的提前还款违约金条款存在异议，认为该条款不合理，要求取消提前还款的违约金。' },
+            { id: 'NMW202505260011', desc: '贷款合同中约定的服务费与实际收取金额不符，怀疑存在乱收费情况，要求退还多收取的费用。' },
           ]
         },
         {
@@ -1538,9 +1553,11 @@ const TopicDetail = () => {
           description: '对贷款利息计算、利率过高等问题的投诉',
           eventCount: 4,
           confidence: 0.85,
-          sampleEvents: [
-            { id: 'GQW202505280017', desc: '与贷款公司为贷款问题发生...' },
-            { id: 'GQW202505280016', desc: '与贷款公司为贷款问题发生...' },
+          allEvents: [
+            { id: 'GQW202505280017', desc: '与贷款公司为贷款问题发生纠纷，认为实际年化利率超过24%，属于高利贷，要求按照法定利率重新计算。' },
+            { id: 'GQW202505280016', desc: '与贷款公司为贷款问题发生争议，发现利息计算方式与合同约定不符，多收取了利息费用。' },
+            { id: 'WCW202505270013', desc: '贷款时被告知年利率12%，但实际还款发现综合费率达到20%以上，要求说明各项费用明细。' },
+            { id: 'PJW202505260014', desc: '申请的消费贷款实际利率远高于宣传利率，加上各种手续费后年化利率超过30%，要求降低利率。' },
           ]
         },
         {
@@ -1549,8 +1566,9 @@ const TopicDetail = () => {
           description: '涉及提前还款、还款渠道、还款记录等问题',
           eventCount: 2,
           confidence: 0.78,
-          sampleEvents: [
-            { id: 'GLOW202505280401', desc: '在这里培训学校拱墅，付了钱...' },
+          allEvents: [
+            { id: 'GLOW202505280401', desc: '在这里培训学校拱墅，付了钱后申请退款并提前还清贷款，但贷款公司一直不配合办理提前还款手续。' },
+            { id: 'SQW202505270402', desc: '已按时通过银行转账还款，但贷款公司系统显示逾期，要求核实还款记录并更正逾期状态。' },
           ]
         },
       ];
@@ -1584,6 +1602,53 @@ const TopicDetail = () => {
     } catch (error) {
       message.error('添加标签失败');
     }
+  };
+
+  // AI 标签发现：开始编辑标签名称
+  const handleStartEditTagName = (tag) => {
+    setEditingTagId(tag.id);
+    setEditingTagName(tag.tagName);
+  };
+
+  // AI 标签发现：保存标签名称编辑
+  const handleSaveTagName = (tagId) => {
+    if (!editingTagName.trim()) {
+      message.warning('标签名称不能为空');
+      return;
+    }
+
+    setAiSuggestedTags(prev =>
+      prev.map(tag =>
+        tag.id === tagId ? { ...tag, tagName: editingTagName } : tag
+      )
+    );
+    setEditingTagId(null);
+    setEditingTagName('');
+    message.success('标签名称已更新');
+  };
+
+  // AI 标签发现：取消编辑标签名称
+  const handleCancelEditTagName = () => {
+    setEditingTagId(null);
+    setEditingTagName('');
+  };
+
+  // AI 标签发现：移除事件
+  const handleRemoveEventFromTag = (tagId, eventId) => {
+    setAiSuggestedTags(prev =>
+      prev.map(tag => {
+        if (tag.id === tagId) {
+          const newEvents = tag.allEvents.filter(event => event.id !== eventId);
+          return {
+            ...tag,
+            allEvents: newEvents,
+            eventCount: newEvents.length,
+          };
+        }
+        return tag;
+      })
+    );
+    message.success('事件已移除');
   };
 
   const handleSaveTagsEdit = async () => {
@@ -2164,6 +2229,18 @@ const TopicDetail = () => {
                               <Tag color="blue">{tag.count} 条事件</Tag>
                             </Space>
                           }
+                          extra={
+                            <Button
+                              type="link"
+                              icon={<EyeOutlined />}
+                              onClick={() => {
+                                setSelectedTag(tag);
+                                setTagEventsModalVisible(true);
+                              }}
+                            >
+                              查看事件列表
+                            </Button>
+                          }
                         >
                           <Row gutter={[16, 16]}>
                             {/* 趋势图 */}
@@ -2516,23 +2593,55 @@ const TopicDetail = () => {
               >
                 <Space direction="vertical" style={{ width: '100%' }} size={16}>
                   {aiSuggestedTags.map(tag => (
-                    <Card
+                    <div
                       key={tag.id}
-                      size="small"
-                      hoverable
                       style={{
-                        borderColor: selectedSuggestedTags.includes(tag.id) ? '#1890ff' : undefined,
-                        borderWidth: selectedSuggestedTags.includes(tag.id) ? 2 : 1,
+                        border: selectedSuggestedTags.includes(tag.id) ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                        borderRadius: 4,
+                        padding: '12px',
+                        background: '#fff',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12 }}>
                         <Checkbox value={tag.id} style={{ marginRight: 12, marginTop: 4 }} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ marginBottom: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Space>
-                              <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
-                                {tag.tagName}
-                              </Tag>
+                              {editingTagId === tag.id ? (
+                                <Space.Compact>
+                                  <Input
+                                    value={editingTagName}
+                                    onChange={(e) => setEditingTagName(e.target.value)}
+                                    style={{ width: 150 }}
+                                    size="small"
+                                    onPressEnter={() => handleSaveTagName(tag.id)}
+                                  />
+                                  <Button
+                                    type="primary"
+                                    size="small"
+                                    icon={<CheckOutlined />}
+                                    onClick={() => handleSaveTagName(tag.id)}
+                                  />
+                                  <Button
+                                    size="small"
+                                    icon={<CloseOutlined />}
+                                    onClick={handleCancelEditTagName}
+                                  />
+                                </Space.Compact>
+                              ) : (
+                                <>
+                                  <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
+                                    {tag.tagName}
+                                  </Tag>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<EditOutlined />}
+                                    onClick={() => handleStartEditTagName(tag)}
+                                    title="编辑标签名称"
+                                  />
+                                </>
+                              )}
                               <Tag color="green">
                                 {tag.eventCount} 个事件
                               </Tag>
@@ -2541,36 +2650,72 @@ const TopicDetail = () => {
                               </Tag>
                             </Space>
                           </div>
-                          <div style={{ color: '#666', marginBottom: 12 }}>
+                          <div style={{ color: '#666', marginTop: 8 }}>
                             {tag.description}
-                          </div>
-                          <div>
-                            <Text strong style={{ fontSize: 12 }}>示例事件：</Text>
-                            <div style={{ marginTop: 8 }}>
-                              {tag.sampleEvents.map((event, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    padding: '6px 12px',
-                                    background: '#f5f5f5',
-                                    borderRadius: 4,
-                                    marginBottom: 6,
-                                    fontSize: 12,
-                                  }}
-                                >
-                                  <Space>
-                                    <Text type="secondary" style={{ fontFamily: 'monospace' }}>
-                                      {event.id}
-                                    </Text>
-                                    <Text>{event.desc}</Text>
-                                  </Space>
-                                </div>
-                              ))}
-                            </div>
                           </div>
                         </div>
                       </div>
-                    </Card>
+
+                      <Collapse
+                        size="small"
+                        defaultActiveKey={[]}
+                        style={{ background: '#fafafa' }}
+                      >
+                        <Collapse.Panel
+                          header={`关联事件列表 (${tag.eventCount} 条)`}
+                          key="events"
+                        >
+                          <div style={{ marginTop: 8 }}>
+                            {tag.allEvents?.map((event, idx) => (
+                              <div
+                                key={event.id}
+                                style={{
+                                  padding: '12px',
+                                  background: idx % 2 === 0 ? '#fff' : '#f5f5f5',
+                                  borderRadius: 4,
+                                  marginBottom: 8,
+                                  border: '1px solid #e8e8e8',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                  <Space>
+                                    <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                                      {idx + 1}
+                                    </Tag>
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      onClick={() => navigate(`/events/${event.id}`)}
+                                      style={{ padding: 0, height: 'auto', fontFamily: 'monospace', fontSize: 12 }}
+                                    >
+                                      {event.id}
+                                    </Button>
+                                  </Space>
+                                  <Popconfirm
+                                    title="确认移除此事件？"
+                                    description="该事件将从此标签的关联列表中移除"
+                                    onConfirm={() => handleRemoveEventFromTag(tag.id, event.id)}
+                                    okText="确认"
+                                    cancelText="取消"
+                                  >
+                                    <Button
+                                      type="text"
+                                      danger
+                                      size="small"
+                                      icon={<DeleteOutlined />}
+                                      title="移除事件"
+                                    />
+                                  </Popconfirm>
+                                </div>
+                                <div style={{ lineHeight: 1.6, fontSize: 13, color: '#333', paddingLeft: 8 }}>
+                                  {event.desc}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Collapse.Panel>
+                      </Collapse>
+                    </div>
                   ))}
                 </Space>
               </Checkbox.Group>
@@ -2769,6 +2914,140 @@ const TopicDetail = () => {
           </div>
         )}
       </Drawer>
+
+      {/* 标签事件列表Modal */}
+      <Modal
+        title={
+          <Space>
+            <TagsOutlined style={{ color: '#1890ff' }} />
+            <span>{selectedTag?.name} - 事件列表</span>
+            <Tag color="blue">{selectedTag?.count} 条事件</Tag>
+          </Space>
+        }
+        open={tagEventsModalVisible}
+        onCancel={() => {
+          setTagEventsModalVisible(false);
+          setSelectedTag(null);
+        }}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setTagEventsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1400}
+      >
+        {selectedTag && (
+          <div>
+            <Alert
+              message={`该标签关联了 ${selectedTag.count} 个事件`}
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Table
+              dataSource={events.filter(event =>
+                event.标签?.some(tag => tag.name === selectedTag.name)
+              )}
+              rowKey={(record) => record.事件编号}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条`,
+                pageSizeOptions: ['10', '20', '50'],
+              }}
+              scroll={{ x: 1200 }}
+              size="small"
+              columns={[
+                {
+                  title: '事件编号',
+                  dataIndex: '事件编号',
+                  key: '事件编号',
+                  width: 150,
+                  fixed: 'left',
+                  render: (text) => (
+                    <Button
+                      type="link"
+                      icon={<EyeOutlined />}
+                      onClick={() => navigate(`/events/${text}`)}
+                      style={{ padding: 0, fontFamily: 'monospace', fontSize: '12px' }}
+                    >
+                      {text}
+                    </Button>
+                  ),
+                },
+                {
+                  title: '事件描述',
+                  dataIndex: '事件描述',
+                  key: '事件描述',
+                  width: 300,
+                  ellipsis: {
+                    showTitle: false,
+                  },
+                  render: (text) => (
+                    <Tooltip title={text}>
+                      <span>{text}</span>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: '镇街名称',
+                  dataIndex: '镇街名称',
+                  key: '镇街名称',
+                  width: 100,
+                },
+                {
+                  title: '村社名称',
+                  dataIndex: '村社名称',
+                  key: '村社名称',
+                  width: 120,
+                },
+                {
+                  title: '事件级别',
+                  dataIndex: '事件级别',
+                  key: '事件级别',
+                  width: 100,
+                  render: (text) => {
+                    let color = 'default';
+                    if (text?.includes('一级')) color = 'red';
+                    else if (text?.includes('二级')) color = 'orange';
+                    else if (text?.includes('三级')) color = 'green';
+                    return <Tag color={color}>{text}</Tag>;
+                  },
+                },
+                {
+                  title: '二级分类',
+                  dataIndex: '二级分类',
+                  key: '二级分类',
+                  width: 120,
+                },
+                {
+                  title: '上报时间',
+                  dataIndex: '上报时间',
+                  key: '上报时间',
+                  width: 160,
+                  sorter: (a, b) => new Date(a.上报时间) - new Date(b.上报时间),
+                },
+                {
+                  title: '处置结果',
+                  dataIndex: '处置结果',
+                  key: '处置结果',
+                  width: 100,
+                  fixed: 'right',
+                  render: (text) => {
+                    let color = 'default';
+                    if (text === '已办结') color = 'success';
+                    else if (text === '处理中') color = 'processing';
+                    else if (text === '待处理') color = 'warning';
+                    return <Tag color={color}>{text || '-'}</Tag>;
+                  },
+                },
+              ]}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

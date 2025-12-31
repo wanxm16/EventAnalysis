@@ -20,14 +20,17 @@ import {
   List,
   Tooltip,
   Badge,
+  DatePicker,
 } from 'antd';
 import { SearchOutlined, EyeOutlined, FilterOutlined, UserOutlined, FileTextOutlined, BarChartOutlined, DownOutlined, UpOutlined, RightOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Pie, Column, Line, Bar } from '@ant-design/plots';
+import dayjs from 'dayjs';
 import api from '../services/api';
 
 const { Title } = Typography;
 const { Option } = Select;
+const { RangePicker } = DatePicker;
 
 // 可拖拽列宽度组件
 const ResizeableTitle = (props) => {
@@ -125,6 +128,12 @@ const PersonAnalysisList = () => {
   const [drawerSearchText, setDrawerSearchText] = useState('');
   const [drawerSearchedColumn, setDrawerSearchedColumn] = useState('');
   const drawerSearchInput = useRef(null);
+
+  // 时间范围筛选状态（默认过去30天）
+  const [dateRange, setDateRange] = useState([
+    dayjs().subtract(30, 'days'),
+    dayjs()
+  ]);
 
   // 标签穿透分析 Mock 数据
   const tagPenetrationData = useMemo(() => ({
@@ -353,6 +362,23 @@ const PersonAnalysisList = () => {
   }), []);
 
   const currentTagData = tagPenetrationData[selectedPopulationTag] || tagPenetrationData['高频涉事人员'];
+
+  // 根据时间范围过滤趋势数据
+  const filteredTrendData = useMemo(() => {
+    if (!dateRange || dateRange.length !== 2) {
+      return currentTagData.trendData;
+    }
+
+    const [startDate, endDate] = dateRange;
+    return currentTagData.trendData.filter(item => {
+      // 假设mock数据的日期是当前年份的数据（格式：MM-DD）
+      const itemDate = dayjs(`2025-${item.date}`, 'YYYY-MM-DD');
+      const start = startDate.startOf('day');
+      const end = endDate.endOf('day');
+      return (itemDate.isAfter(start) || itemDate.isSame(start, 'day')) &&
+             (itemDate.isBefore(end) || itemDate.isSame(end, 'day'));
+    });
+  }, [currentTagData.trendData, dateRange]);
 
   // 抽屉表格筛选辅助函数
   const getDrawerColumnSearchProps = (dataIndex, placeholder) => ({
@@ -1430,11 +1456,31 @@ const PersonAnalysisList = () => {
 
                   {/* 事件趋势 */}
                   <Card
-                    title={<Space><BarChartOutlined />事件趋势</Space>}
+                    title={
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Space><BarChartOutlined />事件趋势</Space>
+                        <RangePicker
+                          value={dateRange}
+                          onChange={(dates) => setDateRange(dates || [dayjs().subtract(30, 'days'), dayjs()])}
+                          format="YYYY-MM-DD"
+                          allowClear={false}
+                          presets={[
+                            { label: '最近7天', value: [dayjs().subtract(7, 'd'), dayjs()] },
+                            { label: '最近30天', value: [dayjs().subtract(30, 'd'), dayjs()] },
+                            { label: '最近90天', value: [dayjs().subtract(90, 'd'), dayjs()] },
+                            { label: '最近半年', value: [dayjs().subtract(6, 'month'), dayjs()] },
+                            { label: '最近一年', value: [dayjs().subtract(1, 'year'), dayjs()] },
+                          ]}
+                          disabledDate={(current) => current && current > dayjs().endOf('day')}
+                          placeholder={['开始日期', '结束日期']}
+                          style={{ width: 300 }}
+                        />
+                      </div>
+                    }
                     style={{ marginBottom: 16 }}
                   >
                     <Line
-                      data={currentTagData.trendData}
+                      data={filteredTrendData}
                       xField="date"
                       yField="count"
                       height={250}
@@ -1482,18 +1528,6 @@ const PersonAnalysisList = () => {
                         fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff',
                       }}
                     />
-                    <div style={{ marginTop: 12, textAlign: 'center', fontSize: 13, color: '#666' }}>
-                      近14天趋势：
-                      <span style={{
-                        color: currentTagData.trend > 0 ? '#cf1322' : currentTagData.trend < 0 ? '#3f8600' : '#999',
-                        fontWeight: 'bold',
-                        marginLeft: 4,
-                        fontSize: 14
-                      }}>
-                        {currentTagData.trend > 0 ? '↑' : currentTagData.trend < 0 ? '↓' : ''}
-                        {currentTagData.trend > 0 ? '上升' : currentTagData.trend < 0 ? '下降' : '持平'} {Math.abs(currentTagData.trend)}%
-                      </span>
-                    </div>
                   </Card>
 
                   {/* 事件类型分布 */}
