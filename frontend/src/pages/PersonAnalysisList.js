@@ -16,10 +16,14 @@ import {
   Statistic,
   Collapse,
   Modal,
+  Drawer,
+  List,
+  Tooltip,
+  Badge,
 } from 'antd';
-import { SearchOutlined, EyeOutlined, FilterOutlined, UserOutlined, FileTextOutlined, BarChartOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, FilterOutlined, UserOutlined, FileTextOutlined, BarChartOutlined, DownOutlined, UpOutlined, RightOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { Pie, Column, Line } from '@ant-design/plots';
+import { Pie, Column, Line, Bar } from '@ant-design/plots';
 import api from '../services/api';
 
 const { Title } = Typography;
@@ -103,11 +107,24 @@ const PersonAnalysisList = () => {
 
   // 标签穿透分析相关状态
   const [activeTab, setActiveTab] = useState('list');
+
+  // 关注状态管理
+  const [followedPersons, setFollowedPersons] = useState(new Set());
   const [selectedPopulationTag, setSelectedPopulationTag] = useState('高频涉事人员');
   const [personListExpanded, setPersonListExpanded] = useState(false);
   const [eventListExpanded, setEventListExpanded] = useState(false);
   const [personModalVisible, setPersonModalVisible] = useState(false);
   const [eventModalVisible, setEventModalVisible] = useState(false);
+
+  // 二级分类明细抽屉状态
+  const [categoryDrawerVisible, setCategoryDrawerVisible] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+
+  // 抽屉表格筛选状态
+  const [drawerColumnFilters, setDrawerColumnFilters] = useState({});
+  const [drawerSearchText, setDrawerSearchText] = useState('');
+  const [drawerSearchedColumn, setDrawerSearchedColumn] = useState('');
+  const drawerSearchInput = useRef(null);
 
   // 标签穿透分析 Mock 数据
   const tagPenetrationData = useMemo(() => ({
@@ -132,12 +149,22 @@ const PersonAnalysisList = () => {
         { id: 'GQW202505280017', desc: '与贷款公司为贷款问题发生争执', type: '债务纠纷', level: '债务纠纷', town: '高桥镇', time: '2025-12-08 11:22' },
         { id: 'GQW202505280016', desc: '与贷款公司为贷款问题发生争执', type: '债务纠纷', level: '债务纠纷', town: '高桥镇', time: '2025-12-07 15:33' },
       ],
-      eventTypes: [
+      eventTypesForChart: [
         { type: '债务纠纷', value: 247, percent: 30 },
         { type: '邻里纠纷', value: 206, percent: 25 },
         { type: '停车纠纷', value: 165, percent: 20 },
         { type: '物业纠纷', value: 123, percent: 15 },
         { type: '其他', value: 82, percent: 10 },
+      ],
+      eventTypesForList: [
+        { type: '债务纠纷', value: 247, percent: 30 },
+        { type: '邻里纠纷', value: 206, percent: 25 },
+        { type: '停车纠纷', value: 165, percent: 20 },
+        { type: '物业纠纷', value: 123, percent: 15 },
+        { type: '家庭纠纷', value: 28, percent: 3.4 },
+        { type: '合同纠纷', value: 22, percent: 2.7 },
+        { type: '劳务纠纷', value: 18, percent: 2.2 },
+        { type: '消费纠纷', value: 14, percent: 1.7 },
       ],
       eventLevels: [
         { level: '一级事件', value: 82, percent: 10 },
@@ -199,11 +226,19 @@ const PersonAnalysisList = () => {
         { id: 'SQW202505090004', desc: '楼下住户装修噪音过大', type: '邻里纠纷', level: '二级事件', town: '石碶街道', time: '2025-12-09 15:20' },
         { id: 'GQW202505080005', desc: '反映小区停车位被长期占用', type: '停车纠纷', level: '三级事件', town: '高桥镇', time: '2025-12-08 10:40' },
       ],
-      eventTypes: [
+      eventTypesForChart: [
         { type: '邻里纠纷', value: 187, percent: 40 },
         { type: '停车纠纷', value: 140, percent: 30 },
         { type: '债务纠纷', value: 93, percent: 20 },
         { type: '其他', value: 47, percent: 10 },
+      ],
+      eventTypesForList: [
+        { type: '邻里纠纷', value: 187, percent: 40 },
+        { type: '停车纠纷', value: 140, percent: 30 },
+        { type: '债务纠纷', value: 93, percent: 20 },
+        { type: '噪音投诉', value: 21, percent: 4.5 },
+        { type: '宠物纠纷', value: 15, percent: 3.2 },
+        { type: '装修纠纷', value: 11, percent: 2.3 },
       ],
       eventLevels: [
         { level: '一级事件', value: 47, percent: 10 },
@@ -259,12 +294,22 @@ const PersonAnalysisList = () => {
         { id: 'GQW202505090006', desc: '反映租住房屋设施损坏房东不修', type: '租房纠纷', level: '三级事件', town: '高桥镇', time: '2025-12-09 13:25' },
         { id: 'NMW202505080007', desc: '劳动合同纠纷要求赔偿', type: '劳务纠纷', level: '二级事件', town: '南门街道', time: '2025-12-08 10:10' },
       ],
-      eventTypes: [
+      eventTypesForChart: [
         { type: '租房纠纷', value: 347, percent: 30 },
         { type: '债务纠纷', value: 289, percent: 25 },
         { type: '劳务纠纷', value: 231, percent: 20 },
         { type: '邻里纠纷', value: 173, percent: 15 },
         { type: '其他', value: 116, percent: 10 },
+      ],
+      eventTypesForList: [
+        { type: '租房纠纷', value: 347, percent: 30 },
+        { type: '债务纠纷', value: 289, percent: 25 },
+        { type: '劳务纠纷', value: 231, percent: 20 },
+        { type: '邻里纠纷', value: 173, percent: 15 },
+        { type: '医疗纠纷', value: 46, percent: 4.0 },
+        { type: '消费纠纷', value: 35, percent: 3.0 },
+        { type: '交通纠纷', value: 23, percent: 2.0 },
+        { type: '教育纠纷', value: 12, percent: 1.0 },
       ],
       eventLevels: [
         { level: '一级事件', value: 173, percent: 15 },
@@ -309,9 +354,228 @@ const PersonAnalysisList = () => {
 
   const currentTagData = tagPenetrationData[selectedPopulationTag] || tagPenetrationData['高频涉事人员'];
 
+  // 抽屉表格筛选辅助函数
+  const getDrawerColumnSearchProps = (dataIndex, placeholder) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={drawerSearchInput}
+          placeholder={placeholder}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => handleDrawerColumnSearchFilter(selectedKeys, confirm, dataIndex)}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleDrawerColumnSearchFilter(selectedKeys, confirm, dataIndex)}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            搜索
+          </Button>
+          <Button
+            onClick={() => handleDrawerColumnFilterReset(clearFilters, dataIndex)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <SearchOutlined style={{ color: drawerColumnFilters[dataIndex] ? '#1890ff' : undefined }} />
+    ),
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) {
+        setTimeout(() => drawerSearchInput.current?.select(), 100);
+      }
+    },
+  });
+
+  const getDrawerColumnFilterProps = (dataIndex, options, placeholder) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <Select
+          mode="multiple"
+          placeholder={placeholder}
+          value={selectedKeys}
+          onChange={(values) => setSelectedKeys(values || [])}
+          style={{ width: 200, marginBottom: 8, display: 'block' }}
+          allowClear
+          maxTagCount="responsive"
+        >
+          {options.map(opt => (
+            <Option key={opt} value={opt}>{opt}</Option>
+          ))}
+        </Select>
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleDrawerColumnFilterMultiple(selectedKeys, confirm, dataIndex)}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleDrawerColumnFilterReset(clearFilters, dataIndex)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: drawerColumnFilters[dataIndex] ? '#1890ff' : undefined }} />
+    ),
+    filteredValue: Array.isArray(drawerColumnFilters[dataIndex]) ? drawerColumnFilters[dataIndex] : null,
+  });
+
+  // 抽屉表格筛选处理函数
+  const handleDrawerColumnSearchFilter = (selectedKeys, confirm, dataIndex) => {
+    confirm();
+    const value = selectedKeys[0];
+    setDrawerSearchText(value);
+    setDrawerSearchedColumn(dataIndex);
+
+    const newFilters = { ...drawerColumnFilters };
+    if (value) {
+      newFilters[dataIndex] = value;
+    } else {
+      delete newFilters[dataIndex];
+    }
+    setDrawerColumnFilters(newFilters);
+  };
+
+  const handleDrawerColumnFilterMultiple = (selectedKeys, confirm, dataIndex) => {
+    confirm();
+    const values = Array.isArray(selectedKeys) ? selectedKeys : [];
+
+    const newFilters = { ...drawerColumnFilters };
+    if (values.length) {
+      newFilters[dataIndex] = values;
+    } else {
+      delete newFilters[dataIndex];
+    }
+    setDrawerColumnFilters(newFilters);
+  };
+
+  const handleDrawerColumnFilterReset = (clearFilters, dataIndex) => {
+    clearFilters();
+
+    const newFilters = { ...drawerColumnFilters };
+    delete newFilters[dataIndex];
+    setDrawerColumnFilters(newFilters);
+
+    if (dataIndex === drawerSearchedColumn) {
+      setDrawerSearchText('');
+      setDrawerSearchedColumn('');
+    }
+  };
+
+  // 抽屉表格数据过滤
+  const getFilteredDrawerData = useMemo(() => {
+    if (!selectedCategory) return [];
+
+    let data = [
+      {
+        id: 1,
+        事件编号: 'SQW202505310510',
+        事件描述: '快速送达客户要求快件理由报道事项等，有纠纷',
+        镇街名称: '白云街道',
+        村社名称: '王长社区',
+        事件级别: '二级事件',
+        二级分类: selectedCategory?.type || '债务纠纷',
+        上报时间: '2025-12-22 09:31',
+        处置结果: '已办结',
+        相关事件: 0,
+      },
+      {
+        id: 2,
+        事件编号: 'GQW202505310011',
+        事件描述: `${selectedCategory?.type || ''}相关事件描述`,
+        镇街名称: '河桥镇',
+        村社名称: '塑桥村',
+        事件级别: '三级事件',
+        二级分类: selectedCategory?.type || '债务纠纷',
+        上报时间: '2025-12-21 14:25',
+        处置结果: '未办结',
+        相关事件: 2,
+      },
+      {
+        id: 3,
+        事件编号: 'WCW202505310014',
+        事件描述: `${selectedCategory?.type || ''}相关投诉`,
+        镇街名称: '塑桥镇',
+        村社名称: '-',
+        事件级别: '一级事件',
+        二级分类: selectedCategory?.type || '债务纠纷',
+        上报时间: '2025-12-20 08:15',
+        处置结果: '已办结',
+        相关事件: 1,
+      },
+      {
+        id: 4,
+        事件编号: 'SQW202505310012',
+        事件描述: `${selectedCategory?.type || ''}问题反映`,
+        镇街名称: '南广街道',
+        村社名称: '南广村',
+        事件级别: '二级事件',
+        二级分类: selectedCategory?.type || '债务纠纷',
+        上报时间: '2025-12-19 16:42',
+        处置结果: '处理中',
+        相关事件: 0,
+      },
+      {
+        id: 5,
+        事件编号: 'GLW202505010001',
+        事件描述: `${selectedCategory?.type || ''}纠纷处理`,
+        镇街名称: '古林镇',
+        村社名称: '古林村',
+        事件级别: '三级事件',
+        二级分类: selectedCategory?.type || '债务纠纷',
+        上报时间: '2025-12-18 11:20',
+        处置结果: '已办结',
+        相关事件: 0,
+      },
+    ];
+
+    // 应用筛选
+    Object.keys(drawerColumnFilters).forEach(key => {
+      const filterValue = drawerColumnFilters[key];
+      if (!filterValue) return;
+
+      if (Array.isArray(filterValue)) {
+        // 多选筛选
+        data = data.filter(item => filterValue.includes(item[key]));
+      } else if (typeof filterValue === 'string') {
+        // 文本搜索
+        data = data.filter(item => {
+          const value = item[key];
+          if (!value) return false;
+          return String(value).toLowerCase().includes(filterValue.toLowerCase());
+        });
+      }
+    });
+
+    return data;
+  }, [selectedCategory, drawerColumnFilters]);
+
   // 前端过滤数据（用于姓名、身份证、事件数量的筛选）
   const filteredData = useMemo(() => {
     let result = [...data];
+
+    // 如果在"我的关注"Tab，只显示已关注的人员
+    if (activeTab === 'followed') {
+      result = result.filter(item => followedPersons.has(item.phone));
+    }
 
     // 姓名搜索
     if (columnFilters['name']) {
@@ -346,7 +610,7 @@ const PersonAnalysisList = () => {
     }
 
     return result;
-  }, [data, columnFilters]);
+  }, [data, columnFilters, activeTab, followedPersons]);
 
   // 获取角色选项
   const fetchRoles = async () => {
@@ -425,6 +689,21 @@ const PersonAnalysisList = () => {
   // 查看详情
   const handleViewDetail = (phone) => {
     navigate(`/person-analysis/${encodeURIComponent(phone)}`);
+  };
+
+  // 关注/取消关注
+  const handleToggleFollow = (phone) => {
+    setFollowedPersons(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(phone)) {
+        newSet.delete(phone);
+        message.success('已取消关注');
+      } else {
+        newSet.add(phone);
+        message.success('已添加关注');
+      }
+      return newSet;
+    });
   };
 
   // 获取筛选标签 - 用于显示当前筛选条件
@@ -906,22 +1185,36 @@ const PersonAnalysisList = () => {
     {
       title: '操作',
       key: 'action',
-      width: columnWidths['action'],
+      width: columnWidths['action'] || 150,
       align: 'center',
       onHeaderCell: () => ({
-        width: columnWidths['action'],
+        width: columnWidths['action'] || 150,
         onResize: handleResize('action'),
       }),
-      render: (_, record) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          size="small"
-          onClick={() => handleViewDetail(record.phone)}
-        >
-          查看详情
-        </Button>
-      ),
+      render: (_, record) => {
+        const isFollowed = followedPersons.has(record.phone);
+        return (
+          <Space size="small">
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              size="small"
+              onClick={() => handleViewDetail(record.phone)}
+            >
+              详情
+            </Button>
+            <Button
+              type="link"
+              icon={isFollowed ? <StarFilled /> : <StarOutlined />}
+              size="small"
+              style={{ color: isFollowed ? '#faad14' : undefined }}
+              onClick={() => handleToggleFollow(record.phone)}
+            >
+              {isFollowed ? '已关注' : '关注'}
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -1018,6 +1311,73 @@ const PersonAnalysisList = () => {
           </div>
         )}
       </Card>
+                </div>
+              )
+            },
+            {
+              key: 'followed',
+              label: (
+                <span>
+                  <StarFilled style={{ marginRight: 4, color: '#faad14' }} />
+                  重点关注
+                  {followedPersons.size > 0 && (
+                    <Badge count={followedPersons.size} style={{ marginLeft: 8 }} />
+                  )}
+                </span>
+              ),
+              children: (
+                <div>
+                  {/* 筛选条件标签 */}
+                  {getFilterTags().length > 0 && (
+                    <Card style={{ marginTop: 16 }}>
+                      <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#1890ff' }}>当前筛选条件：</div>
+                      <Row gutter={[8, 8]}>
+                        {getFilterTags().map(tag => (
+                          <Col key={tag.key}>
+                            <Tag
+                              closable={tag.closable}
+                              onClose={tag.onClose}
+                              color="blue"
+                            >
+                              {tag.label}
+                            </Tag>
+                          </Col>
+                        ))}
+                        <Col>
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={clearAllFilters}
+                            style={{ padding: 0, height: 'auto' }}
+                          >
+                            清除全部
+                          </Button>
+                        </Col>
+                      </Row>
+                    </Card>
+                  )}
+
+                  {/* 数据表格 */}
+                  <Card style={{ marginTop: 16 }}>
+                    <Table
+                      columns={columns}
+                      dataSource={filteredData}
+                      loading={loading}
+                      rowKey="phone"
+                      pagination={{
+                        current: currentPage,
+                        pageSize: pageSize,
+                        total: total,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条`,
+                        onChange: handlePageChange,
+                        onShowSizeChange: handlePageChange,
+                      }}
+                      locale={{
+                        emptyText: followedPersons.size === 0 ? '暂无关注的人员' : '没有符合条件的关注人员'
+                      }}
+                    />
+                  </Card>
                 </div>
               )
             },
@@ -1144,7 +1504,7 @@ const PersonAnalysisList = () => {
                           <strong>占比分布（饼图）</strong>
                         </div>
                         <Pie
-                          data={currentTagData.eventTypes}
+                          data={currentTagData.eventTypesForChart}
                           angleField="value"
                           colorField="type"
                           radius={0.8}
@@ -1170,39 +1530,69 @@ const PersonAnalysisList = () => {
                         />
                       </Col>
                       <Col span={12}>
-                        <div style={{ textAlign: 'center', marginBottom: 8 }}>
-                          <strong>数量分布（柱状图）</strong>
+                        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                          <strong>二级分类统计明细</strong>
                         </div>
-                        <Column
-                          data={currentTagData.eventTypes}
-                          xField="type"
-                          yField="value"
-                          label={{
-                            position: 'top',
-                            style: {
-                              fill: '#000',
-                              opacity: 0.6,
-                            },
+                        <List
+                          dataSource={currentTagData.eventTypesForList}
+                          renderItem={(item) => (
+                            <List.Item
+                              style={{
+                                padding: '12px 16px',
+                                borderBottom: '1px solid #f0f0f0',
+                              }}
+                              extra={
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<RightOutlined />}
+                                  onClick={() => {
+                                    setSelectedCategory(item);
+                                    setCategoryDrawerVisible(true);
+                                  }}
+                                >
+                                  查看明细
+                                </Button>
+                              }
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{item.type}</span>
+                                <span style={{
+                                  fontSize: 18,
+                                  fontWeight: 'bold',
+                                  color: '#1890ff',
+                                  minWidth: 80,
+                                  textAlign: 'right'
+                                }}>
+                                  {item.value} 条
+                                </span>
+                                <span style={{
+                                  fontSize: 14,
+                                  color: '#666',
+                                  minWidth: 60,
+                                  textAlign: 'right',
+                                  marginRight: 20
+                                }}>
+                                  {item.percent}%
+                                </span>
+                              </div>
+                            </List.Item>
+                          )}
+                          style={{
+                            maxHeight: 300,
+                            overflow: 'auto',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 4,
                           }}
-                          xAxis={{
-                            label: {
-                              autoRotate: false,
-                              autoHide: false,
-                            },
-                          }}
-                          columnStyle={{
-                            radius: [4, 4, 0, 0],
-                          }}
-                          height={300}
                         />
                       </Col>
                     </Row>
                   </Card>
 
-                  {/* 事件等级分布和街镇地区统计 - 并排显示 */}
-                  <Row gutter={16} style={{ marginBottom: 16 }}>
-                    <Col span={12}>
-                      <Card title="事件等级分布">
+                  {/* 事件等级分布 */}
+                  <Card title="事件等级分布" style={{ marginBottom: 16 }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
                         <div style={{ textAlign: 'center', marginBottom: 8 }}>
                           <strong>占比分布（饼图）</strong>
                         </div>
@@ -1232,14 +1622,166 @@ const PersonAnalysisList = () => {
                           color={['#ff4d4f', '#faad14', '#52c41a']}
                           height={300}
                         />
-                      </Card>
-                    </Col>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                          <strong>事件等级统计明细</strong>
+                        </div>
+                        <List
+                          dataSource={currentTagData.eventLevels}
+                          renderItem={(item) => (
+                            <List.Item
+                              style={{
+                                padding: '12px 16px',
+                                borderBottom: '1px solid #f0f0f0',
+                              }}
+                              extra={
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<RightOutlined />}
+                                  onClick={() => {
+                                    setSelectedCategory({ type: item.level, value: item.value });
+                                    setCategoryDrawerVisible(true);
+                                  }}
+                                >
+                                  查看明细
+                                </Button>
+                              }
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{item.level}</span>
+                                <span style={{
+                                  fontSize: 18,
+                                  fontWeight: 'bold',
+                                  color: '#1890ff',
+                                  minWidth: 80,
+                                  textAlign: 'right'
+                                }}>
+                                  {item.value} 条
+                                </span>
+                                <span style={{
+                                  fontSize: 14,
+                                  color: '#666',
+                                  minWidth: 60,
+                                  textAlign: 'right',
+                                  marginRight: 20
+                                }}>
+                                  {item.percent}%
+                                </span>
+                              </div>
+                            </List.Item>
+                          )}
+                          style={{
+                            maxHeight: 300,
+                            overflow: 'auto',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 4,
+                          }}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
 
-                    <Col span={12}>
-                      <Card title="街镇地区统计">
-                        <Column
+                  {/* 街镇地区统计 */}
+                  <Card title="街镇地区统计" style={{ marginBottom: 16 }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                          <strong>地区分布（条状图）</strong>
+                        </div>
+                        <Bar
                           data={currentTagData.townStats}
-                          xField="town"
+                          xField="count"
+                          yField="town"
+                          label={{
+                            position: 'right',
+                            style: {
+                              fill: '#000',
+                              opacity: 0.6,
+                            },
+                          }}
+                          barStyle={{
+                            radius: [0, 4, 4, 0],
+                          }}
+                          color="#52c41a"
+                          height={350}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                          <strong>街镇地区统计明细</strong>
+                        </div>
+                        <List
+                          dataSource={currentTagData.townStats}
+                          renderItem={(item) => {
+                            const totalCount = currentTagData.townStats.reduce((sum, t) => sum + t.count, 0);
+                            const percent = ((item.count / totalCount) * 100).toFixed(1);
+                            return (
+                              <List.Item
+                                style={{
+                                  padding: '12px 16px',
+                                  borderBottom: '1px solid #f0f0f0',
+                                }}
+                                extra={
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<RightOutlined />}
+                                    onClick={() => {
+                                      setSelectedCategory({ type: item.town, value: item.count });
+                                      setCategoryDrawerVisible(true);
+                                    }}
+                                  >
+                                    查看明细
+                                  </Button>
+                                }
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                  <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{item.town}</span>
+                                  <span style={{
+                                    fontSize: 18,
+                                    fontWeight: 'bold',
+                                    color: '#1890ff',
+                                    minWidth: 80,
+                                    textAlign: 'right'
+                                  }}>
+                                    {item.count} 条
+                                  </span>
+                                  <span style={{
+                                    fontSize: 14,
+                                    color: '#666',
+                                    minWidth: 60,
+                                    textAlign: 'right',
+                                    marginRight: 20
+                                  }}>
+                                    {percent}%
+                                  </span>
+                                </div>
+                              </List.Item>
+                            );
+                          }}
+                          style={{
+                            maxHeight: 350,
+                            overflow: 'auto',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 4,
+                          }}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+
+                  {/* 事件标签分布 */}
+                  <Card title="事件标签分布（TOP 10）">
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                          <strong>标签分布（柱状图）</strong>
+                        </div>
+                        <Column
+                          data={currentTagData.eventTags}
+                          xField="tag"
                           yField="count"
                           label={{
                             position: 'top',
@@ -1262,54 +1804,83 @@ const PersonAnalysisList = () => {
                           columnStyle={{
                             radius: [4, 4, 0, 0],
                           }}
-                          color="#52c41a"
-                          height={350}
+                          color="#1890ff"
+                          height={400}
                         />
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  {/* 事件标签分布 */}
-                  <Card title="事件标签分布（TOP 10）">
-                    <Column
-                      data={currentTagData.eventTags}
-                      xField="tag"
-                      yField="count"
-                      label={{
-                        position: 'top',
-                        style: {
-                          fill: '#000',
-                          opacity: 0.6,
-                        },
-                      }}
-                      xAxis={{
-                        label: {
-                          autoRotate: true,
-                          autoHide: false,
-                        },
-                      }}
-                      yAxis={{
-                        title: {
-                          text: '事件数量',
-                        },
-                      }}
-                      columnStyle={{
-                        radius: [4, 4, 0, 0],
-                      }}
-                      color="#1890ff"
-                      height={400}
-                    />
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                          <strong>事件标签统计明细</strong>
+                        </div>
+                        <List
+                          dataSource={currentTagData.eventTags}
+                          renderItem={(item) => {
+                            const totalCount = currentTagData.eventTags.reduce((sum, t) => sum + t.count, 0);
+                            const percent = ((item.count / totalCount) * 100).toFixed(1);
+                            return (
+                              <List.Item
+                                style={{
+                                  padding: '12px 16px',
+                                  borderBottom: '1px solid #f0f0f0',
+                                }}
+                                extra={
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<RightOutlined />}
+                                    onClick={() => {
+                                      setSelectedCategory({ type: item.tag, value: item.count });
+                                      setCategoryDrawerVisible(true);
+                                    }}
+                                  >
+                                    查看明细
+                                  </Button>
+                                }
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                  <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{item.tag}</span>
+                                  <span style={{
+                                    fontSize: 18,
+                                    fontWeight: 'bold',
+                                    color: '#1890ff',
+                                    minWidth: 80,
+                                    textAlign: 'right'
+                                  }}>
+                                    {item.count} 条
+                                  </span>
+                                  <span style={{
+                                    fontSize: 14,
+                                    color: '#666',
+                                    minWidth: 60,
+                                    textAlign: 'right',
+                                    marginRight: 20
+                                  }}>
+                                    {percent}%
+                                  </span>
+                                </div>
+                              </List.Item>
+                            );
+                          }}
+                          style={{
+                            maxHeight: 400,
+                            overflow: 'auto',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 4,
+                          }}
+                        />
+                      </Col>
+                    </Row>
                   </Card>
 
-                  {/* 关联人员弹窗 */}
-                  <Modal
+                  {/* 关联人员抽屉 */}
+                  <Drawer
                     title={`关联人员列表 - ${selectedPopulationTag}`}
-                    open={personModalVisible}
-                    onCancel={() => setPersonModalVisible(false)}
-                    footer={null}
+                    placement="right"
                     width={900}
+                    onClose={() => setPersonModalVisible(false)}
+                    open={personModalVisible}
                   >
-                    <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
                       <Statistic
                         title="总人数"
                         value={currentTagData.personCount}
@@ -1319,7 +1890,10 @@ const PersonAnalysisList = () => {
                     </div>
                     <Table
                       dataSource={currentTagData.persons}
-                      pagination={{ pageSize: 10 }}
+                      pagination={{
+                        pageSize: 10,
+                        showTotal: (total) => `共 ${total} 人`
+                      }}
                       size="small"
                       rowKey="phone"
                       columns={[
@@ -1365,17 +1939,17 @@ const PersonAnalysisList = () => {
                         },
                       ]}
                     />
-                  </Modal>
+                  </Drawer>
 
-                  {/* 关联事件弹窗 */}
-                  <Modal
+                  {/* 关联事件抽屉 */}
+                  <Drawer
                     title={`关联事件列表 - ${selectedPopulationTag}`}
-                    open={eventModalVisible}
-                    onCancel={() => setEventModalVisible(false)}
-                    footer={null}
+                    placement="right"
                     width={1200}
+                    onClose={() => setEventModalVisible(false)}
+                    open={eventModalVisible}
                   >
-                    <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
                       <Statistic
                         title="总事件数"
                         value={currentTagData.eventCount}
@@ -1385,9 +1959,13 @@ const PersonAnalysisList = () => {
                     </div>
                     <Table
                       dataSource={currentTagData.events}
-                      pagination={{ pageSize: 10 }}
+                      pagination={{
+                        pageSize: 10,
+                        showTotal: (total) => `共 ${total} 条`
+                      }}
                       size="small"
                       rowKey="id"
+                      scroll={{ x: 1000 }}
                       columns={[
                         {
                           title: '事件编号',
@@ -1437,13 +2015,186 @@ const PersonAnalysisList = () => {
                         },
                       ]}
                     />
-                  </Modal>
+                  </Drawer>
                 </div>
               )
             }
           ]}
         />
       </Card>
+
+      {/* 二级分类明细抽屉 */}
+      <Drawer
+        title={`${selectedCategory?.type || ''} - 事件明细`}
+        placement="right"
+        width={1200}
+        onClose={() => {
+          setCategoryDrawerVisible(false);
+          setSelectedCategory(null);
+          // 重置抽屉筛选状态
+          setDrawerColumnFilters({});
+          setDrawerSearchText('');
+          setDrawerSearchedColumn('');
+        }}
+        open={categoryDrawerVisible}
+      >
+        {selectedCategory && (
+          <div>
+            <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Statistic
+                    title="事件总数"
+                    value={selectedCategory.value}
+                    suffix="条"
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title={Object.keys(drawerColumnFilters).length > 0 ? "筛选后数量" : "占比"}
+                    value={Object.keys(drawerColumnFilters).length > 0
+                      ? getFilteredDrawerData.length
+                      : ((selectedCategory.value / currentTagData.eventCount) * 100).toFixed(1)}
+                    suffix={Object.keys(drawerColumnFilters).length > 0 ? "条" : "%"}
+                  />
+                </Col>
+              </Row>
+            </div>
+
+            <Table
+              dataSource={getFilteredDrawerData}
+              columns={[
+                {
+                  title: '事件编号',
+                  dataIndex: '事件编号',
+                  key: '事件编号',
+                  width: 160,
+                  ...getDrawerColumnSearchProps('事件编号', '搜索事件编号'),
+                  render: (text) => (
+                    <span style={{ fontSize: '12px', fontFamily: 'monospace' }}>{text}</span>
+                  ),
+                },
+                {
+                  title: '事件描述',
+                  dataIndex: '事件描述',
+                  key: '事件描述',
+                  ...getDrawerColumnSearchProps('事件描述', '搜索事件描述'),
+                  ellipsis: {
+                    showTitle: false,
+                  },
+                  render: (text) => (
+                    <Tooltip title={text}>
+                      <span>{text}</span>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: '镇街名称',
+                  dataIndex: '镇街名称',
+                  key: '镇街名称',
+                  width: 100,
+                  ...getDrawerColumnFilterProps('镇街名称', ['白云街道', '河桥镇', '塑桥镇', '南广街道', '古林镇'], '选择镇街'),
+                },
+                {
+                  title: '村社名称',
+                  dataIndex: '村社名称',
+                  key: '村社名称',
+                  width: 100,
+                  ...getDrawerColumnFilterProps('村社名称', ['王长社区', '塑桥村', '南广村', '古林村'], '选择村社'),
+                  ellipsis: true,
+                  render: (text) => text || '-',
+                },
+                {
+                  title: '事件级别',
+                  dataIndex: '事件级别',
+                  key: '事件级别',
+                  width: 100,
+                  ...getDrawerColumnFilterProps('事件级别', ['一级事件', '二级事件', '三级事件'], '选择级别'),
+                  render: (level) => {
+                    let color = 'default';
+                    if (level?.includes('一级')) color = 'red';
+                    else if (level?.includes('二级')) color = 'orange';
+                    else if (level?.includes('三级')) color = 'blue';
+                    return <Tag color={color}>{level}</Tag>;
+                  },
+                },
+                {
+                  title: '二级分类',
+                  dataIndex: '二级分类',
+                  key: '二级分类',
+                  width: 120,
+                  ...getDrawerColumnSearchProps('二级分类', '搜索二级分类'),
+                  ellipsis: {
+                    showTitle: false,
+                  },
+                  render: (text) => (
+                    <Tooltip title={text}>
+                      <span>{text}</span>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: '上报时间',
+                  dataIndex: '上报时间',
+                  key: '上报时间',
+                  width: 150,
+                },
+                {
+                  title: '处置结果',
+                  dataIndex: '处置结果',
+                  key: '处置结果',
+                  width: 100,
+                  ...getDrawerColumnFilterProps('处置结果', ['已办结', '未办结', '处理中'], '选择状态'),
+                  ellipsis: { showTitle: false },
+                  render: (text) => (
+                    <Tooltip title={text}>
+                      <span>{text || '-'}</span>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: '相关事件',
+                  dataIndex: '相关事件',
+                  key: '相关事件',
+                  width: 100,
+                  render: (value) => {
+                    if (value && value > 0) {
+                      return (
+                        <Tag color="blue">
+                          {value} 个关联
+                        </Tag>
+                      );
+                    }
+                    return '-';
+                  },
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 80,
+                  fixed: 'right',
+                  render: (_, record) => (
+                    <Button type="link" size="small" icon={<EyeOutlined />}>
+                      详情
+                    </Button>
+                  ),
+                },
+              ]}
+              pagination={{
+                pageSize: 10,
+                showTotal: (total) => {
+                  if (Object.keys(drawerColumnFilters).length > 0) {
+                    return `筛选后共 ${total} 条，总计 ${selectedCategory.value} 条`;
+                  }
+                  return `共 ${total} 条`;
+                },
+              }}
+              size="small"
+              scroll={{ x: 1200 }}
+            />
+          </div>
+        )}
+      </Drawer>
 
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout as AntLayout, Menu, Typography, Button, Space } from 'antd';
-import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, LogoutOutlined, BookOutlined, FileTextOutlined, AuditOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { HomeOutlined, UnorderedListOutlined, ClusterOutlined, UserOutlined, BarChartOutlined, LogoutOutlined, BookOutlined, FileTextOutlined, AuditOutlined, ThunderboltOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -83,6 +83,21 @@ const Layout = ({ children }) => {
         {
           key: '/event-classification/tags',
           label: '标签管理',
+        },
+      ],
+    },
+    {
+      key: 'system-submenu',
+      icon: <SafetyOutlined />,
+      label: '系统管理',
+      children: [
+        {
+          key: '/system/users',
+          label: '用户管理',
+        },
+        {
+          key: '/system/roles',
+          label: '角色管理',
         },
       ],
     },

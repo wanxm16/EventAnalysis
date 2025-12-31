@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert, Radio, Tabs, Spin, Steps, Checkbox, Statistic, Empty } from 'antd';
-import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { Line } from '@ant-design/plots';
 import Highlighter from 'react-highlight-words';
 import dayjs from 'dayjs';
@@ -150,11 +150,11 @@ const TopicDetail = () => {
           { date: '2024-09', count: 52 },
         ],
         persons: [
-          { name: '张三', phone: '13800138001', event_count: 15, role: '报警人' },
-          { name: '李四', phone: '13800138002', event_count: 12, role: '对方' },
-          { name: '王五', phone: '13800138003', event_count: 10, role: '报警人' },
-          { name: '赵六', phone: '13800138004', event_count: 8, role: '当事人' },
-          { name: '钱七', phone: '13800138005', event_count: 6, role: '报警人' },
+          { name: '张三', phone: '13800138001', idCard: '330102199001011234', event_count: 15, role: '报警人', profileTags: ['老年人', '退休人员'] },
+          { name: '李四', phone: '13800138002', idCard: '330102198505052345', event_count: 12, role: '对方', profileTags: ['中年人', '个体户'] },
+          { name: '王五', phone: '13800138003', idCard: '330102199203033456', event_count: 10, role: '报警人', profileTags: ['青年人', '上班族'] },
+          { name: '赵六', phone: '13800138004', idCard: '330102197812124567', event_count: 8, role: '当事人', profileTags: ['中年人', '企业主'] },
+          { name: '钱七', phone: '13800138005', idCard: '330102200001015678', event_count: 6, role: '报警人', profileTags: ['青年人', '学生'] },
         ]
       },
       {
@@ -173,10 +173,10 @@ const TopicDetail = () => {
           { date: '2024-09', count: 33 },
         ],
         persons: [
-          { name: '孙八', phone: '13800138006', event_count: 18, role: '报警人' },
-          { name: '周九', phone: '13800138007', event_count: 14, role: '对方' },
-          { name: '吴十', phone: '13800138008', event_count: 11, role: '当事人' },
-          { name: '郑一', phone: '13800138009', event_count: 9, role: '报警人' },
+          { name: '孙八', phone: '13800138006', idCard: '330102198808086789', event_count: 18, role: '报警人', profileTags: ['中年人', '自由职业者'] },
+          { name: '周九', phone: '13800138007', idCard: '330102199509097890', event_count: 14, role: '对方', profileTags: ['青年人', '公司职员'] },
+          { name: '吴十', phone: '13800138008', idCard: '330102198212128901', event_count: 11, role: '当事人', profileTags: ['中年人', '个体商户'] },
+          { name: '郑一', phone: '13800138009', idCard: '330102199706069012', event_count: 9, role: '报警人', profileTags: ['青年人', '网约车司机'] },
         ]
       },
       {
@@ -195,9 +195,9 @@ const TopicDetail = () => {
           { date: '2024-09', count: 21 },
         ],
         persons: [
-          { name: '冯二', phone: '13800138010', event_count: 13, role: '报警人' },
-          { name: '陈三', phone: '13800138011', event_count: 10, role: '对方' },
-          { name: '褚四', phone: '13800138012', event_count: 8, role: '当事人' },
+          { name: '冯二', phone: '13800138010', idCard: '330102199304040123', event_count: 13, role: '报警人', profileTags: ['青年人', '快递员'] },
+          { name: '陈三', phone: '13800138011', idCard: '330102198607071234', event_count: 10, role: '对方', profileTags: ['中年人', '餐饮业主'] },
+          { name: '褚四', phone: '13800138012', idCard: '330102199101012345', event_count: 8, role: '当事人', profileTags: ['中年人', '教师'] },
         ]
       },
       {
@@ -216,9 +216,9 @@ const TopicDetail = () => {
           { date: '2024-09', count: 19 },
         ],
         persons: [
-          { name: '卫五', phone: '13800138013', event_count: 12, role: '报警人' },
-          { name: '蒋六', phone: '13800138014', event_count: 9, role: '对方' },
-          { name: '沈七', phone: '13800138015', event_count: 7, role: '报警人' },
+          { name: '卫五', phone: '13800138013', idCard: '330102198909092456', event_count: 12, role: '报警人', profileTags: ['中年人', '护士'] },
+          { name: '蒋六', phone: '13800138014', idCard: '330102199402023567', event_count: 9, role: '对方', profileTags: ['青年人', '程序员'] },
+          { name: '沈七', phone: '13800138015', idCard: '330102196508084678', event_count: 7, role: '报警人', profileTags: ['老年人', '退休干部'] },
         ]
       },
       {
@@ -237,8 +237,8 @@ const TopicDetail = () => {
           { date: '2024-09', count: 14 },
         ],
         persons: [
-          { name: '韩八', phone: '13800138016', event_count: 11, role: '报警人' },
-          { name: '杨九', phone: '13800138017', event_count: 8, role: '对方' },
+          { name: '韩八', phone: '13800138016', idCard: '330102199208085789', event_count: 11, role: '报警人', profileTags: ['中年人', '设计师'] },
+          { name: '杨九', phone: '13800138017', idCard: '330102198803036890', event_count: 8, role: '对方', profileTags: ['中年人', '装修工人'] },
         ]
       },
     ]
@@ -251,6 +251,10 @@ const TopicDetail = () => {
   const [editStep3Form] = Form.useForm();
   const [editStep1Skipped, setEditStep1Skipped] = useState(false);
   const [editStep2Skipped, setEditStep2Skipped] = useState(false);
+
+  // 人员事件明细抽屉状态
+  const [personEventDrawerVisible, setPersonEventDrawerVisible] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState(null);
   const [editCategories, setEditCategories] = useState([]);
   const [editSelectedTags, setEditSelectedTags] = useState([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -1879,11 +1883,6 @@ const TopicDetail = () => {
               return (
                 <Tag
                   key={`${record.事件编号}-${tag.name}-${index}`}
-                  closable
-                  onClose={(e) => {
-                    e.preventDefault();
-                    handleRemoveTag(record, tag);
-                  }}
                   color={color}
                 >
                   {icon}{tag.name}
@@ -2250,6 +2249,141 @@ const TopicDetail = () => {
                   </Row>
                 </div>
               )
+            },
+            {
+              key: 'personAnalysis',
+              label: '人员分析',
+              children: (
+                <div>
+                  {/* 人员列表 */}
+                  <Card title="涉及人员列表">
+                    <Table
+                      dataSource={(() => {
+                        // 合并所有标签的人员数据
+                        const personMap = new Map();
+                        mockTagAnalysisData.tags.forEach(tag => {
+                          tag.persons.forEach(person => {
+                            if (personMap.has(person.phone)) {
+                              const existing = personMap.get(person.phone);
+                              existing.event_count += person.event_count;
+                              if (!existing.tags.includes(tag.name)) {
+                                existing.tags.push(tag.name);
+                              }
+                            } else {
+                              personMap.set(person.phone, {
+                                ...person,
+                                tags: [tag.name]
+                              });
+                            }
+                          });
+                        });
+                        return Array.from(personMap.values()).sort((a, b) => b.event_count - a.event_count);
+                      })()}
+                      rowKey="phone"
+                      pagination={{
+                        pageSize: 20,
+                        showSizeChanger: true,
+                        showQuickJumper: true,
+                        showTotal: (total) => `共 ${total} 人`
+                      }}
+                      size="small"
+                      columns={[
+                        {
+                          title: '姓名',
+                          dataIndex: 'name',
+                          key: 'name',
+                          width: 100,
+                        },
+                        {
+                          title: '手机号',
+                          dataIndex: 'phone',
+                          key: 'phone',
+                          width: 130,
+                          render: (text) => (
+                            <span style={{ fontFamily: 'monospace' }}>{text}</span>
+                          ),
+                        },
+                        {
+                          title: '身份证号码',
+                          dataIndex: 'idCard',
+                          key: 'idCard',
+                          width: 170,
+                          render: (text) => (
+                            <span style={{ fontFamily: 'monospace' }}>{text || '-'}</span>
+                          ),
+                        },
+                        {
+                          title: '角色',
+                          dataIndex: 'role',
+                          key: 'role',
+                          width: 100,
+                          render: (text) => {
+                            let color = 'default';
+                            if (text === '报警人') color = 'blue';
+                            else if (text === '对方') color = 'orange';
+                            else if (text === '当事人') color = 'green';
+                            return <Tag color={color}>{text}</Tag>;
+                          },
+                        },
+                        {
+                          title: '关联事件标签',
+                          dataIndex: 'tags',
+                          key: 'tags',
+                          render: (tags) => (
+                            <Space size={[4, 4]} wrap>
+                              {tags.map((tag, idx) => (
+                                <Tag key={idx} color="blue">{tag}</Tag>
+                              ))}
+                            </Space>
+                          ),
+                        },
+                        {
+                          title: '人口画像标签',
+                          dataIndex: 'profileTags',
+                          key: 'profileTags',
+                          render: (tags) => (
+                            <Space size={[4, 4]} wrap>
+                              {tags?.map((tag, idx) => (
+                                <Tag key={idx} color="green">{tag}</Tag>
+                              ))}
+                            </Space>
+                          ),
+                        },
+                        {
+                          title: '关联事件数',
+                          dataIndex: 'event_count',
+                          key: 'event_count',
+                          width: 120,
+                          align: 'center',
+                          sorter: (a, b) => a.event_count - b.event_count,
+                          render: (text) => (
+                            <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{text}</span>
+                          ),
+                        },
+                        {
+                          title: '操作',
+                          key: 'action',
+                          width: 100,
+                          align: 'center',
+                          render: (_, record) => (
+                            <Button
+                              type="link"
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => {
+                                setSelectedPerson(record);
+                                setPersonEventDrawerVisible(true);
+                              }}
+                            >
+                              详情
+                            </Button>
+                          ),
+                        },
+                      ]}
+                    />
+                  </Card>
+                </div>
+              )
             }
           ]}
         />
@@ -2508,6 +2642,132 @@ const TopicDetail = () => {
         <div style={{ minHeight: '400px' }}>
           {editSteps[editCurrentStep].content}
         </div>
+      </Drawer>
+
+      {/* 人员事件明细抽屉 */}
+      <Drawer
+        title={selectedPerson ? `${selectedPerson.name} - 关联事件明细` : '关联事件明细'}
+        width={1200}
+        open={personEventDrawerVisible}
+        onClose={() => {
+          setPersonEventDrawerVisible(false);
+          setSelectedPerson(null);
+        }}
+      >
+        {selectedPerson && (
+          <div>
+            {/* 人员信息 */}
+            <Card style={{ marginBottom: 16, background: '#fafafa' }}>
+              <Row gutter={[16, 16]}>
+                <Col span={6}>
+                  <div><strong>姓名：</strong>{selectedPerson.name}</div>
+                </Col>
+                <Col span={6}>
+                  <div><strong>手机号：</strong><span style={{ fontFamily: 'monospace' }}>{selectedPerson.phone}</span></div>
+                </Col>
+                <Col span={6}>
+                  <div><strong>身份证号：</strong><span style={{ fontFamily: 'monospace' }}>{selectedPerson.idCard || '-'}</span></div>
+                </Col>
+                <Col span={6}>
+                  <div><strong>角色：</strong><Tag color={selectedPerson.role === '报警人' ? 'blue' : selectedPerson.role === '对方' ? 'orange' : 'green'}>{selectedPerson.role}</Tag></div>
+                </Col>
+              </Row>
+              <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
+                <Col span={12}>
+                  <div>
+                    <strong>关联事件标签：</strong>
+                    <Space size={[4, 4]} wrap style={{ marginLeft: 8 }}>
+                      {selectedPerson.tags?.map((tag, idx) => (
+                        <Tag key={idx} color="blue">{tag}</Tag>
+                      ))}
+                    </Space>
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <div>
+                    <strong>人口画像标签：</strong>
+                    <Space size={[4, 4]} wrap style={{ marginLeft: 8 }}>
+                      {selectedPerson.profileTags?.map((tag, idx) => (
+                        <Tag key={idx} color="green">{tag}</Tag>
+                      ))}
+                    </Space>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 事件列表 */}
+            <Table
+              dataSource={events.filter(event => {
+                // 过滤出与该人员相关的事件（手机号匹配）
+                const reporterInfo = event.报警人信息 || '';
+                return reporterInfo.includes(selectedPerson.phone);
+              })}
+              rowKey="事件编号"
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条关联事件`
+              }}
+              size="small"
+              scroll={{ x: 1200 }}
+              columns={[
+                {
+                  title: '事件编号',
+                  dataIndex: '事件编号',
+                  key: '事件编号',
+                  width: 150,
+                  fixed: 'left',
+                },
+                {
+                  title: '事件描述',
+                  dataIndex: '事件描述',
+                  key: '事件描述',
+                  width: 250,
+                  ellipsis: true,
+                },
+                {
+                  title: '镇街名称',
+                  dataIndex: '镇街名称',
+                  key: '镇街名称',
+                  width: 100,
+                },
+                {
+                  title: '事件级别',
+                  dataIndex: '事件级别',
+                  key: '事件级别',
+                  width: 100,
+                },
+                {
+                  title: '二级分类',
+                  dataIndex: '二级分类',
+                  key: '二级分类',
+                  width: 120,
+                },
+                {
+                  title: '上报时间',
+                  dataIndex: '上报时间',
+                  key: '上报时间',
+                  width: 150,
+                },
+                {
+                  title: '标签',
+                  dataIndex: '标签',
+                  key: '标签',
+                  width: 200,
+                  render: (tags) => (
+                    <Space size={[4, 4]} wrap>
+                      {tags?.map((tag, idx) => (
+                        <Tag key={idx} color="blue">{tag.name}</Tag>
+                      ))}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
       </Drawer>
     </div>
   );
