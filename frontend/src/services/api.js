@@ -61,9 +61,19 @@ export const eventAPI = {
     return api.get(`/events/${eventId}`);
   },
 
+  // 更新事件标签
+  updateEventTags: (eventId, tags) => {
+    return api.put(`/events/${eventId}/tags`, { tags });
+  },
+
   // 获取聚类事件详情
   getClusterDetail: (eventUID) => {
     return api.get(`/clusters/${eventUID}`);
+  },
+
+  // 获取聚类参与人详情
+  getClusterParticipants: (eventUID) => {
+    return api.get(`/clusters/${eventUID}/participants`);
   },
 
   // 获取筛选选项

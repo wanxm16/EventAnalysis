@@ -3,6 +3,7 @@ import {
   Table,
   Card,
   Input,
+  InputNumber,
   Button,
   Select,
   Space,
@@ -18,6 +19,9 @@ import {
   Alert,
   Transfer,
   Typography,
+  Tabs,
+  Badge,
+  Statistic,
 } from 'antd';
 import {
   SearchOutlined,
@@ -25,6 +29,10 @@ import {
   ClusterOutlined,
   FilterOutlined,
   PlusOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
+  PhoneOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import Highlighter from 'react-highlight-words';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -32,10 +40,59 @@ import { eventAPI } from '../services/api';
 
 const { Option } = Select;
 
+// 可拖拽列宽度组件
+const ResizeableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <th
+      {...restProps}
+      style={{ position: 'relative' }}
+    >
+      {restProps.children}
+      <div
+        style={{
+          position: 'absolute',
+          right: '-5px',
+          top: 0,
+          bottom: 0,
+          width: '10px',
+          cursor: 'col-resize',
+          zIndex: 1,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const startX = e.pageX;
+          const startWidth = width;
+
+          const handleMouseMove = (e) => {
+            const newWidth = startWidth + e.pageX - startX;
+            if (newWidth > 50) { // 最小宽度限制
+              onResize(newWidth);
+            }
+          };
+
+          const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+          };
+
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }}
+      />
+    </th>
+  );
+};
+
 const ClusterList = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   const [loading, setLoading] = useState(false);
   const [clusters, setClusters] = useState([]);
   const [pagination, setPagination] = useState({
@@ -43,11 +100,157 @@ const ClusterList = () => {
     pageSize: parseInt(searchParams.get('page_size')) || 20,
     total: 0,
   });
-  
+
+  // 列宽度状态管理
+  const [columnWidths, setColumnWidths] = useState({
+    EventUID: 150,
+    cluster_description: 200,
+    record_count: 100,
+    participant_count: 110,
+    duration_days: 100,
+    first_report_time: 120,
+    last_report_time: 120,
+    actions: 120,
+  });
+
+  // 重复报警列宽度状态管理
+  const [repeatAlarmColumnWidths, setRepeatAlarmColumnWidths] = useState({
+    event_uid: 150,
+    description: 300,
+    caller: 180,
+    town: 100,
+    repeat_count: 100,
+    first_time: 180,
+    time_span_minutes: 110,
+    action: 120,
+  });
+
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
   const searchInput = useRef(null);
   const [columnFilters, setColumnFilters] = useState({});
+
+  // Tab切换状态
+  const [activeTab, setActiveTab] = useState('all');
+
+  // 重复报警详情Modal状态
+  const [repeatAlarmDetailVisible, setRepeatAlarmDetailVisible] = useState(false);
+  const [selectedRepeatAlarm, setSelectedRepeatAlarm] = useState(null);
+
+  // 重复报警Mock数据
+  const [repeatAlarms] = useState([
+    {
+      event_uid: "cluster_repeat_001",
+      phone: "15258180637",
+      name: "王长远",
+      event_type: "矛盾纠纷",
+      category: "快递纠纷",
+      description: "快递送货客户要求各种拖理由投诉退款，有纠纷",
+      repeat_count: 2,
+      first_time: "2025-12-22 09:31:00",
+      last_time: "2025-12-22 09:50:00",
+      time_span_minutes: 19,
+      status: "处理中",
+      warning_level: "高",
+      resolved_count: 0,
+      pending_count: 2,
+      town: "白云街道",
+      events: [
+        { id: "BYW20251220002", time: "09:31", status: "已办结" },
+        { id: "BYW20251220003", time: "09:50", status: "处理中" }
+      ]
+    },
+    {
+      event_uid: "cluster_repeat_002",
+      phone: "15038305197",
+      name: null,
+      event_type: "矛盾纠纷",
+      category: "运费纠纷",
+      description: "给人送货，运费不给我，有纠纷",
+      repeat_count: 2,
+      first_time: "2025-12-15 21:57:00",
+      last_time: "2025-12-15 22:11:00",
+      time_span_minutes: 14,
+      status: "已办结",
+      warning_level: "极高",
+      resolved_count: 2,
+      pending_count: 0,
+      town: "洞桥镇",
+      events: [
+        { id: "DQIW20251215004", time: "21:57", status: "已办结" },
+        { id: "DQIW20251215005", time: "22:11", status: "已办结" }
+      ]
+    },
+    {
+      event_uid: "cluster_repeat_003",
+      phone: "13900001111",
+      name: "张三",
+      event_type: "矛盾纠纷",
+      category: "停车纠纷",
+      description: "小区停车位被长期占用，多次沟通无果",
+      repeat_count: 3,
+      first_time: "2025-12-20 08:15:00",
+      last_time: "2025-12-20 10:30:00",
+      time_span_minutes: 135,
+      status: "处理中",
+      warning_level: "中",
+      resolved_count: 1,
+      pending_count: 2,
+      town: "南门街道",
+      events: [
+        { id: "NMW20251220015", time: "08:15", status: "已办结" },
+        { id: "NMW20251220023", time: "09:20", status: "处理中" },
+        { id: "NMW20251220031", time: "10:30", status: "处理中" }
+      ]
+    },
+    {
+      event_uid: "cluster_repeat_004",
+      phone: "13800002222",
+      name: "李四",
+      event_type: "矛盾纠纷",
+      category: "噪音投诉",
+      description: "楼上住户深夜噪音扰民，影响休息",
+      repeat_count: 4,
+      first_time: "2025-12-18 22:45:00",
+      last_time: "2025-12-19 01:30:00",
+      time_span_minutes: 165,
+      status: "处理中",
+      warning_level: "高",
+      resolved_count: 0,
+      pending_count: 4,
+      town: "望城街道",
+      events: [
+        { id: "WCW20251218045", time: "22:45", status: "处理中" },
+        { id: "WCW20251218052", time: "23:20", status: "处理中" },
+        { id: "WCW20251219002", time: "00:15", status: "处理中" },
+        { id: "WCW20251219008", time: "01:30", status: "处理中" }
+      ]
+    },
+    {
+      event_uid: "cluster_repeat_005",
+      phone: "13700003333",
+      name: "王五",
+      event_type: "矛盾纠纷",
+      category: "物业纠纷",
+      description: "物业不作为，公共设施损坏长期不修",
+      repeat_count: 5,
+      first_time: "2025-12-17 14:20:00",
+      last_time: "2025-12-17 17:45:00",
+      time_span_minutes: 205,
+      status: "已办结",
+      warning_level: "极高",
+      resolved_count: 5,
+      pending_count: 0,
+      town: "古林镇",
+      events: [
+        { id: "GLW20251217020", time: "14:20", status: "已办结" },
+        { id: "GLW20251217025", time: "15:05", status: "已办结" },
+        { id: "GLW20251217032", time: "15:50", status: "已办结" },
+        { id: "GLW20251217038", time: "16:40", status: "已办结" },
+        { id: "GLW20251217044", time: "17:45", status: "已办结" }
+      ]
+    }
+  ]);
 
   // 手动创建事件簇相关状态
   const [createClusterModalVisible, setCreateClusterModalVisible] = useState(false);
@@ -112,86 +315,193 @@ const ClusterList = () => {
   });
 
   // 获取事件数量筛选属性
-  const getEventCountFilterProps = () => ({
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8 }}>
-        <Select
-          placeholder="选择事件数量范围"
-          value={selectedKeys[0]}
-          onChange={(value) => setSelectedKeys(value ? [value] : [])}
-          style={{ width: 200, marginBottom: 8, display: 'block' }}
-          allowClear
-        >
-          <Option value="2">2个</Option>
-          <Option value="3-5">3-5个</Option>
-          <Option value="6-10">6-10个</Option>
-          <Option value="10+">10个以上</Option>
-        </Select>
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => handleColumnFilter(selectedKeys, confirm, 'event_count_range')}
-            icon={<FilterOutlined />}
-            size="small"
-            style={{ width: 90 }}
-          >
-            筛选
-          </Button>
-          <Button
-            onClick={() => handleColumnFilterReset(clearFilters, 'event_count_range')}
-            size="small"
-            style={{ width: 90 }}
-          >
-            重置
-          </Button>
-        </Space>
-      </div>
-    ),
-    filterIcon: (filtered) => (
-      <FilterOutlined style={{ color: columnFilters['event_count_range'] ? '#1890ff' : undefined }} />
-    ),
-  });
+  const getEventCountFilterProps = () => {
+    let minValue;
+    let maxValue;
+
+    return {
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+        <div style={{ padding: 8 }}>
+          <div style={{ marginBottom: 8 }}>
+            <InputNumber
+              placeholder="最小值"
+              defaultValue={selectedKeys[0]?.min}
+              onChange={(value) => { minValue = value; }}
+              min={0}
+              style={{ width: 90, marginRight: 4 }}
+            />
+            <span style={{ margin: '0 4px' }}>-</span>
+            <InputNumber
+              placeholder="最大值"
+              defaultValue={selectedKeys[0]?.max}
+              onChange={(value) => { maxValue = value; }}
+              min={0}
+              style={{ width: 90 }}
+            />
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                const range = { min: minValue, max: maxValue };
+                setSelectedKeys(minValue !== undefined || maxValue !== undefined ? [range] : []);
+                handleColumnFilter(
+                  minValue !== undefined || maxValue !== undefined ? [range] : [],
+                  confirm,
+                  'event_count_range'
+                );
+              }}
+              icon={<FilterOutlined />}
+              size="small"
+              style={{ width: 90 }}
+            >
+              筛选
+            </Button>
+            <Button
+              onClick={() => {
+                minValue = undefined;
+                maxValue = undefined;
+                handleColumnFilterReset(clearFilters, 'event_count_range');
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered) => (
+        <FilterOutlined style={{ color: columnFilters['event_count_range'] ? '#1890ff' : undefined }} />
+      ),
+    };
+  };
 
   // 获取持续时间筛选属性
-  const getDurationFilterProps = () => ({
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8 }}>
-        <Select
-          placeholder="选择持续时间范围"
-          value={selectedKeys[0]}
-          onChange={(value) => setSelectedKeys(value ? [value] : [])}
-          style={{ width: 200, marginBottom: 8, display: 'block' }}
-          allowClear
-        >
-          <Option value="0-1天">0-1天</Option>
-          <Option value="1-7天">1-7天</Option>
-          <Option value="7-30天">7-30天</Option>
-          <Option value="30天以上">30天以上</Option>
-        </Select>
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => handleColumnFilter(selectedKeys, confirm, 'duration_range')}
-            icon={<FilterOutlined />}
-            size="small"
-            style={{ width: 90 }}
-          >
-            筛选
-          </Button>
-          <Button
-            onClick={() => handleColumnFilterReset(clearFilters, 'duration_range')}
-            size="small"
-            style={{ width: 90 }}
-          >
-            重置
-          </Button>
-        </Space>
-      </div>
-    ),
-    filterIcon: (filtered) => (
-      <FilterOutlined style={{ color: columnFilters['duration_range'] ? '#1890ff' : undefined }} />
-    ),
-  });
+  const getDurationFilterProps = () => {
+    let minValue;
+    let maxValue;
+
+    return {
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+        <div style={{ padding: 8 }}>
+          <div style={{ marginBottom: 8 }}>
+            <InputNumber
+              placeholder="最小天数"
+              defaultValue={selectedKeys[0]?.min}
+              onChange={(value) => { minValue = value; }}
+              min={0}
+              style={{ width: 90, marginRight: 4 }}
+            />
+            <span style={{ margin: '0 4px' }}>-</span>
+            <InputNumber
+              placeholder="最大天数"
+              defaultValue={selectedKeys[0]?.max}
+              onChange={(value) => { maxValue = value; }}
+              min={0}
+              style={{ width: 90 }}
+            />
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                const range = { min: minValue, max: maxValue };
+                setSelectedKeys(minValue !== undefined || maxValue !== undefined ? [range] : []);
+                handleColumnFilter(
+                  minValue !== undefined || maxValue !== undefined ? [range] : [],
+                  confirm,
+                  'duration_range'
+                );
+              }}
+              icon={<FilterOutlined />}
+              size="small"
+              style={{ width: 90 }}
+            >
+              筛选
+            </Button>
+            <Button
+              onClick={() => {
+                minValue = undefined;
+                maxValue = undefined;
+                handleColumnFilterReset(clearFilters, 'duration_range');
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered) => (
+        <FilterOutlined style={{ color: columnFilters['duration_range'] ? '#1890ff' : undefined }} />
+      ),
+    };
+  };
+
+  // 获取参与人数量筛选属性
+  const getParticipantCountFilterProps = () => {
+    let minValue;
+    let maxValue;
+
+    return {
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+        <div style={{ padding: 8 }}>
+          <div style={{ marginBottom: 8 }}>
+            <InputNumber
+              placeholder="最小值"
+              defaultValue={selectedKeys[0]?.min}
+              onChange={(value) => { minValue = value; }}
+              min={0}
+              style={{ width: 90, marginRight: 4 }}
+            />
+            <span style={{ margin: '0 4px' }}>-</span>
+            <InputNumber
+              placeholder="最大值"
+              defaultValue={selectedKeys[0]?.max}
+              onChange={(value) => { maxValue = value; }}
+              min={0}
+              style={{ width: 90 }}
+            />
+          </div>
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => {
+                const range = { min: minValue, max: maxValue };
+                setSelectedKeys(minValue !== undefined || maxValue !== undefined ? [range] : []);
+                handleColumnFilter(
+                  minValue !== undefined || maxValue !== undefined ? [range] : [],
+                  confirm,
+                  'participant_count_range'
+                );
+              }}
+              icon={<FilterOutlined />}
+              size="small"
+              style={{ width: 90 }}
+            >
+              筛选
+            </Button>
+            <Button
+              onClick={() => {
+                minValue = undefined;
+                maxValue = undefined;
+                handleColumnFilterReset(clearFilters, 'participant_count_range');
+              }}
+              size="small"
+              style={{ width: 90 }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      filterIcon: (filtered) => (
+        <FilterOutlined style={{ color: columnFilters['participant_count_range'] ? '#1890ff' : undefined }} />
+      ),
+    };
+  };
 
   // 获取日期筛选属性
   const getDateFilterProps = (dataIndex, apiParam) => ({
@@ -256,7 +566,7 @@ const ClusterList = () => {
   const handleColumnFilter = (selectedKeys, confirm, apiParam) => {
     confirm();
     const value = selectedKeys[0];
-    
+
     // 更新列筛选状态
     const newColumnFilters = { ...columnFilters };
     if (value) {
@@ -265,46 +575,51 @@ const ClusterList = () => {
       delete newColumnFilters[apiParam];
     }
     setColumnFilters(newColumnFilters);
-    
+
     // 转换为API参数
     const newParams = { ...Object.fromEntries(searchParams) };
-    
+
     if (apiParam === 'event_count_range') {
       // 清除之前的事件数量筛选
       delete newParams.min_event_count;
       delete newParams.max_event_count;
-      
-      if (value === "2") {
-        newParams.min_event_count = 2;
-        newParams.max_event_count = 2;
-      } else if (value === "3-5") {
-        newParams.min_event_count = 3;
-        newParams.max_event_count = 5;
-      } else if (value === "6-10") {
-        newParams.min_event_count = 6;
-        newParams.max_event_count = 10;
-      } else if (value === "10+") {
-        newParams.min_event_count = 11;
+
+      if (value && (value.min !== undefined || value.max !== undefined)) {
+        if (value.min !== undefined) {
+          newParams.min_event_count = value.min;
+        }
+        if (value.max !== undefined) {
+          newParams.max_event_count = value.max;
+        }
       }
     } else if (apiParam === 'duration_range') {
       // 清除之前的持续时间筛选
       delete newParams.min_duration;
       delete newParams.max_duration;
-      
-      if (value === "0-1天") {
-        newParams.min_duration = 0;
-        newParams.max_duration = 1;
-      } else if (value === "1-7天") {
-        newParams.min_duration = 1;
-        newParams.max_duration = 7;
-      } else if (value === "7-30天") {
-        newParams.min_duration = 7;
-        newParams.max_duration = 30;
-      } else if (value === "30天以上") {
-        newParams.min_duration = 30;
+
+      if (value && (value.min !== undefined || value.max !== undefined)) {
+        if (value.min !== undefined) {
+          newParams.min_duration = value.min;
+        }
+        if (value.max !== undefined) {
+          newParams.max_duration = value.max;
+        }
+      }
+    } else if (apiParam === 'participant_count_range') {
+      // 清除之前的参与人数量筛选
+      delete newParams.min_participant_count;
+      delete newParams.max_participant_count;
+
+      if (value && (value.min !== undefined || value.max !== undefined)) {
+        if (value.min !== undefined) {
+          newParams.min_participant_count = value.min;
+        }
+        if (value.max !== undefined) {
+          newParams.max_participant_count = value.max;
+        }
       }
     }
-    
+
     setSearchParams(newParams);
     setPagination(prev => ({ ...prev, current: 1 }));
     loadClusters({ page: 1, ...newParams });
@@ -366,6 +681,9 @@ const ClusterList = () => {
     } else if (apiParam === 'duration_range') {
       delete newParams.min_duration;
       delete newParams.max_duration;
+    } else if (apiParam === 'participant_count_range') {
+      delete newParams.min_participant_count;
+      delete newParams.max_participant_count;
     } else if (apiParam === 'first_report_time' || apiParam === 'last_report_time') {
       delete newParams[`${apiParam}_start`];
       delete newParams[`${apiParam}_end`];
@@ -598,9 +916,16 @@ const ClusterList = () => {
         page_size: pagination.pageSize,
         ...params,
       };
-      
+
       const response = await eventAPI.getClusterList(queryParams);
-      setClusters(response.items || []);
+
+      // 为每条记录添加 mock 的参与人数量（用于前端展示）
+      const clustersWithParticipantCount = (response.items || []).map(item => ({
+        ...item,
+        participant_count: item.participant_count || Math.floor(Math.random() * 10) + 1, // 1-10人
+      }));
+
+      setClusters(clustersWithParticipantCount);
       setPagination(prev => ({
         ...prev,
         total: response.total || 0,
@@ -631,6 +956,122 @@ const ClusterList = () => {
     navigate(`/clusters/${eventUID}`);
   };
 
+  // 查看重复报警详情
+  const handleViewRepeatAlarmDetail = (alarm) => {
+    setSelectedRepeatAlarm(alarm);
+    setRepeatAlarmDetailVisible(true);
+  };
+
+  // 获取筛选标签 - 用于显示当前筛选条件
+  const getFilterTags = () => {
+    const tags = [];
+
+    // 搜索关键词
+    if (columnFilters['search']) {
+      tags.push({
+        key: 'search',
+        label: `描述关键词: ${columnFilters['search']}`,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'search')
+      });
+    }
+
+    // 事件数量范围
+    if (columnFilters['event_count_range']) {
+      const range = columnFilters['event_count_range'];
+      let label = '事件数量: ';
+      if (range.min !== undefined && range.max !== undefined) {
+        label += `${range.min} - ${range.max}`;
+      } else if (range.min !== undefined) {
+        label += `≥ ${range.min}`;
+      } else if (range.max !== undefined) {
+        label += `≤ ${range.max}`;
+      }
+      tags.push({
+        key: 'event_count_range',
+        label,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'event_count_range')
+      });
+    }
+
+    // 持续时间范围
+    if (columnFilters['duration_range']) {
+      const range = columnFilters['duration_range'];
+      let label = '持续时间: ';
+      if (range.min !== undefined && range.max !== undefined) {
+        label += `${range.min} - ${range.max}天`;
+      } else if (range.min !== undefined) {
+        label += `≥ ${range.min}天`;
+      } else if (range.max !== undefined) {
+        label += `≤ ${range.max}天`;
+      }
+      tags.push({
+        key: 'duration_range',
+        label,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'duration_range')
+      });
+    }
+
+    // 参与人数量范围
+    if (columnFilters['participant_count_range']) {
+      const range = columnFilters['participant_count_range'];
+      let label = '参与人数量: ';
+      if (range.min !== undefined && range.max !== undefined) {
+        label += `${range.min} - ${range.max}`;
+      } else if (range.min !== undefined) {
+        label += `≥ ${range.min}`;
+      } else if (range.max !== undefined) {
+        label += `≤ ${range.max}`;
+      }
+      tags.push({
+        key: 'participant_count_range',
+        label,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'participant_count_range')
+      });
+    }
+
+    // 首次上报时间
+    if (columnFilters['first_report_time']) {
+      const [start, end] = columnFilters['first_report_time'];
+      const startStr = start ? start.format('YYYY-MM-DD') : '';
+      const endStr = end ? end.format('YYYY-MM-DD') : '';
+      tags.push({
+        key: 'first_report_time',
+        label: `首次上报: ${startStr} ~ ${endStr}`,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'first_report_time')
+      });
+    }
+
+    // 最后上报时间
+    if (columnFilters['last_report_time']) {
+      const [start, end] = columnFilters['last_report_time'];
+      const startStr = start ? start.format('YYYY-MM-DD') : '';
+      const endStr = end ? end.format('YYYY-MM-DD') : '';
+      tags.push({
+        key: 'last_report_time',
+        label: `最后上报: ${startStr} ~ ${endStr}`,
+        closable: true,
+        onClose: () => handleColumnFilterReset(() => {}, 'last_report_time')
+      });
+    }
+
+    return tags;
+  };
+
+  // 清除所有筛选
+  const clearAllFilters = () => {
+    setColumnFilters({});
+    setSearchText('');
+    setSearchedColumn('');
+    setSearchParams({});
+    setPagination(prev => ({ ...prev, current: 1 }));
+    loadClusters({ page: 1 });
+  };
+
   // 格式化持续时间
   const formatDuration = (days) => {
     if (days === null || days === undefined) return '-';
@@ -649,13 +1090,33 @@ const ClusterList = () => {
     }
   };
 
+  // 处理列宽度变化
+  const handleResize = (key) => (width) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [key]: width
+    }));
+  };
+
+  // 处理重复报警列宽度变化
+  const handleRepeatAlarmResize = (key) => (width) => {
+    setRepeatAlarmColumnWidths(prev => ({
+      ...prev,
+      [key]: width
+    }));
+  };
+
   // 表格列配置
   const columns = [
     {
       title: 'EventUID',
       dataIndex: 'EventUID',
       key: 'EventUID',
-      width: 150,
+      width: columnWidths['EventUID'],
+      onHeaderCell: () => ({
+        width: columnWidths['EventUID'],
+        onResize: handleResize('EventUID'),
+      }),
       render: (text) => (
         <Tag color="blue" style={{ fontFamily: 'monospace' }}>
           {text}
@@ -666,6 +1127,11 @@ const ClusterList = () => {
       title: '描述',
       dataIndex: 'cluster_description',
       key: 'cluster_description',
+      width: columnWidths['cluster_description'],
+      onHeaderCell: () => ({
+        width: columnWidths['cluster_description'],
+        onResize: handleResize('cluster_description'),
+      }),
       ...getColumnSearchProps('cluster_description', '搜索描述', 'search'),
       ellipsis: {
         showTitle: false,
@@ -692,9 +1158,14 @@ const ClusterList = () => {
       title: '事件数量',
       dataIndex: 'record_count',
       key: 'record_count',
-      width: 100,
+      width: columnWidths['record_count'],
       align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['record_count'],
+        onResize: handleResize('record_count'),
+      }),
       ...getEventCountFilterProps(),
+      sorter: (a, b) => (a.record_count || 0) - (b.record_count || 0),
       render: (count) => (
         <Tag color="green" style={{ fontWeight: 'bold' }}>
           {count}个
@@ -702,12 +1173,35 @@ const ClusterList = () => {
       ),
     },
     {
+      title: '参与人数量',
+      dataIndex: 'participant_count',
+      key: 'participant_count',
+      width: columnWidths['participant_count'],
+      align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['participant_count'],
+        onResize: handleResize('participant_count'),
+      }),
+      ...getParticipantCountFilterProps(),
+      sorter: (a, b) => (a.participant_count || 0) - (b.participant_count || 0),
+      render: (count) => (
+        <Tag color="blue" style={{ fontWeight: 'bold' }}>
+          {count || 0}人
+        </Tag>
+      ),
+    },
+    {
       title: '持续时间',
       dataIndex: 'duration_days',
       key: 'duration_days',
-      width: 100,
+      width: columnWidths['duration_days'],
       align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['duration_days'],
+        onResize: handleResize('duration_days'),
+      }),
       ...getDurationFilterProps(),
+      sorter: (a, b) => (a.duration_days || 0) - (b.duration_days || 0),
       render: (days) => (
         <Tag color="orange">
           {formatDuration(days)}
@@ -718,26 +1212,48 @@ const ClusterList = () => {
       title: '首次上报',
       dataIndex: 'first_report_time',
       key: 'first_report_time',
-      width: 120,
+      width: columnWidths['first_report_time'],
+      onHeaderCell: () => ({
+        width: columnWidths['first_report_time'],
+        onResize: handleResize('first_report_time'),
+      }),
       ...getDateFilterProps('first_report_time', 'first_report_time'),
+      sorter: (a, b) => {
+        const timeA = a.first_report_time ? new Date(a.first_report_time).getTime() : 0;
+        const timeB = b.first_report_time ? new Date(b.first_report_time).getTime() : 0;
+        return timeA - timeB;
+      },
       render: formatTime,
     },
     {
       title: '最后上报',
       dataIndex: 'last_report_time',
       key: 'last_report_time',
-      width: 120,
+      width: columnWidths['last_report_time'],
+      onHeaderCell: () => ({
+        width: columnWidths['last_report_time'],
+        onResize: handleResize('last_report_time'),
+      }),
       ...getDateFilterProps('last_report_time', 'last_report_time'),
+      sorter: (a, b) => {
+        const timeA = a.last_report_time ? new Date(a.last_report_time).getTime() : 0;
+        const timeB = b.last_report_time ? new Date(b.last_report_time).getTime() : 0;
+        return timeA - timeB;
+      },
       render: formatTime,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 120,
+      width: columnWidths['actions'],
       align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['actions'],
+        onResize: handleResize('actions'),
+      }),
       render: (_, record) => (
         <Button
-          type="primary"
+          type="link"
           icon={<EyeOutlined />}
           size="small"
           onClick={() => handleViewDetail(record.EventUID)}
@@ -751,9 +1267,276 @@ const ClusterList = () => {
   useEffect(() => {
     // 从URL参数加载数据
     const params = Object.fromEntries(searchParams);
-    
+
     loadClusters(params);
   }, []);
+
+  // 格式化时间间隔
+  const formatTimeSpan = (minutes) => {
+    if (minutes < 60) {
+      return `${minutes}分钟`;
+    } else if (minutes < 1440) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`;
+    } else {
+      const days = Math.floor(minutes / 1440);
+      return `${days}天`;
+    }
+  };
+
+  // 获取预警级别颜色
+  const getWarningColor = (level) => {
+    const colors = {
+      '极高': '#ff4d4f',
+      '高': '#ff7a45',
+      '中': '#ffa940',
+      '低': '#52c41a'
+    };
+    return colors[level] || '#999';
+  };
+
+  // 获取时间间隔的紧急程度标签
+  const getUrgencyTag = (minutes) => {
+    if (minutes <= 15) {
+      return { text: '极紧急', color: 'red', icon: <WarningOutlined /> };
+    } else if (minutes <= 30) {
+      return { text: '紧急', color: 'orange', icon: <WarningOutlined /> };
+    } else if (minutes <= 60) {
+      return { text: '关注', color: 'gold', icon: <ClockCircleOutlined /> };
+    } else {
+      return { text: '常规', color: 'default', icon: <ClockCircleOutlined /> };
+    }
+  };
+
+  // 渲染重复报警列表
+  const renderRepeatAlarmsList = () => {
+    // 表格列配置
+    const repeatAlarmsColumns = [
+      {
+        title: '事件编号',
+        dataIndex: 'event_uid',
+        key: 'event_uid',
+        width: repeatAlarmColumnWidths['event_uid'],
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['event_uid'],
+          onResize: handleRepeatAlarmResize('event_uid'),
+        }),
+        render: (text) => (
+          <Tag color="blue" style={{ fontFamily: 'monospace' }}>
+            {text}
+          </Tag>
+        ),
+      },
+      {
+        title: '事件描述',
+        dataIndex: 'description',
+        key: 'description',
+        width: repeatAlarmColumnWidths['description'],
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['description'],
+          onResize: handleRepeatAlarmResize('description'),
+        }),
+        ellipsis: {
+          showTitle: false,
+        },
+        render: (text) => (
+          <Tooltip title={text}>
+            <span>{text}</span>
+          </Tooltip>
+        ),
+      },
+      {
+        title: '报警人',
+        key: 'caller',
+        width: repeatAlarmColumnWidths['caller'],
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['caller'],
+          onResize: handleRepeatAlarmResize('caller'),
+        }),
+        render: (_, record) => (
+          <div>
+            <div>
+              <PhoneOutlined style={{ marginRight: 4, color: '#666' }} />
+              {record.phone}
+            </div>
+            {record.name && (
+              <div style={{ fontSize: '12px', color: '#999', marginTop: 2 }}>
+                {record.name}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        title: '镇街',
+        dataIndex: 'town',
+        key: 'town',
+        width: repeatAlarmColumnWidths['town'],
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['town'],
+          onResize: handleRepeatAlarmResize('town'),
+        }),
+      },
+      {
+        title: '报警次数',
+        dataIndex: 'repeat_count',
+        key: 'repeat_count',
+        width: repeatAlarmColumnWidths['repeat_count'],
+        align: 'center',
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['repeat_count'],
+          onResize: handleRepeatAlarmResize('repeat_count'),
+        }),
+        render: (count) => (
+          <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fa8c16' }}>
+            {count}
+          </span>
+        ),
+        sorter: (a, b) => a.repeat_count - b.repeat_count,
+      },
+      {
+        title: '首次上报时间',
+        dataIndex: 'first_time',
+        key: 'first_time',
+        width: repeatAlarmColumnWidths['first_time'],
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['first_time'],
+          onResize: handleRepeatAlarmResize('first_time'),
+        }),
+        render: (time) => (
+          <span>
+            <ClockCircleOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+            {time}
+          </span>
+        ),
+        sorter: (a, b) => {
+          const timeA = a.first_time ? new Date(a.first_time).getTime() : 0;
+          const timeB = b.first_time ? new Date(b.first_time).getTime() : 0;
+          return timeA - timeB;
+        },
+      },
+      {
+        title: '持续时间',
+        dataIndex: 'time_span_minutes',
+        key: 'time_span_minutes',
+        width: repeatAlarmColumnWidths['time_span_minutes'],
+        align: 'center',
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['time_span_minutes'],
+          onResize: handleRepeatAlarmResize('time_span_minutes'),
+        }),
+        render: (minutes) => (
+          <span style={{ color: '#1890ff', fontWeight: 500 }}>
+            {formatTimeSpan(minutes)}
+          </span>
+        ),
+        sorter: (a, b) => a.time_span_minutes - b.time_span_minutes,
+      },
+      {
+        title: '操作',
+        key: 'action',
+        width: repeatAlarmColumnWidths['action'],
+        align: 'center',
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['action'],
+          onResize: handleRepeatAlarmResize('action'),
+        }),
+        render: (_, record) => (
+          <Button
+            type="link"
+            icon={<EyeOutlined />}
+            size="small"
+            onClick={() => handleViewRepeatAlarmDetail(record)}
+          >
+            查看详情
+          </Button>
+        ),
+      },
+    ];
+
+    return (
+      <div>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="重复报警总数"
+                value={repeatAlarms.length}
+                suffix="个"
+                valueStyle={{ color: '#cf1322' }}
+                prefix={<WarningOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="未办结事件"
+                value={repeatAlarms.filter(a => a.pending_count > 0).length}
+                suffix="个"
+                valueStyle={{ color: '#faad14' }}
+                prefix={<ClockCircleOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="平均报警次数"
+                value={(repeatAlarms.reduce((sum, a) => sum + a.repeat_count, 0) / repeatAlarms.length).toFixed(1)}
+                suffix="次"
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="极高预警"
+                value={repeatAlarms.filter(a => a.warning_level === '极高').length}
+                suffix="个"
+                valueStyle={{ color: '#ff4d4f' }}
+                prefix={<WarningOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {/* 重复报警表格 */}
+        <Card>
+          <Table
+            columns={repeatAlarmsColumns}
+            dataSource={repeatAlarms}
+            rowKey="event_uid"
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`,
+              pageSizeOptions: ['10', '20', '50'],
+            }}
+            scroll={{ x: 1800 }}
+            size="middle"
+            components={{
+              header: {
+                cell: ResizeableTitle,
+              },
+            }}
+          />
+        </Card>
+
+        {repeatAlarms.length === 0 && (
+          <Card style={{ textAlign: 'center', padding: '40px' }}>
+            <div style={{ color: '#999', fontSize: '14px' }}>
+              暂无重复报警事件
+            </div>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="page-container">
@@ -774,8 +1557,68 @@ const ClusterList = () => {
       </div>
 
 
-      {/* 聚合事件表格 */}
+      {/* Tabs切换 */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        size="large"
+        style={{ marginBottom: 0 }}
+        items={[
+          {
+            key: 'all',
+            label: (
+              <span>
+                <ClusterOutlined style={{ marginRight: 4 }} />
+                全部聚类
+              </span>
+            ),
+            children: (
+              <div>
+                {/* 筛选条件标签 */}
+                {getFilterTags().length > 0 && (
+                  <Card style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#1890ff' }}>当前筛选条件：</div>
+                    <Row gutter={[8, 8]}>
+                      {getFilterTags().map(tag => (
+                        <Col key={tag.key}>
+                          <Tag
+                            closable={tag.closable}
+                            onClose={tag.onClose}
+                            color="blue"
+                          >
+                            {tag.label}
+                          </Tag>
+                        </Col>
+                      ))}
+                      <Col>
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={clearAllFilters}
+                          style={{ padding: 0, height: 'auto' }}
+                        >
+                          清除全部
+                        </Button>
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
+
+                {/* 聚合事件表格 */}
       <Card>
+        {/* 统计信息 */}
+        <div style={{ marginBottom: 12, fontSize: 14 }}>
+          {getFilterTags().length === 0 ? (
+            <span style={{ color: '#666' }}>
+              总计 <strong style={{ fontSize: 16, color: '#1890ff' }}>{pagination.total}</strong> 条
+            </span>
+          ) : (
+            <span style={{ color: '#666' }}>
+              筛选出 <strong style={{ fontSize: 16, color: '#1890ff' }}>{clusters.length}</strong> 条 / 总计 <strong style={{ fontSize: 16, color: '#1890ff' }}>{pagination.total}</strong> 条
+            </span>
+          )}
+        </div>
+
         <Table
           columns={columns}
           dataSource={clusters}
@@ -783,6 +1626,11 @@ const ClusterList = () => {
           loading={loading}
           pagination={false}
           size="middle"
+          components={{
+            header: {
+              cell: ResizeableTitle,
+            },
+          }}
         />
         
         {/* 自定义分页 */}
@@ -802,6 +1650,25 @@ const ClusterList = () => {
           />
         </div>
       </Card>
+              </div>
+            ),
+          },
+          {
+            key: 'repeat',
+            label: (
+              <span>
+                <Badge count={repeatAlarms.length} offset={[10, 0]}>
+                  <span style={{ paddingRight: 12 }}>
+                    <WarningOutlined style={{ marginRight: 4, color: '#ff4d4f' }} />
+                    重复报警
+                  </span>
+                </Badge>
+              </span>
+            ),
+            children: renderRepeatAlarmsList(),
+          },
+        ]}
+      />
 
       {/* 创建事件簇模态框 */}
       <Modal
@@ -937,6 +1804,192 @@ const ClusterList = () => {
           showIcon
           style={{ marginTop: 16 }}
         />
+      </Modal>
+
+      {/* 重复报警详情Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <WarningOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
+            <span>重复报警详情</span>
+          </div>
+        }
+        open={repeatAlarmDetailVisible}
+        onCancel={() => setRepeatAlarmDetailVisible(false)}
+        footer={null}
+        width={800}
+      >
+        {selectedRepeatAlarm && (
+          <div>
+            {/* 基本信息 */}
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>事件编号：</span>
+                    <Tag color="blue" style={{ fontFamily: 'monospace' }}>
+                      {selectedRepeatAlarm.event_uid}
+                    </Tag>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>报警人：</span>
+                    <strong>
+                      {selectedRepeatAlarm.name || '未知'} ({selectedRepeatAlarm.phone})
+                    </strong>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>所属镇街：</span>
+                    <Tag icon={<EnvironmentOutlined />}>{selectedRepeatAlarm.town}</Tag>
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>事件类型：</span>
+                    <Tag color="purple">{selectedRepeatAlarm.event_type}</Tag>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>事件分类：</span>
+                    <Tag color="cyan">{selectedRepeatAlarm.category}</Tag>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ color: '#666' }}>状态：</span>
+                    <Tag color={selectedRepeatAlarm.status === '已办结' ? 'success' : 'processing'}>
+                      {selectedRepeatAlarm.status}
+                    </Tag>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 事件描述 */}
+            <Card size="small" title="事件描述" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
+                {selectedRepeatAlarm.description}
+              </div>
+            </Card>
+
+            {/* 统计信息 */}
+            <Card size="small" title="统计信息" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic
+                    title="报警次数"
+                    value={selectedRepeatAlarm.repeat_count}
+                    suffix="次"
+                    valueStyle={{ color: '#fa8c16', fontSize: '24px' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="时间跨度"
+                    value={formatTimeSpan(selectedRepeatAlarm.time_span_minutes)}
+                    valueStyle={{ color: '#1890ff', fontSize: '20px' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="已办结"
+                    value={selectedRepeatAlarm.resolved_count}
+                    suffix="个"
+                    valueStyle={{ color: '#52c41a', fontSize: '24px' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="未办结"
+                    value={selectedRepeatAlarm.pending_count}
+                    suffix="个"
+                    valueStyle={{ color: '#ff4d4f', fontSize: '24px' }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 时间线信息 */}
+            <Card size="small" title="时间线" style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8 }}>
+                <ClockCircleOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+                <span style={{ color: '#666' }}>首次报警：</span>
+                <strong style={{ marginLeft: 8 }}>{selectedRepeatAlarm.first_time}</strong>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <ClockCircleOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
+                <span style={{ color: '#666' }}>最后报警：</span>
+                <strong style={{ marginLeft: 8 }}>{selectedRepeatAlarm.last_time}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666' }}>紧急程度：</span>
+                {(() => {
+                  const urgency = getUrgencyTag(selectedRepeatAlarm.time_span_minutes);
+                  return (
+                    <Tag color={urgency.color} icon={urgency.icon} style={{ marginLeft: 8 }}>
+                      {urgency.text}
+                    </Tag>
+                  );
+                })()}
+              </div>
+            </Card>
+
+            {/* 相关事件列表 */}
+            <Card size="small" title={`相关事件 (${selectedRepeatAlarm.events.length}个)`}>
+              <Table
+                size="small"
+                dataSource={selectedRepeatAlarm.events}
+                pagination={false}
+                columns={[
+                  {
+                    title: '序号',
+                    key: 'index',
+                    width: 60,
+                    render: (_, __, index) => index + 1,
+                  },
+                  {
+                    title: '事件编号',
+                    dataIndex: 'id',
+                    key: 'id',
+                    render: (text) => (
+                      <Tag color="blue" style={{ fontFamily: 'monospace' }}>
+                        {text}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: '报警时间',
+                    dataIndex: 'time',
+                    key: 'time',
+                    render: (text) => (
+                      <span>
+                        <ClockCircleOutlined style={{ marginRight: 4 }} />
+                        {text}
+                      </span>
+                    ),
+                  },
+                  {
+                    title: '状态',
+                    dataIndex: 'status',
+                    key: 'status',
+                    align: 'center',
+                    render: (status) => (
+                      <Tag color={status === '已办结' ? 'success' : 'processing'}>
+                        {status}
+                      </Tag>
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+
+            {/* 预警提示 */}
+            <Alert
+              message={`预警级别：${selectedRepeatAlarm.warning_level}`}
+              description={`此重复报警被评估为${selectedRepeatAlarm.warning_level}预警级别，建议优先处理。`}
+              type={selectedRepeatAlarm.warning_level === '极高' || selectedRepeatAlarm.warning_level === '高' ? 'error' : 'warning'}
+              showIcon
+              icon={<WarningOutlined />}
+              style={{ marginTop: 16 }}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   );

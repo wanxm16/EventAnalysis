@@ -1,24 +1,45 @@
-import React, { useEffect, useState } from 'react';
-import { Button, Card, Modal, Space, Tag, Typography, message, Empty, Row, Col, Tooltip, Drawer, Form, Input, Select, Switch, DatePicker, Alert, Divider } from 'antd';
-import { PlusOutlined, BarChartOutlined, EyeOutlined, DeleteOutlined, EditOutlined, CalendarOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Button, Card, Modal, Space, Tag, Typography, message, Empty, Row, Col, Tooltip, Input } from 'antd';
+import { PlusOutlined, EyeOutlined, DeleteOutlined, EditOutlined, SettingOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { eventAPI } from '../services/api';
+import { Line } from '@ant-design/plots';
 import dayjs from 'dayjs';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Text } = Typography;
+const { Search } = Input;
 
 const TopicList = () => {
   const [loading, setLoading] = useState(false);
   const [topics, setTopics] = useState([]);
+  const [searchText, setSearchText] = useState('');
   const navigate = useNavigate();
 
-  // 编辑抽屉相关状态
-  const [editDrawerVisible, setEditDrawerVisible] = useState(false);
-  const [editForm] = Form.useForm();
-  const [saving, setSaving] = useState(false);
-  const [editingTopicId, setEditingTopicId] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [filterOptions, setFilterOptions] = useState({ towns: [], levels: [], categories: [] });
+  // Mock 趋势数据生成函数
+  const generateMockTrend = (topicId) => {
+    const trends = {
+      1: { percent: 31, data: [12, 15, 14, 18, 16, 20, 18, 22, 19, 24, 21, 26] },
+      2: { percent: -12, data: [25, 28, 26, 24, 22, 26, 23, 21, 19, 23, 20, 22] },
+      3: { percent: 0, data: [] },
+      4: { percent: -31, data: [30, 28, 32, 29, 27, 30, 28, 26, 24, 27, 25, 23] },
+    };
+
+    const defaultTrend = topicId % 2 === 0
+      ? { percent: Math.floor(Math.random() * 40) - 20, data: Array.from({ length: 12 }, () => Math.floor(Math.random() * 20) + 5) }
+      : { percent: Math.floor(Math.random() * 60) - 30, data: Array.from({ length: 12 }, () => Math.floor(Math.random() * 25) + 5) };
+
+    return trends[topicId] || defaultTrend;
+  };
+
+  // Mock 统计数据生成函数
+  const generateMockStats = (trendData) => {
+    if (trendData.length === 0) {
+      return { min: 0, avg: 0, max: 0 };
+    }
+    const min = Math.min(...trendData);
+    const max = Math.max(...trendData);
+    const avg = Math.round(trendData.reduce((a, b) => a + b, 0) / trendData.length);
+    return { min, avg, max };
+  };
 
   const loadTopics = async () => {
     try {
@@ -53,630 +74,373 @@ const TopicList = () => {
     });
   };
 
-  // 加载筛选选项
-  useEffect(() => {
-    const loadFilterOptions = async () => {
-      try {
-        const opts = await eventAPI.getFilterOptions();
-        setFilterOptions(opts || { towns: [], levels: [], categories: [] });
-      } catch (e) {
-        console.error('加载筛选选项失败:', e);
-      }
-    };
-    loadFilterOptions();
-  }, []);
-
   useEffect(() => { loadTopics(); }, []);
 
-  // 打开编辑抽屉
-  const openEditDrawer = async (topicId) => {
-    try {
-      setEditingTopicId(topicId);
+  // 搜索过滤主题
+  const filteredTopics = useMemo(() => {
+    if (!searchText.trim()) return topics;
 
-      // 加载主题数据
-      const res = await fetch(`http://localhost:8000/api/topics/${topicId}`);
-      if (!res.ok) throw new Error('加载主题失败');
-      const topic = await res.json();
+    const searchLower = searchText.toLowerCase().trim();
 
-      // 填充表单数据
-      editForm.setFieldsValue({
-        name: topic.name,
-        description: topic.description || '',
-        include_desc: topic.include_keywords?.description || [],
-        include_result: topic.include_keywords?.result || [],
-        exclude_desc: topic.exclude_keywords?.description || [],
-        exclude_result: topic.exclude_keywords?.result || [],
-        dedup: topic.dedup === 'description'
-      });
+    return topics.filter(topic => {
+      // 搜索主题名称
+      if (topic.name?.toLowerCase().includes(searchLower)) return true;
 
-      // 填充分类数据
-      if (topic.categories && topic.categories.length > 0) {
-        const cats = topic.categories.map(c => ({
-          towns: c.towns || [],
-          levels: c.levels || [],
-          categories: c.categories || [],
-          timeRange: (c.start_time || c.end_time)
-            ? [
-                c.start_time ? dayjs(c.start_time) : null,
-                c.end_time ? dayjs(c.end_time) : null
-              ]
-            : null
-        }));
-        setCategories(cats);
-      } else {
-        setCategories([]);
+      // 搜索描述
+      if (topic.description?.toLowerCase().includes(searchLower)) return true;
+
+      // 搜索包含关键词
+      if (topic.include_keywords) {
+        if (typeof topic.include_keywords === 'object' && !Array.isArray(topic.include_keywords)) {
+          const { description = [], result = [] } = topic.include_keywords;
+          const allIncludeKeywords = [...description, ...result];
+          if (allIncludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        } else if (Array.isArray(topic.include_keywords)) {
+          if (topic.include_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        }
       }
 
-      setEditDrawerVisible(true);
-    } catch (e) {
-      console.error(e);
-      message.error('加载主题失败: ' + e.message);
-    }
-  };
+      // 搜索排除关键词
+      if (topic.exclude_keywords) {
+        if (typeof topic.exclude_keywords === 'object' && !Array.isArray(topic.exclude_keywords)) {
+          const { description = [], result = [] } = topic.exclude_keywords;
+          const allExcludeKeywords = [...description, ...result];
+          if (allExcludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        } else if (Array.isArray(topic.exclude_keywords)) {
+          if (topic.exclude_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        }
+      }
 
-  // 保存编辑
-  const handleSaveEdit = async () => {
-    try {
-      const values = await editForm.validateFields();
-      setSaving(true);
+      // 搜索精细筛选
+      if (topic.fine_filters?.some(filter => filter.toLowerCase().includes(searchLower))) return true;
 
-      const parseKeywords = (v) => Array.isArray(v)
-        ? v.map(s => String(s).trim()).filter(Boolean)
-        : String(v || '')
-            .split(/[，,\s]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
-
-      const payload = {
-        name: values.name,
-        description: values.description || '',
-        include_keywords: {
-          description: parseKeywords(values.include_desc),
-          result: parseKeywords(values.include_result)
-        },
-        exclude_keywords: {
-          description: parseKeywords(values.exclude_desc),
-          result: parseKeywords(values.exclude_result)
-        },
-        fine_filters: [],
-        dedup: values.dedup ? 'description' : null,
-        categories: categories.map(c => ({
-          name: null,
-          keywords: [],
-          towns: c.towns || [],
-          levels: c.levels || [],
-          categories: c.categories || [],
-          start_time: c.timeRange && c.timeRange[0] ? c.timeRange[0].format('YYYY-MM-DD') : null,
-          end_time: c.timeRange && c.timeRange[1] ? c.timeRange[1].format('YYYY-MM-DD') : null,
-        })),
-        enabled: true
-      };
-
-      const res = await fetch(`http://localhost:8000/api/topics/${editingTopicId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) throw new Error('更新主题失败');
-
-      message.success('主题更新成功');
-      setEditDrawerVisible(false);
-      setEditingTopicId(null);
-
-      // 重新加载主题列表
-      await loadTopics();
-    } catch (e) {
-      if (e?.errorFields) return; // 表单校验错误
-      console.error(e);
-      message.error('更新失败: ' + e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // 分类管理函数
-  const addCategory = () => {
-    setCategories(prev => [...prev, { towns: [], levels: [], categories: [], timeRange: null }]);
-  };
-
-  const updateCategory = (idx, field, value) => {
-    setCategories(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
-  };
-
-  const removeCategory = (idx) => {
-    setCategories(prev => prev.filter((_, i) => i !== idx));
-  };
+      return false;
+    });
+  }, [topics, searchText]);
 
   // 渲染关键词标签的辅助函数
   const renderKeywordTags = (keywords, label, color) => {
     if (!keywords) return null;
-    
-    // 处理新的字段级关键词结构
+
     if (typeof keywords === 'object' && !Array.isArray(keywords)) {
       const { description = [], result = [] } = keywords;
       const allKeywords = [];
-      
+
       if (description.length > 0) {
-        allKeywords.push(`描述:${description.join('、')}`);
+        allKeywords.push(...description);
       }
       if (result.length > 0) {
-        allKeywords.push(`结果:${result.join('、')}`);
+        allKeywords.push(...result);
       }
-      
+
       if (allKeywords.length > 0) {
-        return (
-          <Tag color={color} style={{ marginBottom: 4 }}>
-            {label}: {allKeywords.join(' | ')}
+        return allKeywords.slice(0, 3).map((kw, idx) => (
+          <Tag
+            key={`${label}-${idx}`}
+            color={color}
+            style={{
+              marginRight: 4,
+              marginBottom: 4,
+              border: `1px solid ${color === 'blue' ? '#1890ff' : color === 'red' ? '#ff4d4f' : '#faad14'}`,
+              background: 'white'
+            }}
+          >
+            {label}: {kw}
           </Tag>
-        );
+        ));
       }
       return null;
     }
-    
-    // 兼容旧的数组格式
+
     if (Array.isArray(keywords) && keywords.length > 0) {
-      return (
-        <Tag color={color} style={{ marginBottom: 4 }}>
-          {label}: {keywords.join('、')}
+      return keywords.slice(0, 3).map((kw, idx) => (
+        <Tag
+          key={`${label}-${idx}`}
+          color={color}
+          style={{
+            marginRight: 4,
+            marginBottom: 4,
+            border: `1px solid ${color === 'blue' ? '#1890ff' : color === 'red' ? '#ff4d4f' : '#faad14'}`,
+            background: 'white'
+          }}
+        >
+          {label}: {kw}
         </Tag>
-      );
+      ));
     }
-    
+
     return null;
   };
 
   return (
-    <div className="page-container">
-      <div className="page-header" style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 32,
-        padding: '24px 0'
+    <div style={{ padding: '24px', background: '#f5f5f5', minHeight: '100vh' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
       }}>
-        <div>
-          <Title level={2} style={{ 
-            margin: 0, 
-            color: '#1f2937',
-            fontSize: '28px',
-            fontWeight: 600
-          }}>
-            主题列表
-          </Title>
-          <Paragraph style={{ 
-            margin: '8px 0 0 0', 
-            color: '#6b7280',
-            fontSize: '16px'
-          }}>
-            管理和监控您的事件主题，查看统计数据和详细信息
-          </Paragraph>
-        </div>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
+        <Title level={3} style={{ margin: 0 }}>主题列表</Title>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
           onClick={() => navigate('/topics/create')}
-          size="large"
-          style={{
-            borderRadius: '8px',
-            padding: '8px 24px',
-            height: 'auto',
-            background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
-            border: 'none'
-          }}
         >
           创建主题
         </Button>
       </div>
 
+      {/* 搜索框 */}
+      <div style={{ marginBottom: 24 }}>
+        <Search
+          placeholder="搜索主题名称、描述或关键词..."
+          allowClear
+          size="large"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ maxWidth: 600 }}
+          prefix={<SearchOutlined />}
+        />
+        {searchText && (
+          <div style={{ marginTop: 8, color: '#666', fontSize: '14px' }}>
+            找到 <strong style={{ color: '#1890ff' }}>{filteredTopics.length}</strong> 个主题
+          </div>
+        )}
+      </div>
+
       {topics.length === 0 ? (
-        <Card style={{
-          borderRadius: '16px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-          border: '1px solid #e5e7eb',
-          textAlign: 'center',
-          padding: '48px 24px'
-        }}>
-          <Empty 
-            description={
-              <div>
-                <Text style={{ fontSize: '16px', color: '#6b7280' }}>暂无主题</Text>
-                <br />
-                <Text style={{ fontSize: '14px', color: '#9ca3af' }}>创建您的第一个主题来开始事件筛选</Text>
-              </div>
-            }
-          >
-            <Button 
-              type="primary" 
+        <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <Empty description="暂无主题">
+            <Button
+              type="primary"
               icon={<PlusOutlined />}
               onClick={() => navigate('/topics/create')}
-              size="large"
-              style={{
-                borderRadius: '8px',
-                padding: '8px 24px',
-                height: 'auto',
-                marginTop: '16px'
-              }}
             >
               立即创建
             </Button>
           </Empty>
         </Card>
+      ) : filteredTopics.length === 0 ? (
+        <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <Empty description="没有找到匹配的主题">
+            <Button
+              type="link"
+              onClick={() => setSearchText('')}
+            >
+              清空搜索
+            </Button>
+          </Empty>
+        </Card>
       ) : (
-        <Row gutter={[24, 24]}>
-          {topics.map(topic => (
-            <Col xs={24} lg={12} xl={8} key={topic.id}>
-              <Card 
-                loading={loading}
-                style={{
-                  borderRadius: '16px',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                  border: '1px solid #e5e7eb',
-                  height: '100%',
-                  transition: 'all 0.3s ease',
-                  cursor: 'pointer'
-                }}
-                hoverable
-                onClick={() => navigate(`/topics/${topic.id}`)}
-                bodyStyle={{ padding: '24px' }}
-              >
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  height: '100%'
-                }}>
+        <Row gutter={[16, 16]}>
+          {filteredTopics.map(topic => {
+            const trend = generateMockTrend(topic.id);
+            const stats = generateMockStats(trend.data);
+            const hasData = trend.data.length > 0;
+
+            return (
+              <Col xs={24} sm={12} lg={8} key={topic.id}>
+                <Card
+                  style={{
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    height: '100%',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                  }}
+                  bodyStyle={{ padding: '16px' }}
+                  onClick={() => navigate(`/topics/${topic.id}`)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
                   {/* Header */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      marginBottom: '8px'
-                    }}>
-                      <Title 
-                        level={4} 
-                        style={{ 
-                          margin: 0,
-                          fontSize: '18px',
-                          fontWeight: 600,
-                          color: '#1f2937',
-                          flex: 1,
-                          marginRight: '12px'
-                        }}
-                        ellipsis={{ tooltip: topic.name }}
-                      >
-                        {topic.name}
-                      </Title>
-                      <Tag 
-                        color={topic.enabled ? 'success' : 'default'}
-                        style={{
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          padding: '2px 8px'
-                        }}
-                      >
-                        {topic.enabled ? '启用' : '停用'}
-                      </Tag>
-                    </div>
-                    
-                    {topic.description && (
-                      <Text 
-                        style={{ 
-                          color: '#6b7280',
-                          fontSize: '14px',
-                          lineHeight: '1.5'
-                        }}
-                        ellipsis={{ tooltip: topic.description }}
-                      >
-                        {topic.description}
-                      </Text>
-                    )}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '8px'
+                  }}>
+                    <Title level={5} style={{ margin: 0, fontSize: '16px' }}>
+                      {topic.name}
+                    </Title>
                   </div>
 
-                  {/* Keywords Section */}
-                  <div style={{ flex: 1, marginBottom: '16px' }}>
-                    <Space size={[8, 8]} wrap>
+                  {/* Description */}
+                  <Text
+                    style={{
+                      color: '#666',
+                      fontSize: '13px',
+                      display: 'block',
+                      marginBottom: '8px'
+                    }}
+                  >
+                    {topic.description || '我是描述信息'}
+                  </Text>
+
+                  {/* Tags */}
+                  <div style={{ marginBottom: '8px', minHeight: '28px' }}>
+                    <Space size={[4, 4]} wrap>
                       {renderKeywordTags(topic.include_keywords, '包含', 'blue')}
                       {renderKeywordTags(topic.exclude_keywords, '排除', 'red')}
                       {topic.fine_filters?.length > 0 && (
-                        <Tag color="purple" style={{ marginBottom: 4 }}>
-                          精筛: {topic.fine_filters.join('、')}
-                        </Tag>
-                      )}
-                      {topic.dedup && (
-                        <Tag color="orange" style={{ marginBottom: 4 }}>
-                          去重: {topic.dedup === 'description' ? '按描述' : topic.dedup}
+                        <Tag
+                          color="orange"
+                          style={{
+                            marginRight: 4,
+                            marginBottom: 4,
+                            border: '1px solid #faad14',
+                            background: 'white'
+                          }}
+                        >
+                          无直: {topic.fine_filters[0]}
                         </Tag>
                       )}
                     </Space>
                   </div>
 
-                  {/* Footer */}
-                  <div style={{ 
-                    borderTop: '1px solid #f0f0f0',
-                    paddingTop: '16px'
-                  }}>
-                    <div style={{ 
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <CalendarOutlined style={{ color: '#9ca3af', fontSize: '14px' }} />
-                        <Text 
-                          style={{ 
-                            color: '#9ca3af',
-                            fontSize: '12px'
+                  {/* Trend info */}
+                  <div style={{ marginBottom: '8px' }}>
+                    <Space>
+                      <Text style={{ color: '#666', fontSize: '13px' }}>事件趋势</Text>
+                      {hasData && (
+                        <Text
+                          style={{
+                            color: trend.percent > 0 ? '#ff4d4f' : trend.percent < 0 ? '#52c41a' : '#999',
+                            fontSize: '13px',
+                            fontWeight: 500
                           }}
                         >
-                          {topic.createTime}
+                          本周 {trend.percent > 0 ? '+' : ''}{trend.percent}%
                         </Text>
-                      </div>
-                      
-                      <Space size="small">
-                        <Tooltip title="查看详情">
-                          <Button
-                            type="text"
-                            icon={<EyeOutlined />}
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/topics/${topic.id}`);
-                            }}
-                            style={{ borderRadius: '6px' }}
-                          />
-                        </Tooltip>
-                        <Tooltip title="编辑">
-                          <Button
-                            type="text"
-                            icon={<EditOutlined />}
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditDrawer(topic.id);
-                            }}
-                            style={{ borderRadius: '6px' }}
-                          />
-                        </Tooltip>
-                        <Tooltip title="统计分析">
-                          <Button
-                            type="text"
-                            icon={<BarChartOutlined />}
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/topics/${topic.id}/stats`);
-                            }}
-                            style={{ borderRadius: '6px' }}
-                          />
-                        </Tooltip>
-                        <Tooltip title="删除">
-                          <Button
-                            type="text"
-                            icon={<DeleteOutlined />}
-                            size="small"
-                            danger
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteTopic(topic.id, topic.name);
-                            }}
-                            style={{ borderRadius: '6px' }}
-                          />
-                        </Tooltip>
-                      </Space>
-                    </div>
+                      )}
+                      {!hasData && (
+                        <Text style={{ color: '#999', fontSize: '13px' }}>
+                          本周 0 件
+                        </Text>
+                      )}
+                    </Space>
                   </div>
-                </div>
-              </Card>
-            </Col>
-          ))}
+
+                  {/* Chart */}
+                  {hasData ? (
+                    <div style={{ marginBottom: '8px', height: '120px' }}>
+                      <Line
+                        data={trend.data.map((count, index) => ({
+                          date: index,
+                          count: count
+                        }))}
+                        xField="date"
+                        yField="count"
+                        height={120}
+                        padding={[10, 10, 30, 30]}
+                        smooth
+                        color="#1890ff"
+                        xAxis={{
+                          label: null,
+                          line: { style: { stroke: '#e8e8e8' } },
+                          tickLine: null,
+                          grid: null
+                        }}
+                        yAxis={{
+                          label: null,
+                          line: null,
+                          tickLine: null,
+                          grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
+                        }}
+                        areaStyle={{
+                          fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff',
+                        }}
+                        point={false}
+                        tooltip={false}
+                      />
+                      {/* Stats */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '12px',
+                        color: '#999',
+                        marginTop: '-20px'
+                      }}>
+                        <span>最低：{stats.min}</span>
+                        <span>平均：{stats.avg}</span>
+                        <span>最高：{stats.max}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      height: '120px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: '#fafafa',
+                      borderRadius: '4px',
+                      marginBottom: '8px'
+                    }}>
+                      <Text style={{ color: '#bbb', fontSize: '13px' }}>暂无数据</Text>
+                    </div>
+                  )}
+
+                  {/* Footer */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '8px',
+                    borderTop: '1px solid #f0f0f0'
+                  }}>
+                    <Text style={{ color: '#bbb', fontSize: '12px' }}>
+                      {topic.createTime || dayjs().format('YYYY-MM-DD HH:mm:ss')}
+                    </Text>
+                    <Space size={4}>
+                      <Tooltip title="查看详情">
+                        <Button
+                          type="text"
+                          icon={<EyeOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/topics/${topic.id}`);
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="编辑">
+                        <Button
+                          type="text"
+                          icon={<EditOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/topics/${topic.id}`);
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="删除">
+                        <Button
+                          type="text"
+                          icon={<DeleteOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTopic(topic.id, topic.name);
+                          }}
+                        />
+                      </Tooltip>
+                    </Space>
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
       )}
-
-      {/* 编辑抽屉 */}
-      <Drawer
-        title="编辑主题"
-        width={720}
-        open={editDrawerVisible}
-        onClose={() => {
-          setEditDrawerVisible(false);
-          setEditingTopicId(null);
-        }}
-        extra={
-          <Space>
-            <Button onClick={() => {
-              setEditDrawerVisible(false);
-              setEditingTopicId(null);
-            }}>
-              取消
-            </Button>
-            <Button type="primary" loading={saving} onClick={handleSaveEdit}>
-              保存
-            </Button>
-          </Space>
-        }
-      >
-        <Form form={editForm} layout="vertical">
-          {/* 基础信息 */}
-          <div style={{ marginBottom: 24 }}>
-            <Title level={5} style={{ marginBottom: 16 }}>基础信息</Title>
-
-            <Form.Item
-              name="name"
-              label={<Text strong>主题名称</Text>}
-              rules={[{ required: true, message: '请输入主题名称' }]}
-            >
-              <Input placeholder="例如：噪音相关事件" maxLength={50} />
-            </Form.Item>
-
-            <Form.Item
-              name="description"
-              label={<Text strong>描述</Text>}
-            >
-              <Input.TextArea
-                placeholder="可描述该主题创建逻辑和用途"
-                rows={3}
-                maxLength={200}
-              />
-            </Form.Item>
-          </div>
-
-          {/* 包含关键词 */}
-          <Card size="small" title="第一道：包含关键词筛选" style={{ marginBottom: 16 }}>
-            <Alert
-              message="事件描述和处置结果之间是AND关系：必须同时满足两个字段的条件（如果都配置了关键词）"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="include_desc"
-                  label={<Text strong>事件描述关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：噪音 噪声 吵闹"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="include_result"
-                  label={<Text strong>处置结果关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：处理完毕 已解决"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          {/* 排除关键词 */}
-          <Card size="small" title="第二道：过滤关键词筛选" style={{ marginBottom: 16 }}>
-            <Alert
-              message="排除包含指定关键词的事件"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="exclude_desc"
-                  label={<Text strong>排除事件描述关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：KTV 超市 商场"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="exclude_result"
-                  label={<Text strong>排除处置结果关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：无需处理 已撤销"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          {/* 去重设置 */}
-          <Card size="small" title="第三道：数据去重" style={{ marginBottom: 16 }}>
-            <Form.Item
-              name="dedup"
-              label={<Text strong>按事件描述去重</Text>}
-              valuePropName="checked"
-              initialValue={true}
-            >
-              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-            </Form.Item>
-          </Card>
-
-          {/* 分类配置 */}
-          <Card size="small" title="分类配置（可选）" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {categories.map((c, idx) => (
-                <Card key={idx} size="small" style={{ background: '#fafafa' }}>
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="街镇名称（可多选）"
-                          value={c.towns}
-                          onChange={(vals) => updateCategory(idx, 'towns', vals)}
-                          options={(filterOptions.towns || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="事件级别（可多选）"
-                          value={c.levels}
-                          onChange={(vals) => updateCategory(idx, 'levels', vals)}
-                          options={(filterOptions.levels || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                    </Row>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="二级分类（可多选）"
-                          value={c.categories}
-                          onChange={(vals) => updateCategory(idx, 'categories', vals)}
-                          options={(filterOptions.categories || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                      <Col span={12}>
-                        <DatePicker.RangePicker
-                          value={c.timeRange || null}
-                          onChange={(dates) => updateCategory(idx, 'timeRange', dates)}
-                          placeholder={["开始日期", "结束日期"]}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                    </Row>
-                    <Button danger size="small" onClick={() => removeCategory(idx)}>
-                      删除分类
-                    </Button>
-                  </Space>
-                </Card>
-              ))}
-              <Button
-                onClick={addCategory}
-                icon={<PlusOutlined />}
-                style={{ width: '100%', borderStyle: 'dashed' }}
-              >
-                添加分类
-              </Button>
-            </Space>
-          </Card>
-        </Form>
-      </Drawer>
     </div>
   );
 };
 
 export default TopicList;
-

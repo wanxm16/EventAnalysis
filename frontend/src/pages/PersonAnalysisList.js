@@ -25,6 +25,55 @@ import api from '../services/api';
 const { Title } = Typography;
 const { Option } = Select;
 
+// 可拖拽列宽度组件
+const ResizeableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <th
+      {...restProps}
+      style={{ position: 'relative' }}
+    >
+      {restProps.children}
+      <div
+        style={{
+          position: 'absolute',
+          right: '-5px',
+          top: 0,
+          bottom: 0,
+          width: '10px',
+          cursor: 'col-resize',
+          zIndex: 1,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const startX = e.pageX;
+          const startWidth = width;
+
+          const handleMouseMove = (e) => {
+            const newWidth = startWidth + e.pageX - startX;
+            if (newWidth > 50) { // 最小宽度限制
+              onResize(newWidth);
+            }
+          };
+
+          const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+          };
+
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }}
+      />
+    </th>
+  );
+};
+
 const PersonAnalysisList = () => {
   const navigate = useNavigate();
   const searchInput = useRef(null);
@@ -40,6 +89,17 @@ const PersonAnalysisList = () => {
   const [availableTags, setAvailableTags] = useState([]);
   const [columnFilters, setColumnFilters] = useState({});
   const [searchedColumn, setSearchedColumn] = useState('');
+
+  // 列宽度状态管理
+  const [columnWidths, setColumnWidths] = useState({
+    phone: 150,
+    name: 120,
+    id_card: 180,
+    primary_role: 100,
+    event_count: 100,
+    population_tags: 200,
+    action: 100,
+  });
 
   // 标签穿透分析相关状态
   const [activeTab, setActiveTab] = useState('list');
@@ -733,13 +793,25 @@ const PersonAnalysisList = () => {
     }
   };
 
+  // 处理列宽度变化
+  const handleResize = (key) => (width) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [key]: width
+    }));
+  };
+
   // 表格列配置
   const columns = [
     {
       title: '手机号码',
       dataIndex: 'phone',
       key: 'phone',
-      width: 150,
+      width: columnWidths['phone'],
+      onHeaderCell: () => ({
+        width: columnWidths['phone'],
+        onResize: handleResize('phone'),
+      }),
       ...getColumnSearchProps('phone', '搜索姓名或手机号', 'search'),
       render: (text) => (
         <span style={{ fontFamily: 'monospace' }}>{text || '-'}</span>
@@ -749,7 +821,11 @@ const PersonAnalysisList = () => {
       title: '姓名',
       dataIndex: 'name',
       key: 'name',
-      width: 120,
+      width: columnWidths['name'],
+      onHeaderCell: () => ({
+        width: columnWidths['name'],
+        onResize: handleResize('name'),
+      }),
       ...getColumnSearchProps('name', '搜索姓名', 'name'),
       render: (text) => text || '-',
     },
@@ -757,7 +833,11 @@ const PersonAnalysisList = () => {
       title: '身份证号码',
       dataIndex: 'id_card',
       key: 'id_card',
-      width: 180,
+      width: columnWidths['id_card'],
+      onHeaderCell: () => ({
+        width: columnWidths['id_card'],
+        onResize: handleResize('id_card'),
+      }),
       ...getColumnSearchProps('id_card', '搜索身份证', 'id_card'),
       render: (text) => (
         <span style={{ fontFamily: 'monospace' }}>{text || '-'}</span>
@@ -767,7 +847,11 @@ const PersonAnalysisList = () => {
       title: '主要角色',
       dataIndex: 'primary_role',
       key: 'primary_role',
-      width: 100,
+      width: columnWidths['primary_role'],
+      onHeaderCell: () => ({
+        width: columnWidths['primary_role'],
+        onResize: handleResize('primary_role'),
+      }),
       ...getColumnSelectProps('主要角色', roles, 'primary_role'),
       render: (text) => {
         if (!text) return '-';
@@ -782,8 +866,12 @@ const PersonAnalysisList = () => {
       title: '事件总数',
       dataIndex: 'event_count',
       key: 'event_count',
-      width: 100,
+      width: columnWidths['event_count'],
       align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['event_count'],
+        onResize: handleResize('event_count'),
+      }),
       ...getColumnRangeProps('事件总数', 'event_count'),
       sorter: (a, b) => a.event_count - b.event_count,
       render: (text) => (
@@ -794,7 +882,11 @@ const PersonAnalysisList = () => {
       title: '人口标签',
       dataIndex: 'population_tags',
       key: 'population_tags',
-      width: 200,
+      width: columnWidths['population_tags'],
+      onHeaderCell: () => ({
+        width: columnWidths['population_tags'],
+        onResize: handleResize('population_tags'),
+      }),
       ...getColumnMultiSelectProps('人口标签', availableTags, 'population_tags'),
       render: (tags) => {
         if (!tags || !Array.isArray(tags) || tags.length === 0) {
@@ -814,11 +906,15 @@ const PersonAnalysisList = () => {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: columnWidths['action'],
       align: 'center',
+      onHeaderCell: () => ({
+        width: columnWidths['action'],
+        onResize: handleResize('action'),
+      }),
       render: (_, record) => (
         <Button
-          type="primary"
+          type="link"
           icon={<EyeOutlined />}
           size="small"
           onClick={() => handleViewDetail(record.phone)}
@@ -896,6 +992,11 @@ const PersonAnalysisList = () => {
           pagination={false}
           scroll={{ x: 1200 }}
           size="middle"
+          components={{
+            header: {
+              cell: ResizeableTitle,
+            },
+          }}
         />
 
         {/* 分页 */}

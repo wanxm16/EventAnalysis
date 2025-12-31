@@ -1,12 +1,63 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert } from 'antd';
-import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert, Radio, Tabs, Spin, Steps, Checkbox, Statistic, Empty } from 'antd';
+import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { Line } from '@ant-design/plots';
+import Highlighter from 'react-highlight-words';
 import dayjs from 'dayjs';
-import { eventAPI } from '../services/api';
+import { eventAPI, tagAPI } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
+
+// 可拖拽列宽度组件
+const ResizeableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <th
+      {...restProps}
+      style={{ position: 'relative' }}
+    >
+      {restProps.children}
+      <div
+        style={{
+          position: 'absolute',
+          right: '-5px',
+          top: 0,
+          bottom: 0,
+          width: '10px',
+          cursor: 'col-resize',
+          zIndex: 1,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const startX = e.pageX;
+          const startWidth = width;
+
+          const handleMouseMove = (e) => {
+            const newWidth = startWidth + e.pageX - startX;
+            if (newWidth > 50) { // 最小宽度限制
+              onResize(newWidth);
+            }
+          };
+
+          const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+          };
+
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }}
+      />
+    </th>
+  );
+};
 
 const TopicDetail = () => {
   const { topicId } = useParams();
@@ -17,25 +68,197 @@ const TopicDetail = () => {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [dateRange, setDateRange] = useState([]);
   const [search, setSearch] = useState('');
-  const [columnFilters, setColumnFilters] = useState({}); // 与事件列表一致的列头筛选
+  const [searchText, setSearchText] = useState('');
+  const [searchedColumn, setSearchedColumn] = useState('');
+  const searchInput = useRef(null);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [filterOptions, setFilterOptions] = useState({
+    towns: [],
+    villages: [],
+    levels: [],
+    categories: [],
+  });
+
   // 自定义列：可见列键与弹窗
   const defaultVisibleKeys = () => {
     const saved = localStorage.getItem(`topic_detail_visible_columns_${topicId}`);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return ['id', 'time', 'town', 'level', 'cat', 'desc', 'actions'];
+    return ['事件描述','镇街名称','村社名称','事件级别','二级分类','上报时间','报警人信息','相关','处置结果','标签'];
   };
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(defaultVisibleKeys());
   const [columnModalOpen, setColumnModalOpen] = useState(false);
-  const dragIndexRef = React.useRef(null);
+  const dragIndexRef = useRef(null);
+
+  // 列宽度状态管理
+  const [columnWidths, setColumnWidths] = useState({
+    '事件编号': 160,
+    '事件描述': 200,
+    '镇街名称': 100,
+    '村社名称': 120,
+    '事件级别': 100,
+    '二级分类': 120,
+    '上报时间': 150,
+    '报警人信息': 200,
+    '处置结果': 180,
+    '相关': 100,
+    '标签': 250,
+    'action': 120,
+  });
+
+  // 标签相关状态
+  const [availableTags, setAvailableTags] = useState([]);
+  const [tagEditModalVisible, setTagEditModalVisible] = useState(false);
+  const [currentEditEvent, setCurrentEditEvent] = useState(null);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [aiRecommending, setAiRecommending] = useState(false);
+
+  // 统计相关状态
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsDateRange, setStatsDateRange] = useState([]);
+  const [statsView, setStatsView] = useState('day'); // 'day' | 'month'
+  const [statsCollapsed, setStatsCollapsed] = useState(false);
+
+  // TAB 页面状态
+  const [activeTab, setActiveTab] = useState('events');
+
+  // AI 标签发现相关状态
+  const [untaggedCount, setUntaggedCount] = useState(20); // Mock: 未分配标签的事件数
+  const [aiDiscoveryDrawerVisible, setAiDiscoveryDrawerVisible] = useState(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiSuggestedTags, setAiSuggestedTags] = useState([]);
+  const [selectedSuggestedTags, setSelectedSuggestedTags] = useState([]);
+
+  // 标签分析 mock 数据
+  const mockTagAnalysisData = useMemo(() => ({
+    tags: [
+      {
+        id: 1,
+        name: '噪音投诉',
+        count: 342,
+        trend: [
+          { date: '2024-01', count: 28 },
+          { date: '2024-02', count: 32 },
+          { date: '2024-03', count: 29 },
+          { date: '2024-04', count: 35 },
+          { date: '2024-05', count: 41 },
+          { date: '2024-06', count: 38 },
+          { date: '2024-07', count: 45 },
+          { date: '2024-08', count: 42 },
+          { date: '2024-09', count: 52 },
+        ],
+        persons: [
+          { name: '张三', phone: '13800138001', event_count: 15, role: '报警人' },
+          { name: '李四', phone: '13800138002', event_count: 12, role: '对方' },
+          { name: '王五', phone: '13800138003', event_count: 10, role: '报警人' },
+          { name: '赵六', phone: '13800138004', event_count: 8, role: '当事人' },
+          { name: '钱七', phone: '13800138005', event_count: 6, role: '报警人' },
+        ]
+      },
+      {
+        id: 2,
+        name: '邻里纠纷',
+        count: 256,
+        trend: [
+          { date: '2024-01', count: 22 },
+          { date: '2024-02', count: 25 },
+          { date: '2024-03', count: 28 },
+          { date: '2024-04', count: 24 },
+          { date: '2024-05', count: 30 },
+          { date: '2024-06', count: 27 },
+          { date: '2024-07', count: 32 },
+          { date: '2024-08', count: 35 },
+          { date: '2024-09', count: 33 },
+        ],
+        persons: [
+          { name: '孙八', phone: '13800138006', event_count: 18, role: '报警人' },
+          { name: '周九', phone: '13800138007', event_count: 14, role: '对方' },
+          { name: '吴十', phone: '13800138008', event_count: 11, role: '当事人' },
+          { name: '郑一', phone: '13800138009', event_count: 9, role: '报警人' },
+        ]
+      },
+      {
+        id: 3,
+        name: '停车纠纷',
+        count: 198,
+        trend: [
+          { date: '2024-01', count: 18 },
+          { date: '2024-02', count: 20 },
+          { date: '2024-03', count: 22 },
+          { date: '2024-04', count: 19 },
+          { date: '2024-05', count: 25 },
+          { date: '2024-06', count: 23 },
+          { date: '2024-07', count: 26 },
+          { date: '2024-08', count: 24 },
+          { date: '2024-09', count: 21 },
+        ],
+        persons: [
+          { name: '冯二', phone: '13800138010', event_count: 13, role: '报警人' },
+          { name: '陈三', phone: '13800138011', event_count: 10, role: '对方' },
+          { name: '褚四', phone: '13800138012', event_count: 8, role: '当事人' },
+        ]
+      },
+      {
+        id: 4,
+        name: '宠物扰民',
+        count: 167,
+        trend: [
+          { date: '2024-01', count: 15 },
+          { date: '2024-02', count: 17 },
+          { date: '2024-03', count: 19 },
+          { date: '2024-04', count: 16 },
+          { date: '2024-05', count: 21 },
+          { date: '2024-06', count: 18 },
+          { date: '2024-07', count: 22 },
+          { date: '2024-08', count: 20 },
+          { date: '2024-09', count: 19 },
+        ],
+        persons: [
+          { name: '卫五', phone: '13800138013', event_count: 12, role: '报警人' },
+          { name: '蒋六', phone: '13800138014', event_count: 9, role: '对方' },
+          { name: '沈七', phone: '13800138015', event_count: 7, role: '报警人' },
+        ]
+      },
+      {
+        id: 5,
+        name: '装修扰民',
+        count: 143,
+        trend: [
+          { date: '2024-01', count: 12 },
+          { date: '2024-02', count: 14 },
+          { date: '2024-03', count: 16 },
+          { date: '2024-04', count: 15 },
+          { date: '2024-05', count: 18 },
+          { date: '2024-06', count: 17 },
+          { date: '2024-07', count: 19 },
+          { date: '2024-08', count: 18 },
+          { date: '2024-09', count: 14 },
+        ],
+        persons: [
+          { name: '韩八', phone: '13800138016', event_count: 11, role: '报警人' },
+          { name: '杨九', phone: '13800138017', event_count: 8, role: '对方' },
+        ]
+      },
+    ]
+  }), []);
 
   // 编辑抽屉相关状态
   const [editDrawerVisible, setEditDrawerVisible] = useState(false);
-  const [editForm] = Form.useForm();
-  const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState([]);
+  const [editCurrentStep, setEditCurrentStep] = useState(0);
+  const [editStep1Form] = Form.useForm();
+  const [editStep3Form] = Form.useForm();
+  const [editStep1Skipped, setEditStep1Skipped] = useState(false);
+  const [editStep2Skipped, setEditStep2Skipped] = useState(false);
+  const [editCategories, setEditCategories] = useState([]);
+  const [editSelectedTags, setEditSelectedTags] = useState([]);
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [filterOptionsForEdit, setFilterOptionsForEdit] = useState({ towns: [], levels: [], categories: [] });
+  const [editTags, setEditTags] = useState([]);
+  const [editGroups, setEditGroups] = useState([]);
+  const [editTagsLoading, setEditTagsLoading] = useState(false);
+
 
   // 模拟AI分类数据 - 随机标记一些事件为AI分类
   const mockAiClassifiedEvents = useMemo(() => {
@@ -55,13 +278,64 @@ const TopicDetail = () => {
     return aiEvents;
   }, [events]);
 
-  // 从事件数据提取可选项
-  const filterOptions = useMemo(() => {
-    const towns = Array.from(new Set((events || []).map(e => e.镇街名称).filter(Boolean)));
-    const levels = Array.from(new Set((events || []).map(e => e.事件级别).filter(Boolean)));
-    const categories = Array.from(new Set((events || []).map(e => e.二级分类).filter(Boolean)));
-    return { towns, levels, categories };
-  }, [events]);
+  // Mock tag data for first 10 events
+  const addMockTags = (events) => {
+    const mockTagsData = [
+      { tags: [
+        { name: '高频事件', type: 'ai' },
+        { name: '紧急处理', type: 'human' },
+        { name: '已解决', type: 'human' }
+      ]},
+      { tags: [
+        { name: '噪音投诉', type: 'ai' },
+        { name: '夜间扰民', type: 'ai' },
+        { name: '待跟进', type: 'human' }
+      ]},
+      { tags: [
+        { name: '停车纠纷', type: 'ai' },
+        { name: '重点关注', type: 'human' }
+      ]},
+      { tags: [
+        { name: '基础设施', type: 'ai' },
+        { name: '道路维修', type: 'ai' },
+        { name: '已派单', type: 'human' }
+      ]},
+      { tags: [
+        { name: '环境卫生', type: 'ai' },
+        { name: '垃圾清理', type: 'ai' }
+      ]},
+      { tags: [
+        { name: '邻里纠纷', type: 'ai' },
+        { name: '需调解', type: 'human' },
+        { name: '持续关注', type: 'human' }
+      ]},
+      { tags: [
+        { name: '消防安全', type: 'ai' },
+        { name: '隐患排查', type: 'ai' },
+        { name: '整改中', type: 'human' }
+      ]},
+      { tags: [
+        { name: '违章建筑', type: 'ai' },
+        { name: '待拆除', type: 'human' }
+      ]},
+      { tags: [
+        { name: '交通违章', type: 'ai' },
+        { name: '已处罚', type: 'human' }
+      ]},
+      { tags: [
+        { name: '公共秩序', type: 'ai' },
+        { name: '重点区域', type: 'human' },
+        { name: '加强巡查', type: 'human' }
+      ]}
+    ];
+
+    return events.map((event, index) => {
+      if (index < 10 && mockTagsData[index]) {
+        return { ...event, tags: mockTagsData[index].tags };
+      }
+      return event;
+    });
+  };
 
   const loadTopic = async () => {
     try {
@@ -89,7 +363,10 @@ const TopicDetail = () => {
       const res = await fetch(`http://localhost:8000/api/topics/${topicId}/events?${params.toString()}`);
       if (!res.ok) throw new Error('加载事件失败');
       const data = await res.json();
-      setEvents(data.items || []);
+
+      // Add mock tags
+      const eventsWithTags = addMockTags(data.items || []);
+      setEvents(eventsWithTags);
       setPagination({ current: data.page, pageSize: data.page_size, total: data.total });
     } catch (e) {
       console.error(e);
@@ -98,19 +375,6 @@ const TopicDetail = () => {
       setLoading(false);
     }
   };
-
-  // 加载筛选选项
-  useEffect(() => {
-    const loadFilterOptions = async () => {
-      try {
-        const opts = await eventAPI.getFilterOptions();
-        setFilterOptionsForEdit(opts || { towns: [], levels: [], categories: [] });
-      } catch (e) {
-        console.error('加载筛选选项失败:', e);
-      }
-    };
-    loadFilterOptions();
-  }, []);
 
   useEffect(() => { loadTopic(); }, [topicId]);
 
@@ -131,14 +395,112 @@ const TopicDetail = () => {
 
   useEffect(() => { loadEvents(1, pagination.pageSize); }, [topicId, dateRange, search]);
 
+  // 加载可用标签列表
+  const loadAvailableTags = async () => {
+    try {
+      // Mock 分组标签数据
+      const mockTagGroups = [
+        {
+          groupName: '事件分类',
+          tags: [
+            { name: '高频事件', type: 'ai' },
+            { name: '噪音投诉', type: 'ai' },
+            { name: '停车纠纷', type: 'ai' },
+            { name: '邻里纠纷', type: 'ai' },
+            { name: '消防安全', type: 'ai' },
+            { name: '违章建筑', type: 'ai' },
+            { name: '交通违章', type: 'ai' },
+            { name: '公共秩序', type: 'ai' },
+          ]
+        },
+        {
+          groupName: '环境类',
+          tags: [
+            { name: '环境卫生', type: 'ai' },
+            { name: '垃圾清理', type: 'ai' },
+            { name: '夜间扰民', type: 'ai' },
+            { name: '道路维修', type: 'ai' },
+            { name: '基础设施', type: 'ai' },
+          ]
+        },
+        {
+          groupName: '处理状态',
+          tags: [
+            { name: '待处理', type: 'human' },
+            { name: '处理中', type: 'human' },
+            { name: '已处理', type: 'human' },
+            { name: '已解决', type: 'human' },
+            { name: '待跟进', type: 'human' },
+            { name: '已派单', type: 'human' },
+            { name: '整改中', type: 'human' },
+          ]
+        },
+        {
+          groupName: '优先级标签',
+          tags: [
+            { name: '紧急处理', type: 'human' },
+            { name: '重点关注', type: 'human' },
+            { name: '持续关注', type: 'human' },
+            { name: '加强巡查', type: 'human' },
+            { name: '重点区域', type: 'human' },
+          ]
+        },
+        {
+          groupName: '安全隐患',
+          tags: [
+            { name: '隐患排查', type: 'ai' },
+            { name: '待拆除', type: 'human' },
+            { name: '已处罚', type: 'human' },
+            { name: '需调解', type: 'human' },
+          ]
+        }
+      ];
+
+      setAvailableTags(mockTagGroups);
+    } catch (error) {
+      console.error('加载标签列表失败:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadAvailableTags();
+  }, []);
+
+  // 加载编辑所需的筛选选项
+  useEffect(() => {
+    const loadEditOptions = async () => {
+      try {
+        const opts = await eventAPI.getFilterOptions();
+        setFilterOptionsForEdit(opts || { towns: [], levels: [], categories: [] });
+      } catch (e) {
+        console.error('加载筛选选项失败:', e);
+      }
+    };
+    loadEditOptions();
+  }, []);
+
   // 打开编辑抽屉
-  const openEditDrawer = () => {
+  const openEditDrawer = async () => {
     if (!topic) return;
 
-    // 填充表单数据
-    editForm.setFieldsValue({
-      name: topic.name,
-      description: topic.description || '',
+    // 加载标签库
+    setEditTagsLoading(true);
+    try {
+      const [tagsRes, groupsRes] = await Promise.all([
+        tagAPI.getTags({ include_system: false }),
+        tagAPI.getGroups(false)
+      ]);
+      setEditTags(tagsRes.tags || []);
+      setEditGroups(groupsRes.groups || []);
+    } catch (error) {
+      message.error('加载标签库失败');
+      console.error(error);
+    } finally {
+      setEditTagsLoading(false);
+    }
+
+    // 填充第一步表单数据
+    editStep1Form.setFieldsValue({
       include_desc: topic.include_keywords?.description || [],
       include_result: topic.include_keywords?.result || [],
       exclude_desc: topic.exclude_keywords?.description || [],
@@ -159,20 +521,91 @@ const TopicDetail = () => {
             ]
           : null
       }));
-      setCategories(cats);
+      setEditCategories(cats);
     } else {
-      setCategories([]);
+      setEditCategories([]);
     }
 
+    // 检查是否跳过了步骤
+    const hasStep1Config =
+      (topic.include_keywords?.description?.length > 0) ||
+      (topic.include_keywords?.result?.length > 0) ||
+      (topic.exclude_keywords?.description?.length > 0) ||
+      (topic.exclude_keywords?.result?.length > 0) ||
+      topic.dedup ||
+      (topic.categories?.length > 0);
+    setEditStep1Skipped(!hasStep1Config);
+
+    // TODO: 从后端加载AI标签配置
+    setEditSelectedTags([]);
+    setEditStep2Skipped(true);
+
+    // 填充第三步表单数据
+    editStep3Form.setFieldsValue({
+      name: topic.name,
+      description: topic.description || ''
+    });
+
+      setEditCurrentStep(0);
     setEditDrawerVisible(true);
   };
 
-  // 保存编辑
-  const handleSaveEdit = async () => {
-    try {
-      const values = await editForm.validateFields();
-      setSaving(true);
+  // 编辑抽屉 - 分类管理
+  const addEditCategory = () => {
+    setEditCategories(prev => [...prev, { towns: [], levels: [], categories: [], timeRange: null }]);
+  };
 
+  const updateEditCategory = (idx, field, value) => {
+    setEditCategories(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
+  };
+
+  const removeEditCategory = (idx) => {
+    setEditCategories(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // 编辑抽屉 - 步骤控制
+  const nextEditStep = async () => {
+    if (editCurrentStep === 0 && !editStep1Skipped) {
+      try {
+        await editStep1Form.validateFields();
+      } catch (error) {
+        return;
+      }
+    }
+
+    if (editCurrentStep < 2) {
+      setEditCurrentStep(editCurrentStep + 1);
+    }
+  };
+
+  const prevEditStep = () => {
+    if (editCurrentStep > 0) {
+      setEditCurrentStep(editCurrentStep - 1);
+    }
+  };
+
+  const handleEditSkipStep1 = () => {
+    setEditStep1Skipped(!editStep1Skipped);
+    if (!editStep1Skipped) {
+      editStep1Form.resetFields();
+      setEditCategories([]);
+    }
+  };
+
+  const handleEditSkipStep2 = () => {
+    setEditStep2Skipped(!editStep2Skipped);
+    if (!editStep2Skipped) {
+      setEditSelectedTags([]);
+    }
+  };
+
+  // 编辑抽屉 - 提交保存
+  const handleEditSubmit = async () => {
+    try {
+      const values = await editStep3Form.validateFields();
+      setEditSubmitting(true);
+
+      // 构建payload（与创建主题类似）
       const parseKeywords = (v) => Array.isArray(v)
         ? v.map(s => String(s).trim()).filter(Boolean)
         : String(v || '')
@@ -180,20 +613,21 @@ const TopicDetail = () => {
             .map(s => s.trim())
             .filter(Boolean);
 
+      const step1Values = editStep1Skipped ? {} : editStep1Form.getFieldsValue();
+
       const payload = {
         name: values.name,
         description: values.description || '',
-        include_keywords: {
-          description: parseKeywords(values.include_desc),
-          result: parseKeywords(values.include_result)
+        include_keywords: editStep1Skipped ? { description: [], result: [] } : {
+          description: parseKeywords(step1Values.include_desc),
+          result: parseKeywords(step1Values.include_result)
         },
-        exclude_keywords: {
-          description: parseKeywords(values.exclude_desc),
-          result: parseKeywords(values.exclude_result)
+        exclude_keywords: editStep1Skipped ? { description: [], result: [] } : {
+          description: parseKeywords(step1Values.exclude_desc),
+          result: parseKeywords(step1Values.exclude_result)
         },
-        fine_filters: [],
-        dedup: values.dedup ? 'description' : null,
-        categories: categories.map(c => ({
+        dedup: editStep1Skipped ? null : (step1Values.dedup ? 'description' : null),
+        categories: editStep1Skipped ? [] : editCategories.map(c => ({
           name: null,
           keywords: [],
           towns: c.towns || [],
@@ -202,43 +636,734 @@ const TopicDetail = () => {
           start_time: c.timeRange && c.timeRange[0] ? c.timeRange[0].format('YYYY-MM-DD') : null,
           end_time: c.timeRange && c.timeRange[1] ? c.timeRange[1].format('YYYY-MM-DD') : null,
         })),
+        ai_tags: editStep2Skipped ? [] : editSelectedTags,
         enabled: true
       };
 
-      const res = await fetch(`http://localhost:8000/api/topics/${topicId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) throw new Error('更新主题失败');
+      // TODO: 调用后端API更新主题
+      console.log('Update topic payload:', payload);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       message.success('主题更新成功');
       setEditDrawerVisible(false);
 
-      // 重新加载主题数据
-      await loadTopic();
-      await loadEvents(1, pagination.pageSize);
+      // 重新加载主题详情
+      loadTopic();
     } catch (e) {
-      if (e?.errorFields) return; // 表单校验错误
+      if (e?.errorFields) return;
       console.error(e);
-      message.error('更新失败: ' + e.message);
+      message.error('更新失败: ' + (e.message || '未知错误'));
     } finally {
-      setSaving(false);
+      setEditSubmitting(false);
     }
   };
 
-  // 分类管理函数
-  const addCategory = () => {
-    setCategories(prev => [...prev, { towns: [], levels: [], categories: [], timeRange: null }]);
+  // 按标签组分组（用于编辑抽屉）
+  const editTagsByGroup = editTags.reduce((acc, tag) => {
+    const groupId = tag.group_id || 'ungrouped';
+    if (!acc[groupId]) {
+      acc[groupId] = [];
+    }
+    acc[groupId].push(tag);
+    return acc;
+  }, {});
+
+  // 编辑抽屉 - 渲染第一步：规则筛选
+  const renderEditStep1 = () => (
+    <div>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Typography.Title level={5} style={{ margin: 0, marginBottom: 8 }}>
+            <FilterOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+            配置筛选规则
+          </Typography.Title>
+          <Typography.Text type="secondary">设置事件筛选条件，精确定位目标事件集合</Typography.Text>
+        </div>
+        <Button
+          type={editStep1Skipped ? 'primary' : 'default'}
+          onClick={handleEditSkipStep1}
+        >
+          {editStep1Skipped ? '取消跳过' : '跳过此步骤'}
+        </Button>
+      </div>
+
+      {editStep1Skipped ? (
+        <Alert
+          message="已跳过规则筛选"
+          description="将对所有事件进行处理，不进行初步筛选"
+          type="info"
+          showIcon
+        />
+      ) : (
+        <Form form={editStep1Form} layout="vertical">
+          <Card style={{ marginBottom: 16 }}>
+            <Typography.Title level={5}>包含关键词筛选</Typography.Title>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="include_desc" label="事件描述关键词">
+                  <Select mode="tags" placeholder="例如：噪音 噪声 吵闹" tokenSeparators={[',', '，', ' ']} open={false} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="include_result" label="处置结果关键词">
+                  <Select mode="tags" placeholder="例如：处理完毕 已解决" tokenSeparators={[',', '，', ' ']} open={false} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          <Card style={{ marginBottom: 16 }}>
+            <Typography.Title level={5}>过滤关键词筛选</Typography.Title>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="exclude_desc" label="排除事件描述关键词">
+                  <Select mode="tags" placeholder="例如：KTV 超市 商场" tokenSeparators={[',', '，', ' ']} open={false} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="exclude_result" label="排除处置结果关键词">
+                  <Select mode="tags" placeholder="例如：无需处理 已撤销" tokenSeparators={[',', '，', ' ']} open={false} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          <Card style={{ marginBottom: 16 }}>
+            <Form.Item name="dedup" label="按事件描述去重" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+            </Form.Item>
+          </Card>
+
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>分类配置（可选）</Typography.Title>
+              <Button icon={<PlusOutlined />} onClick={addEditCategory}>添加分类</Button>
+            </div>
+
+            {editCategories.length === 0 ? (
+              <Empty description="暂无分类配置" />
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                {editCategories.map((c, idx) => (
+                  <Card key={idx} size="small" style={{ background: '#fafafa' }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Select
+                          mode="multiple"
+                          placeholder="街镇名称（可多选）"
+                          value={c.towns}
+                          onChange={(vals) => updateEditCategory(idx, 'towns', vals)}
+                          options={(filterOptionsForEdit.towns || []).map(t => ({ label: t, value: t }))}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Select
+                          mode="multiple"
+                          placeholder="事件级别（可多选）"
+                          value={c.levels}
+                          onChange={(vals) => updateEditCategory(idx, 'levels', vals)}
+                          options={(filterOptionsForEdit.levels || []).map(t => ({ label: t, value: t }))}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                    </Row>
+                    <Row gutter={16} style={{ marginTop: 12 }}>
+                      <Col span={12}>
+                        <Select
+                          mode="multiple"
+                          placeholder="二级分类（可多选）"
+                          value={c.categories}
+                          onChange={(vals) => updateEditCategory(idx, 'categories', vals)}
+                          options={(filterOptionsForEdit.categories || []).map(t => ({ label: t, value: t }))}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Space.Compact style={{ width: '100%' }}>
+                          <DatePicker.RangePicker
+                            value={c.timeRange || null}
+                            onChange={(dates) => updateEditCategory(idx, 'timeRange', dates)}
+                            placeholder={["开始日期", "结束日期"]}
+                            style={{ width: 'calc(100% - 32px)' }}
+                          />
+                          <Button danger icon={<MinusCircleOutlined />} onClick={() => removeEditCategory(idx)} />
+                        </Space.Compact>
+                      </Col>
+                    </Row>
+                  </Card>
+                ))}
+              </Space>
+            )}
+          </Card>
+        </Form>
+      )}
+    </div>
+  );
+
+  // 编辑抽屉 - 渲染第二步：AI标签识别
+  const renderEditStep2 = () => (
+    <div>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Typography.Title level={5} style={{ margin: 0, marginBottom: 8 }}>
+            <TagsOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+            AI标签识别
+          </Typography.Title>
+          <Typography.Text type="secondary">
+            选择需要识别的标签，系统将在{editStep1Skipped ? '所有事件' : '第一步筛选的事件'}中自动识别并打上标签
+          </Typography.Text>
+        </div>
+        <Button
+          type={editStep2Skipped ? 'primary' : 'default'}
+          onClick={handleEditSkipStep2}
+        >
+          {editStep2Skipped ? '取消跳过' : '跳过此步骤'}
+        </Button>
+      </div>
+
+      {editStep2Skipped ? (
+        <Alert
+          message="已跳过AI标签识别"
+          description="将不进行智能标签识别"
+          type="info"
+          showIcon
+        />
+      ) : (
+        <Card>
+          {editTagsLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Spin tip="加载标签库中..." />
+            </div>
+          ) : editTags.length === 0 ? (
+            <Empty description="暂无可用标签，请先在标签管理中创建标签" />
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              <Alert
+                message="选择标签"
+                description="选择需要AI识别的标签，AI将分析事件内容并自动打上相应标签。"
+                type="info"
+                showIcon
+              />
+
+              {editGroups.map(group => {
+                const groupTags = editTagsByGroup[group.group_id || group.id] || [];
+                if (groupTags.length === 0) return null;
+
+                return (
+                  <Card
+                    key={group.group_id || group.id}
+                    size="small"
+                    title={
+                      <Space>
+                        <Typography.Text strong>{group.name}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                          ({groupTags.filter(t => editSelectedTags.includes(t.tag_id || t.id)).length}/{groupTags.length})
+                        </Typography.Text>
+                      </Space>
+                    }
+                  >
+                    <Checkbox.Group
+                      value={editSelectedTags}
+                      onChange={setEditSelectedTags}
+                      style={{ width: '100%' }}
+                    >
+                      <Row gutter={[16, 16]}>
+                        {groupTags.map(tag => (
+                          <Col span={8} key={tag.tag_id || tag.id}>
+                            <Checkbox value={tag.tag_id || tag.id}>
+                              <Tag color={tag.color || '#1890ff'}>
+                                {tag.name}
+                              </Tag>
+                            </Checkbox>
+                          </Col>
+                        ))}
+                      </Row>
+                    </Checkbox.Group>
+                  </Card>
+                );
+              })}
+
+              {editSelectedTags.length > 0 && (
+                <Alert
+                  message={`已选择 ${editSelectedTags.length} 个标签`}
+                  description="AI将识别这些标签的特征并自动标注事件"
+                  type="success"
+                  showIcon
+                />
+              )}
+            </Space>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+
+  // 编辑抽屉 - 渲染第三步：保存更新
+  const renderEditStep3 = () => (
+    <div>
+      <Typography.Title level={5} style={{ margin: 0, marginBottom: 8 }}>
+        <RocketOutlined style={{ marginRight: 8, color: '#722ed1' }} />
+        保存更新
+      </Typography.Title>
+      <Typography.Text type="secondary" style={{ marginBottom: 24, display: 'block' }}>
+        确认主题信息并保存更新
+      </Typography.Text>
+
+      <Card style={{ marginBottom: 24 }}>
+        <Typography.Title level={5} style={{ marginBottom: 16 }}>配置摘要</Typography.Title>
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <Card size="small" style={{ background: '#f6f8fa' }}>
+              <Statistic
+                title="规则筛选"
+                value={editStep1Skipped ? '已跳过' : '已配置'}
+                valueStyle={{ color: editStep1Skipped ? '#999' : '#52c41a', fontSize: '20px' }}
+              />
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card size="small" style={{ background: '#f6f8fa' }}>
+              <Statistic
+                title="AI标签识别"
+                value={editStep2Skipped ? '已跳过' : `${editSelectedTags.length} 个标签`}
+                valueStyle={{ color: editStep2Skipped ? '#999' : '#1890ff', fontSize: '20px' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+
+      <Form form={editStep3Form} layout="vertical">
+        <Card>
+          <Form.Item
+            name="name"
+            label={<Typography.Text strong>主题名称</Typography.Text>}
+            rules={[{ required: true, message: '请输入主题名称' }]}
+          >
+            <Input placeholder="例如：噪音相关事件" maxLength={50} />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label={<Typography.Text strong>主题描述</Typography.Text>}
+          >
+            <Input.TextArea
+              placeholder="可描述该主题创建逻辑和用途"
+              rows={4}
+              maxLength={200}
+              showCount
+            />
+          </Form.Item>
+        </Card>
+      </Form>
+    </div>
+  );
+
+  const editSteps = [
+    {
+      title: '规则筛选',
+      icon: <FilterOutlined />,
+      content: renderEditStep1()
+    },
+    {
+      title: 'AI标签识别',
+      icon: <TagsOutlined />,
+      content: renderEditStep2()
+    },
+    {
+      title: '保存更新',
+      icon: <RocketOutlined />,
+      content: renderEditStep3()
+    }
+  ];
+
+  // 加载统计数据
+  const loadStats = async () => {
+    try {
+      setStatsLoading(true);
+      const params = new URLSearchParams();
+      if (statsDateRange?.length === 2) {
+        params.set('start_time', statsDateRange[0].format('YYYY-MM-DD'));
+        params.set('end_time', statsDateRange[1].format('YYYY-MM-DD'));
+      }
+      const res = await fetch(`http://localhost:8000/api/topics/${topicId}/stats?${params.toString()}`);
+      if (!res.ok) throw new Error('统计加载失败');
+      const data = await res.json();
+      setStats(data);
+    } catch (e) {
+      console.error(e);
+      message.error(e.message);
+    } finally {
+      setStatsLoading(false);
+    }
   };
 
-  const updateCategory = (idx, field, value) => {
-    setCategories(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
+  useEffect(() => { loadStats(); }, [topicId, statsDateRange]);
+
+  // 由日数据聚合出月数据，并计算3月均值与简易异动
+  const getMonthlyData = () => {
+    const list = stats?.by_day || [];
+    if (!list.length) return [];
+    const groups = new Map();
+    list.forEach(d => {
+      const key = dayjs(d.date).format('YYYY-MM');
+      groups.set(key, (groups.get(key) || 0) + (d.count || 0));
+    });
+    // 转为数组并按时间升序以计算均值，再倒序展示
+    const arrAsc = Array.from(groups.entries())
+      .map(([m, c]) => ({ date: m, count: c }))
+      .sort((a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf());
+    // 3月移动平均
+    for (let i = 0; i < arrAsc.length; i++) {
+      const start = Math.max(0, i - 2);
+      const window = arrAsc.slice(start, i + 1);
+      const ma = window.reduce((s, x) => s + x.count, 0) / window.length;
+      arrAsc[i].ma3 = ma;
+    }
+    // 简易异动：全局均值+2σ
+    const mean = arrAsc.reduce((s, x) => s + x.count, 0) / arrAsc.length;
+    const variance = arrAsc.reduce((s, x) => s + Math.pow(x.count - mean, 2), 0) / arrAsc.length;
+    const std = Math.sqrt(variance);
+    const threshold = mean + 2 * (isNaN(std) ? 0 : std);
+    arrAsc.forEach(x => { x.anomaly = x.count > threshold; });
+    return arrAsc;
   };
 
-  const removeCategory = (idx) => {
-    setCategories(prev => prev.filter((_, i) => i !== idx));
+  // 构造图表数据：按时间倒序取前30个点
+  const buildChartData = () => {
+    const data = statsView === 'day' ? (stats?.by_day || []) : getMonthlyData();
+    const sortedDesc = [...data].sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+    return sortedDesc.slice(0, 30);
+  };
+
+  // 数据明细列定义
+  const detailColumns = [
+    { title: statsView === 'day' ? '日期' : '月份', dataIndex: 'date', key: 'date', width: 140 },
+    { title: '数量', dataIndex: 'count', key: 'count', width: 100 },
+    {
+      title: statsView === 'day' ? '7日均值' : '3月均值',
+      dataIndex: statsView === 'day' ? 'ma7' : 'ma3',
+      key: 'ma',
+      width: 120,
+      render: v => (v !== null && v !== undefined) ? (typeof v === 'number' ? v.toFixed(1) : v) : '-'
+    },
+    {
+      title: '是否异动',
+      dataIndex: 'anomaly',
+      key: 'anomaly',
+      width: 120,
+      render: v => v ? <Tag color="red">异动</Tag> : <Tag>正常</Tag>
+    },
+  ];
+
+  // 加载筛选选项 - 从事件数据中提取
+  useEffect(() => {
+    if (events.length > 0) {
+      const towns = Array.from(new Set(events.map(e => e.镇街名称).filter(Boolean)));
+      const villages = Array.from(new Set(events.map(e => e.村社名称).filter(Boolean)));
+      const levels = Array.from(new Set(events.map(e => e.事件级别).filter(Boolean)));
+      const categories = Array.from(new Set(events.map(e => e.二级分类).filter(Boolean)));
+      setFilterOptions({ towns, villages, levels, categories });
+    }
+  }, [events]);
+
+  // 解析搜索输入：空格分词，前缀-为排除
+  const parseSearchInput = (input) => {
+    const tokens = (input || '')
+      .split(/\s+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+    const include = [];
+    const exclude = [];
+    for (const t of tokens) {
+      if (t.startsWith('-') && t.length > 1) exclude.push(t.slice(1));
+      else include.push(t);
+    }
+    return { include, exclude };
+  };
+
+  // 获取列搜索属性
+  const getColumnSearchProps = (dataIndex, placeholder, apiParam) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8, width: 320 }} onKeyDown={(e) => e.stopPropagation()}>
+        {(() => {
+          let state = { include: [], exclude: [], logic: 'and', excludeLogic: 'or' };
+          try {
+            if (selectedKeys && selectedKeys[0]) {
+              state = JSON.parse(selectedKeys[0]);
+              if (!state.logic) state.logic = 'and';
+              if (!state.excludeLogic) state.excludeLogic = 'or';
+            }
+          } catch {}
+          const update = (next) => {
+            const merged = {
+              include: next.include ?? state.include,
+              exclude: next.exclude ?? state.exclude,
+              logic: next.logic ?? state.logic,
+              excludeLogic: next.excludeLogic ?? state.excludeLogic
+            };
+            setSelectedKeys([JSON.stringify(merged)]);
+          };
+          return (
+            <div>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>包含关键词（回车添加）</div>
+              <div style={{ marginBottom: 8, paddingLeft: 4 }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>包含逻辑：</div>
+                <Radio.Group
+                  value={state.logic}
+                  onChange={(e) => update({ logic: e.target.value })}
+                  size="small"
+                >
+                  <Radio value="and">AND（同时包含）</Radio>
+                  <Radio value="or">OR（包含任一）</Radio>
+                </Radio.Group>
+              </div>
+              <Select
+                mode="tags"
+                style={{ width: '100%', marginBottom: 12 }}
+                value={state.include}
+                onChange={(vals) => update({ include: vals })}
+                open={false}
+                placeholder={placeholder || '如：离婚 酒店'}
+              />
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>排除关键词（回车添加）</div>
+              <div style={{ marginBottom: 8, paddingLeft: 4 }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>排除逻辑：</div>
+                <Radio.Group
+                  value={state.excludeLogic}
+                  onChange={(e) => update({ excludeLogic: e.target.value })}
+                  size="small"
+                >
+                  <Radio value="and">AND（同时排除）</Radio>
+                  <Radio value="or">OR（排除任一）</Radio>
+                </Radio.Group>
+              </div>
+              <Select
+                mode="tags"
+                style={{ width: '100%', marginBottom: 12 }}
+                value={state.exclude}
+                onChange={(vals) => update({ exclude: vals })}
+                open={false}
+                placeholder={'如：交通 群体'}
+              />
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={() => handleColumnSearchFilter(selectedKeys, confirm, dataIndex, apiParam)}
+                  icon={<SearchOutlined />}
+                  size="small"
+                  style={{ width: 90 }}
+                >
+                  搜索
+                </Button>
+                <Button
+                  onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+                  size="small"
+                  style={{ width: 90 }}
+                >
+                  重置
+                </Button>
+              </Space>
+            </div>
+          );
+        })()}
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <SearchOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
+    ),
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) {
+        setTimeout(() => searchInput.current?.select(), 100);
+      }
+    },
+    filteredValue: columnFilters[apiParam] ? [columnFilters[apiParam]] : null,
+  });
+
+  // 简单文本搜索属性
+  const getSimpleSearchProps = (dataIndex, placeholder) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={searchInput}
+          placeholder={placeholder}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => handleSimpleSearch(selectedKeys, confirm, dataIndex)}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button type="primary" onClick={() => handleSimpleSearch(selectedKeys, confirm, dataIndex)} icon={<SearchOutlined />} size="small" style={{ width: 90 }}>搜索</Button>
+          <Button onClick={() => handleColumnFilterReset(clearFilters, 'search')} size="small" style={{ width: 90 }}>重置</Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: () => (
+      <SearchOutlined style={{ color: columnFilters['search'] ? '#1890ff' : undefined }} />
+    ),
+    filteredValue: columnFilters['search'] ? [columnFilters['search']] : null,
+  });
+
+  const handleSimpleSearch = (selectedKeys, confirm, dataIndex) => {
+    confirm();
+    const value = selectedKeys[0] || '';
+    setSearchText(value);
+    setSearchedColumn(dataIndex);
+    const newColumnFilters = { ...columnFilters };
+    if (value) newColumnFilters['search'] = value; else delete newColumnFilters['search'];
+    setColumnFilters(newColumnFilters);
+  };
+
+  // 获取列筛选属性（支持多选）
+  const getColumnFilterProps = (dataIndex, options, placeholder, apiParam) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <Select
+          mode="multiple"
+          placeholder={placeholder}
+          value={selectedKeys}
+          onChange={(values) => setSelectedKeys(values || [])}
+          style={{ width: 260, marginBottom: 8, display: 'block' }}
+          allowClear
+          showSearch
+          maxTagCount="responsive"
+        >
+          {options.map(option => (
+            <Select.Option key={option} value={option}>{option}</Select.Option>
+          ))}
+        </Select>
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleColumnFilterMultiple(selectedKeys, confirm, apiParam)}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
+    ),
+    filteredValue: Array.isArray(columnFilters[apiParam]) ? columnFilters[apiParam] : null,
+  });
+
+  // 获取日期筛选属性
+  const getDateFilterProps = (dataIndex, apiParam) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }}>
+        <DatePicker.RangePicker
+          value={selectedKeys[0]}
+          onChange={(dates) => setSelectedKeys(dates ? [dates] : [])}
+          style={{ marginBottom: 8, display: 'block' }}
+          placeholder={['开始日期', '结束日期']}
+          allowEmpty={[false, true]}
+          showTime
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleDateFilter(selectedKeys, confirm, apiParam)}
+            icon={<FilterOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            筛选
+          </Button>
+          <Button
+            onClick={() => handleColumnFilterReset(clearFilters, apiParam)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            重置
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <FilterOutlined style={{ color: columnFilters[apiParam] ? '#1890ff' : undefined }} />
+    ),
+    filteredValue: columnFilters[apiParam] ? [columnFilters[apiParam]] : null,
+  });
+
+  // 处理列搜索筛选
+  const handleColumnSearchFilter = (selectedKeys, confirm, dataIndex, apiParam) => {
+    confirm();
+    const raw = selectedKeys && selectedKeys[0];
+    let include = [], exclude = [];
+    if (raw) {
+      try {
+        const obj = JSON.parse(raw);
+        include = Array.isArray(obj.include) ? obj.include : [];
+        exclude = Array.isArray(obj.exclude) ? obj.exclude : [];
+      } catch {
+        const parsed = parseSearchInput(String(raw));
+        include = parsed.include;
+        exclude = parsed.exclude;
+      }
+    }
+    const display = [
+      ...(include || []),
+      ...((exclude || []).map(x => `-${x}`))
+    ].join(' ');
+    setSearchText(display);
+    setSearchedColumn(dataIndex);
+
+    const newColumnFilters = { ...columnFilters };
+    if (include.length > 0 || exclude.length > 0) {
+      newColumnFilters[apiParam] = JSON.stringify({ include, exclude });
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+  };
+
+  // 处理列筛选（多选）
+  const handleColumnFilterMultiple = (selectedKeys, confirm, apiParam) => {
+    confirm();
+    const values = Array.isArray(selectedKeys) ? selectedKeys : [];
+
+    const newColumnFilters = { ...columnFilters };
+    if (values.length) {
+      newColumnFilters[apiParam] = values;
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+  };
+
+  // 处理日期筛选
+  const handleDateFilter = (selectedKeys, confirm, apiParam) => {
+    confirm();
+    const dateRange = selectedKeys[0];
+
+    const newColumnFilters = { ...columnFilters };
+    if (dateRange && (dateRange[0] || dateRange[1])) {
+      newColumnFilters[apiParam] = dateRange;
+    } else {
+      delete newColumnFilters[apiParam];
+    }
+    setColumnFilters(newColumnFilters);
+  };
+
+  // 处理列筛选重置
+  const handleColumnFilterReset = (clearFilters, apiParam) => {
+    clearFilters();
+
+    const newColumnFilters = { ...columnFilters };
+    delete newColumnFilters[apiParam];
+    setColumnFilters(newColumnFilters);
   };
 
   // 移除事件从主题
@@ -277,125 +1402,513 @@ const TopicDetail = () => {
     }
   };
 
-  // 解析多关键词输入：空格分词，-词 为排除
-  const parseSearchInput = (input) => {
-    const tokens = String(input || '').split(/\s+/).map(t => t.trim()).filter(Boolean);
-    const include = [], exclude = [];
-    tokens.forEach(t => t.startsWith('-') && t.length > 1 ? exclude.push(t.slice(1)) : include.push(t));
-    return { include, exclude };
+  // 处理列宽度变化
+  const handleResize = (key) => (width) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [key]: width
+    }));
   };
 
-  // 列头：描述的“Excel式”包含/排除
-  const getDescSearchProps = () => ({
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8, width: 300 }} onKeyDown={(e) => e.stopPropagation()}>
-        {(() => {
-          let state = { include: [], exclude: [] };
-          try { if (selectedKeys && selectedKeys[0]) state = JSON.parse(selectedKeys[0]); } catch {}
-          const update = (next) => setSelectedKeys([JSON.stringify({ include: next.include ?? state.include, exclude: next.exclude ?? state.exclude })]);
-          return (
-            <div>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>包含关键词（回车添加）</div>
-              <Select mode="tags" style={{ width: '100%', marginBottom: 8 }} value={state.include} onChange={(vals) => update({ include: vals })} open={false} placeholder="如：纠纷 噪音" />
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>排除关键词（回车添加）</div>
-              <Select mode="tags" style={{ width: '100%', marginBottom: 8 }} value={state.exclude} onChange={(vals) => update({ exclude: vals })} open={false} placeholder="如：交通 群体" />
-              <Space>
-                <Button type="primary" size="small" style={{ width: 90 }} onClick={() => {
-                  confirm();
-                  const raw = selectedKeys?.[0];
-                  let display='';
-                  if (raw){
-                    try{
-                      const o=JSON.parse(raw);
-                      display=[...(o.include||[]),...((o.exclude||[]).map(x=>`-${x}`))].join(' ');
-                    }catch{
-                      display=raw;
-                    }
-                  }
-                  const nf={...columnFilters};
-                  if (display) nf.desc = display;
-                  else delete nf.desc;
-                  setColumnFilters(nf);
-                }}>搜索</Button>
-                <Button size="small" style={{ width: 90 }} onClick={() => { clearFilters(); const nf={...columnFilters}; delete nf.desc; setColumnFilters(nf); }}>重置</Button>
-              </Space>
-            </div>
-          );
-        })()}
-      </div>
-    ),
-    filterIcon: () => (<SearchOutlined style={{ color: columnFilters.desc ? '#1890ff' : undefined }} />),
-  });
+  // 打开标签编辑弹窗
+  const handleEditTags = (record) => {
+    setCurrentEditEvent(record);
+    // 提取标签名称（支持字符串或对象格式）
+    const tagNames = (record.tags || []).map(tag =>
+      typeof tag === 'string' ? tag : tag.name
+    );
+    setSelectedTags(tagNames);
+    setTagEditModalVisible(true);
+  };
 
-  // 通用下拉多选（镇街/级别/分类）
-  const getMultiSelectProps = (dataIndex, optionsKey, filterKey, placeholder) => ({
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8 }}>
-        <Select mode="multiple" showSearch maxTagCount="responsive" style={{ width: 260, marginBottom: 8, display: 'block' }} value={selectedKeys} onChange={(vals) => setSelectedKeys(vals || [])} placeholder={placeholder} allowClear>
-          {(filterOptions[optionsKey] || []).map(v => (<Select.Option key={v} value={v}>{v}</Select.Option>))}
-        </Select>
-        <Space>
-          <Button type="primary" size="small" style={{ width: 90 }} onClick={() => { confirm(); const nf={...columnFilters}; if ((selectedKeys||[]).length) nf[filterKey]=selectedKeys; else delete nf[filterKey]; setColumnFilters(nf); }}>筛选</Button>
-          <Button size="small" style={{ width: 90 }} onClick={() => { clearFilters(); const nf={...columnFilters}; delete nf[filterKey]; setColumnFilters(nf); }}>重置</Button>
-        </Space>
-      </div>
-    ),
-    filterIcon: () => (<FilterOutlined style={{ color: columnFilters[filterKey]?.length ? '#1890ff' : undefined }} />),
-  });
+  // 删除单个标签
+  const handleRemoveTag = async (record, tagToRemove) => {
+    try {
+      const tagNameToRemove = typeof tagToRemove === 'string' ? tagToRemove : tagToRemove.name;
+      const newTags = (record.tags || []).filter(tag => {
+        const tagName = typeof tag === 'string' ? tag : tag.name;
+        return tagName !== tagNameToRemove;
+      });
 
-  // 应用列头筛选到前端数据
-  const filteredEvents = useMemo(() => {
-    let rows = events || [];
-    // 描述关键词
-    if (columnFilters.desc) {
-      const { include, exclude } = parseSearchInput(columnFilters.desc);
-      if (include.length) rows = rows.filter(r => include.every(k => String(r.事件描述||'').toLowerCase().includes(String(k).toLowerCase())));
-      if (exclude.length) rows = rows.filter(r => exclude.every(k => !String(r.事件描述||'').toLowerCase().includes(String(k).toLowerCase())));
+      // 转换为纯字符串数组发送给后端
+      const tagNames = newTags.map(tag => typeof tag === 'string' ? tag : tag.name);
+      await eventAPI.updateEventTags(record.事件编号, tagNames);
+      message.success('标签已删除');
+
+      // 更新本地数据
+      setEvents(events.map(e =>
+        e.事件编号 === record.事件编号 ? { ...e, tags: newTags } : e
+      ));
+    } catch (error) {
+      message.error('删除标签失败: ' + error.message);
     }
-    // 下拉多选
-    if (Array.isArray(columnFilters.town) && columnFilters.town.length) rows = rows.filter(r => columnFilters.town.includes(r.镇街名称));
-    if (Array.isArray(columnFilters.level) && columnFilters.level.length) rows = rows.filter(r => columnFilters.level.includes(r.事件级别));
-    if (Array.isArray(columnFilters.category) && columnFilters.category.length) rows = rows.filter(r => columnFilters.category.includes(r.二级分类));
-    return rows;
-  }, [events, columnFilters]);
+  };
 
-  const columns = useMemo(() => ([
+  // AI 推荐标签
+  const handleAIRecommend = async () => {
+    if (!currentEditEvent) return;
+
+    setAiRecommending(true);
+    try {
+      // 模拟 AI 推荐延迟
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 根据事件描述推荐标签
+      const description = currentEditEvent.事件描述 || '';
+      const recommendedTags = [];
+
+      // 简单的关键词匹配推荐逻辑
+      const keywords = {
+        '噪音|扰民|吵': ['噪音投诉', '夜间扰民', '重点关注'],
+        '停车|车位': ['停车纠纷', '待处理'],
+        '纠纷|矛盾|争执': ['邻里纠纷', '需调解', '持续关注'],
+        '垃圾|卫生|清理': ['环境卫生', '垃圾清理', '已派单'],
+        '消防|安全|隐患': ['消防安全', '隐患排查', '紧急处理'],
+        '道路|维修|基础设施': ['基础设施', '道路维修', '待处理'],
+        '违章|违建': ['违章建筑', '待拆除'],
+        '交通|堵塞': ['交通违章', '重点区域'],
+      };
+
+      // 遍历关键词进行匹配
+      for (const [pattern, tags] of Object.entries(keywords)) {
+        if (new RegExp(pattern).test(description)) {
+          recommendedTags.push(...tags);
+          break; // 只匹配第一个关键词组
+        }
+      }
+
+      // 如果没有匹配到，推荐一些通用标签
+      if (recommendedTags.length === 0) {
+        recommendedTags.push('待处理', '重点关注');
+      }
+
+      // 去重并合并现有标签
+      const uniqueTags = Array.from(new Set([...selectedTags, ...recommendedTags]));
+      setSelectedTags(uniqueTags);
+
+      message.success(`AI 推荐了 ${recommendedTags.length} 个标签`);
+    } catch (error) {
+      message.error('AI 推荐失败: ' + error.message);
+    } finally {
+      setAiRecommending(false);
+    }
+  };
+
+  // 保存标签编辑
+  // AI 标签发现：开始分析
+  const handleStartAIDiscovery = () => {
+    setAiDiscoveryDrawerVisible(true);
+    setAiAnalyzing(true);
+    setAiSuggestedTags([]);
+    setSelectedSuggestedTags([]);
+
+    // 模拟 AI 分析过程（3秒后返回结果）
+    setTimeout(() => {
+      const mockSuggestions = [
+        {
+          id: 1,
+          tagName: '催收投诉',
+          description: '涉及贷款催收方式不当、频繁骚扰等问题',
+          eventCount: 8,
+          confidence: 0.92,
+          sampleEvents: [
+            { id: 'NMW202505060002', desc: '#长效关注#转贷款租赁的车子...' },
+            { id: 'WCW202505050001', desc: '#长效关注#153****0394报...' },
+            { id: 'GLW202505010001', desc: '#长效关注#米粮也有声音，来...' },
+          ]
+        },
+        {
+          id: 2,
+          tagName: '合同纠纷',
+          description: '贷款合同条款理解、违约责任等争议',
+          eventCount: 6,
+          confidence: 0.88,
+          sampleEvents: [
+            { id: 'SQW202505310004', desc: '因为买车贷款的事情产生纠...' },
+            { id: 'GLW202505300008', desc: '我（在长沙，手机号：187*...' },
+          ]
+        },
+        {
+          id: 3,
+          tagName: '利息争议',
+          description: '对贷款利息计算、利率过高等问题的投诉',
+          eventCount: 4,
+          confidence: 0.85,
+          sampleEvents: [
+            { id: 'GQW202505280017', desc: '与贷款公司为贷款问题发生...' },
+            { id: 'GQW202505280016', desc: '与贷款公司为贷款问题发生...' },
+          ]
+        },
+        {
+          id: 4,
+          tagName: '还款问题',
+          description: '涉及提前还款、还款渠道、还款记录等问题',
+          eventCount: 2,
+          confidence: 0.78,
+          sampleEvents: [
+            { id: 'GLOW202505280401', desc: '在这里培训学校拱墅，付了钱...' },
+          ]
+        },
+      ];
+
+      setAiSuggestedTags(mockSuggestions);
+      setAiAnalyzing(false);
+      message.success('AI 分析完成，发现 4 个新标签建议');
+    }, 3000);
+  };
+
+  // AI 标签发现：确认添加标签
+  const handleConfirmAITags = async () => {
+    if (selectedSuggestedTags.length === 0) {
+      message.warning('请至少选择一个标签');
+      return;
+    }
+
+    try {
+      // 模拟添加标签到系统
+      message.loading('正在添加标签...', 1);
+
+      setTimeout(() => {
+        message.success(`成功添加 ${selectedSuggestedTags.length} 个标签到标签库`);
+        setUntaggedCount(prev => Math.max(0, prev - selectedSuggestedTags.reduce((sum, id) => {
+          const tag = aiSuggestedTags.find(t => t.id === id);
+          return sum + (tag?.eventCount || 0);
+        }, 0)));
+        setAiDiscoveryDrawerVisible(false);
+        setSelectedSuggestedTags([]);
+      }, 1000);
+    } catch (error) {
+      message.error('添加标签失败');
+    }
+  };
+
+  const handleSaveTagsEdit = async () => {
+    if (!currentEditEvent) return;
+
+    try {
+      await eventAPI.updateEventTags(currentEditEvent.事件编号, selectedTags);
+      message.success('标签更新成功');
+
+      // 将新标签转换为对象格式（默认为人工标签）
+      const newTagObjects = selectedTags.map(tagName => ({
+        name: tagName,
+        type: 'human' // 手动添加的标签默认为人工标签
+      }));
+
+      // 更新本地数据
+      setEvents(events.map(e =>
+        e.事件编号 === currentEditEvent.事件编号 ? { ...e, tags: newTagObjects } : e
+      ));
+
+      setTagEditModalVisible(false);
+      setCurrentEditEvent(null);
+      setSelectedTags([]);
+    } catch (error) {
+      message.error('更新标签失败: ' + error.message);
+    }
+  };
+
+  const columns = [
     {
       title: '事件编号',
       dataIndex: '事件编号',
-      key: 'id',
-      width: 140,
-      render: (v, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Button type="link" onClick={() => navigate(`/events/${v}`)} style={{ padding: 0 }}>
-            {v}
-          </Button>
-          {mockAiClassifiedEvents.has(v) && (
-            <Tooltip title="AI智能分类">
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor: '#722ed1',
-                  marginLeft: 4,
-                  flexShrink: 0
-                }}
-              />
-            </Tooltip>
-          )}
-        </div>
-      )
+      key: '事件编号',
+      width: columnWidths['事件编号'],
+      onHeaderCell: () => ({
+        width: columnWidths['事件编号'],
+        onResize: handleResize('事件编号'),
+      }),
+      ...getSimpleSearchProps('事件编号', '搜索事件编号'),
+      render: (text) =>
+        searchedColumn === '事件编号' ? (
+          <Tooltip title={text}>
+            <Highlighter
+              highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+              searchWords={[searchText]}
+              autoEscape
+              textToHighlight={text ? text.toString() : ''}
+            />
+          </Tooltip>
+        ) : (
+          <Tooltip title={text}>
+            <span style={{ fontSize: '12px' }}>{text}</span>
+          </Tooltip>
+        ),
     },
-    { title: '上报时间', dataIndex: '上报时间', key: 'time', width: 160 },
-    { title: '镇街名称', dataIndex: '镇街名称', key: 'town', width: 120, ...getMultiSelectProps('镇街名称','towns','town','选择镇街名称') },
-    { title: '事件级别', dataIndex: '事件级别', key: 'level', width: 100, ...getMultiSelectProps('事件级别','levels','level','选择事件级别') },
-    { title: '二级分类', dataIndex: '二级分类', key: 'cat', width: 140, ...getMultiSelectProps('二级分类','categories','category','选择二级分类') },
-    { title: '事件描述', dataIndex: '事件描述', key: 'desc', ...getDescSearchProps() },
+    {
+      title: '事件描述',
+      dataIndex: '事件描述',
+      key: '事件描述',
+      width: columnWidths['事件描述'],
+      onHeaderCell: () => ({
+        width: columnWidths['事件描述'],
+        onResize: handleResize('事件描述'),
+      }),
+      ...getColumnSearchProps('事件描述', '搜索事件描述', 'search_desc'),
+      ellipsis: {
+        showTitle: false,
+      },
+      render: (text) =>
+        searchedColumn === '事件描述' ? (
+          <Tooltip title={text}>
+            <Highlighter
+              highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+              searchWords={[searchText]}
+              autoEscape
+              textToHighlight={text ? text.toString() : ''}
+            />
+          </Tooltip>
+        ) : (
+          <Tooltip title={text}>
+            <span>{text}</span>
+          </Tooltip>
+        ),
+    },
+    {
+      title: '镇街名称',
+      dataIndex: '镇街名称',
+      key: '镇街名称',
+      width: columnWidths['镇街名称'],
+      onHeaderCell: () => ({
+        width: columnWidths['镇街名称'],
+        onResize: handleResize('镇街名称'),
+      }),
+      ...getColumnFilterProps('镇街名称', filterOptions.towns, '选择镇街名称', 'town'),
+    },
+    {
+      title: '村社名称',
+      dataIndex: '村社名称',
+      key: '村社名称',
+      width: columnWidths['村社名称'],
+      onHeaderCell: () => ({
+        width: columnWidths['村社名称'],
+        onResize: handleResize('村社名称'),
+      }),
+      ...getColumnFilterProps('村社名称', filterOptions.villages || [], '选择村社名称', 'village'),
+      ellipsis: true,
+      render: (text) => text || '-',
+    },
+    {
+      title: '事件级别',
+      dataIndex: '事件级别',
+      key: '事件级别',
+      width: columnWidths['事件级别'],
+      onHeaderCell: () => ({
+        width: columnWidths['事件级别'],
+        onResize: handleResize('事件级别'),
+      }),
+      ...getColumnFilterProps('事件级别', filterOptions.levels, '选择事件级别', 'level'),
+      render: (level) => {
+        let color = 'default';
+        if (level?.includes('一级')) color = 'red';
+        else if (level?.includes('二级')) color = 'orange';
+        else if (level?.includes('三级')) color = 'blue';
+
+        return <Tag color={color}>{level}</Tag>;
+      },
+    },
+    {
+      title: '二级分类',
+      dataIndex: '二级分类',
+      key: '二级分类',
+      width: columnWidths['二级分类'],
+      onHeaderCell: () => ({
+        width: columnWidths['二级分类'],
+        onResize: handleResize('二级分类'),
+      }),
+      ...getColumnFilterProps('二级分类', filterOptions.categories, '选择二级分类', 'category'),
+      ellipsis: {
+        showTitle: false,
+      },
+      render: (text) => (
+        <Tooltip title={text}>
+          <span>{text}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '上报时间',
+      dataIndex: '上报时间',
+      key: '上报时间',
+      width: columnWidths['上报时间'],
+      onHeaderCell: () => ({
+        width: columnWidths['上报时间'],
+        onResize: handleResize('上报时间'),
+      }),
+      sorter: true,
+      ...getDateFilterProps('上报时间', 'report_time'),
+      render: (time) => {
+        if (!time) return '-';
+
+        // 解析特殊时间格式
+        const parseTime = (timeStr) => {
+          if (!timeStr) return null;
+
+          try {
+            // 先尝试标准解析
+            let date = new Date(timeStr);
+            if (!isNaN(date.getTime())) {
+              return date;
+            }
+
+            // 处理特殊格式 "5/1/25 8:20" 表示 2025年5月1日 8:20（月/日/年）
+            const match = timeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(\d{1,2}):(\d{2})$/);
+            if (match) {
+              const [, month, day, year, hour, minute] = match;
+              // 假设年份是20xx年
+              const fullYear = 2000 + parseInt(year);
+              date = new Date(fullYear, parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
+              if (!isNaN(date.getTime())) {
+                return date;
+              }
+            }
+
+            return null;
+          } catch {
+            return null;
+          }
+        };
+
+        const date = parseTime(time);
+        if (!date) return time;
+
+        try {
+          return date.toLocaleDateString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch {
+          return time;
+        }
+      },
+    },
+    {
+      title: '报警人信息',
+      dataIndex: '报警人信息',
+      key: '报警人信息',
+      width: columnWidths['报警人信息'],
+      onHeaderCell: () => ({
+        width: columnWidths['报警人信息'],
+        onResize: handleResize('报警人信息'),
+      }),
+      ellipsis: {
+        showTitle: false,
+      },
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={text}>
+            <div style={{ fontSize: '12px', lineHeight: '16px' }}>
+              {text}
+            </div>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: '处置结果',
+      dataIndex: '处置结果',
+      key: '处置结果',
+      width: columnWidths['处置结果'],
+      onHeaderCell: () => ({
+        width: columnWidths['处置结果'],
+        onResize: handleResize('处置结果'),
+      }),
+      ...getColumnSearchProps('处置结果', '搜索处置结果', 'search_result'),
+      ellipsis: { showTitle: false },
+      render: (text) => (
+        <Tooltip title={text}>
+          <span>{text || '-'}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '相关事件',
+      key: '相关',
+      width: columnWidths['相关'],
+      onHeaderCell: () => ({
+        width: columnWidths['相关'],
+        onResize: handleResize('相关'),
+      }),
+      render: (_, record) => {
+        if (record.相关事件 && record.相关事件 > 0) {
+          return (
+            <Tag color="blue">
+              {record.相关事件} 个关联
+            </Tag>
+          );
+        }
+        return '-';
+      },
+    },
+    {
+      title: '标签',
+      key: '标签',
+      dataIndex: 'tags',
+      width: columnWidths['标签'],
+      onHeaderCell: () => ({
+        width: columnWidths['标签'],
+        onResize: handleResize('标签'),
+      }),
+      render: (tags, record) => {
+        // 处理标签数据，支持字符串或对象格式
+        const normalizedTags = (tags || []).map(tag => {
+          if (typeof tag === 'string') {
+            return { name: tag, type: 'unknown' };
+          }
+          return tag;
+        });
+
+        return (
+          <Space size={[0, 8]} wrap>
+            {normalizedTags.map((tag, index) => {
+              // 根据标签类型设置颜色
+              let color = 'default';
+              let icon = '';
+              if (tag.type === 'ai') {
+                color = 'blue';
+                icon = '🤖 '; // AI 图标
+              } else if (tag.type === 'human') {
+                color = 'green';
+                icon = '👤 '; // 人工图标
+              }
+
+              return (
+                <Tag
+                  key={`${record.事件编号}-${tag.name}-${index}`}
+                  closable
+                  onClose={(e) => {
+                    e.preventDefault();
+                    handleRemoveTag(record, tag);
+                  }}
+                  color={color}
+                >
+                  {icon}{tag.name}
+                </Tag>
+              );
+            })}
+            <Button
+              type="dashed"
+              size="small"
+              onClick={() => handleEditTags(record)}
+            >
+              {tags && tags.length > 0 ? '编辑' : '添加'}
+            </Button>
+          </Space>
+        );
+      },
+    },
     {
       title: '操作',
-      key: 'actions',
-      width: 120,
+      key: 'action',
+      width: columnWidths['action'],
+      onHeaderCell: () => ({
+        width: columnWidths['action'],
+        onResize: handleResize('action'),
+      }),
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -426,57 +1939,75 @@ const TopicDetail = () => {
         </Space>
       )
     }
-  ]), [navigate, filterOptions, columnFilters, mockAiClassifiedEvents, removeEventFromTopic]);
+  ];
 
-  // 根据选择过滤列，并按用户选择顺序排列
-  const orderedColumns = useMemo(() => {
+  // 根据选择过滤列，并按用户选择顺序排列（固定：事件编号在最前，操作在最后）
+  const orderedColumns = () => {
     const map = Object.fromEntries(columns.map(c => [c.key, c]));
-    const selected = visibleColumnKeys.filter(k => map[k]);
-    return selected.map(k => map[k]);
-  }, [columns, visibleColumnKeys]);
+    const middle = visibleColumnKeys
+      .filter(k => k !== '事件编号' && k !== 'action')
+      .filter(k => map[k]);
+    const result = [];
+    if (map['事件编号']) result.push(map['事件编号']);
+    result.push(...middle.map(k => map[k]));
+    if (map['action']) result.push(map['action']);
+    return result;
+  };
 
   return (
     <div className="page-container">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>主题详情</Title>
-        <Space>
-          <Button icon={<EditOutlined />} onClick={openEditDrawer}>编辑主题</Button>
-          <Button onClick={() => navigate(`/topics/${topicId}/stats`)}>统计分析</Button>
-          <Button type="primary" onClick={() => navigate('/topics')}>返回列表</Button>
-        </Space>
+        <Title level={3} style={{ margin: 0 }}>{topic?.name || '主题详情'}</Title>
+        <Button icon={<EditOutlined />} onClick={openEditDrawer}>编辑主题</Button>
       </div>
 
-      {topic && (
-        <Card style={{ marginBottom: 16 }}>
-          <Title level={4} style={{ marginTop: 0 }}>{topic.name} {topic.enabled ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>}</Title>
-          {topic.description && <Paragraph style={{ color: '#666' }}>{topic.description}</Paragraph>}
-          <Space size={[6,6]} wrap>
-            {topic.include_keywords?.length > 0 && <Tag color="blue">包含: {topic.include_keywords.join('、')}</Tag>}
-            {topic.exclude_keywords?.length > 0 && <Tag color="red">排除: {topic.exclude_keywords.join('、')}</Tag>}
-            {topic.fine_filters?.length > 0 && <Tag color="purple">精筛: {topic.fine_filters.join('、')}</Tag>}
-            {topic.dedup && <Tag>去重: {topic.dedup}</Tag>}
-            {mockAiClassifiedEvents.size > 0 && (
-              <Tag color="purple" icon={<RobotOutlined />}>
-                AI分类: {mockAiClassifiedEvents.size} 个事件
-              </Tag>
-            )}
-          </Space>
-        </Card>
+      {/* AI 标签发现提示 */}
+      {untaggedCount > 0 && (
+        <Alert
+          message={
+            <Space>
+              <InfoCircleOutlined />
+              <span>
+                当前有 <strong style={{ color: '#ff4d4f' }}>{untaggedCount}</strong> 个事件未能分配标签
+              </span>
+            </Space>
+          }
+          description="使用 AI 分析未分类事件，自动发现潜在的新标签，帮助您更好地组织和管理事件。"
+          type="warning"
+          showIcon={false}
+          action={
+            <Button
+              type="primary"
+              size="small"
+              icon={<RocketOutlined />}
+              onClick={handleStartAIDiscovery}
+            >
+              AI 标签发现
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
       )}
 
-      <Card title="匹配的事件">
+      <Card>
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'events',
+              label: '事件列表',
+              children: (
+                <div>
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <RangePicker value={dateRange} onChange={setDateRange} allowClear />
-            <Input.Search allowClear placeholder="搜索关键字" onSearch={setSearch} style={{ width: 240 }} />
+          <div style={{ fontSize: 14, color: '#666' }}>
+            总事件数：<strong style={{ fontSize: 16, color: '#1890ff' }}>{stats?.total || 0}</strong>
           </div>
-          <div>
-            <Button icon={<SettingOutlined />} onClick={() => setColumnModalOpen(true)}>自定义列</Button>
-          </div>
+          <Button icon={<SettingOutlined />} onClick={() => setColumnModalOpen(true)}>自定义列</Button>
         </div>
         <Table
-          columns={orderedColumns}
-          dataSource={filteredEvents}
+          columns={orderedColumns()}
+          dataSource={events}
           rowKey="事件编号"
           loading={loading}
           pagination={{
@@ -484,10 +2015,18 @@ const TopicDetail = () => {
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `共 ${total} 条记录`,
+            pageSizeOptions: ['10', '20', '50', '100'],
             onChange: (page, size) => loadEvents(page, size)
           }}
           size="small"
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1200 }}
+          components={{
+            header: {
+              cell: ResizeableTitle,
+            },
+          }}
         />
         {/* 自定义列弹窗 */}
         <Modal
@@ -495,9 +2034,16 @@ const TopicDetail = () => {
           open={columnModalOpen}
           onCancel={() => setColumnModalOpen(false)}
           footer={[
-            <Button key="reset" onClick={() => { setVisibleColumnKeys(defaultVisibleKeys()); localStorage.setItem(`topic_detail_visible_columns_${topicId}`, JSON.stringify(defaultVisibleKeys())); }}>恢复默认</Button>,
+            <Button key="reset" onClick={() => {
+              const defaultKeys = defaultVisibleKeys();
+              setVisibleColumnKeys(defaultKeys);
+              localStorage.setItem(`topic_detail_visible_columns_${topicId}`, JSON.stringify(defaultKeys));
+            }}>恢复默认</Button>,
             <Button key="cancel" onClick={() => setColumnModalOpen(false)}>取消</Button>,
-            <Button key="ok" type="primary" onClick={() => { localStorage.setItem(`topic_detail_visible_columns_${topicId}`, JSON.stringify(visibleColumnKeys)); setColumnModalOpen(false); }}>确定</Button>,
+            <Button key="ok" type="primary" onClick={() => {
+              localStorage.setItem(`topic_detail_visible_columns_${topicId}`, JSON.stringify(visibleColumnKeys));
+              setColumnModalOpen(false);
+            }}>确定</Button>,
           ]}
         >
           <div style={{ marginBottom: 8, color: '#666' }}>勾选需要显示的列（可多选）：</div>
@@ -506,8 +2052,18 @@ const TopicDetail = () => {
             value={visibleColumnKeys}
             onChange={setVisibleColumnKeys}
             style={{ width: '100%' }}
-            options={columns.map(c => ({ label: c.title, value: c.key }))
-              .sort((a, b) => (visibleColumnKeys.includes(a.value) ? 1 : 0) - (visibleColumnKeys.includes(b.value) ? 1 : 0))}
+            options={(() => {
+              const opts = columns
+                .filter(c => c.key !== '事件编号' && c.key !== 'action')
+                .map(c => ({ label: c.title, value: c.key }));
+              // 未选中的排前面
+              return opts.sort((a, b) => {
+                const aSel = visibleColumnKeys.includes(a.value);
+                const bSel = visibleColumnKeys.includes(b.value);
+                if (aSel === bSel) return 0;
+                return aSel ? 1 : -1;
+              });
+            })()}
           />
           <div style={{ marginTop: 12, color: '#666' }}>拖拽下方项目以调整显示顺序：</div>
           <div
@@ -539,200 +2095,419 @@ const TopicDetail = () => {
             {visibleColumnKeys.length === 0 && (<div style={{ color: '#999', fontSize: 12 }}>未选择任何列</div>)}
           </div>
         </Modal>
+                </div>
+              )
+            },
+            {
+              key: 'trend',
+              label: '趋势分析',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 16 }}>
+                    <RangePicker value={statsDateRange} onChange={setStatsDateRange} allowClear />
+                  </div>
+                  <Tabs
+                    activeKey={statsView}
+                    onChange={setStatsView}
+                    items={[
+                      { key: 'day', label: '按日统计' },
+                      { key: 'month', label: '按月统计' },
+                    ]}
+                  />
+                  <div style={{ marginTop: 16 }}>
+                    <Spin spinning={statsLoading}>
+                      <Line
+                        data={buildChartData()}
+                        xField="date"
+                        yField="count"
+                        height={400}
+                        xAxis={{ title: null, label: { autoRotate: true } }}
+                        yAxis={{ title: null, min: 0 }}
+                        smooth
+                        point={{ size: 3 }}
+                        meta={{
+                          date: { alias: statsView === 'day' ? '日期' : '月份' },
+                          count: { alias: '数量' },
+                        }}
+                        tooltip={{
+                          showMarkers: false,
+                          formatter: (datum) => ({ name: '数量', value: Number(datum.count ?? 0) }),
+                        }}
+                      />
+                    </Spin>
+                  </div>
+                  <div style={{ marginTop: 24 }}>
+                    <Table
+                      loading={statsLoading}
+                      dataSource={(statsView === 'day' ? (stats?.by_day || []) : getMonthlyData()).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf())}
+                      columns={detailColumns}
+                      rowKey="date"
+                      pagination={{ pageSize: 20, showSizeChanger: true, showQuickJumper: true, showTotal: (total) => `共 ${total} 条` }}
+                      size="small"
+                    />
+                  </div>
+                </div>
+              )
+            },
+            {
+              key: 'tagAnalysis',
+              label: '标签分析',
+              children: (
+                <div>
+                  <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                    {mockTagAnalysisData.tags.map(tag => (
+                      <Col span={24} key={tag.id}>
+                        <Card
+                          title={
+                            <Space>
+                              <TagsOutlined />
+                              <span>{tag.name}</span>
+                              <Tag color="blue">{tag.count} 条事件</Tag>
+                            </Space>
+                          }
+                        >
+                          <Row gutter={[16, 16]}>
+                            {/* 趋势图 */}
+                            <Col span={12}>
+                              <div style={{ marginBottom: 8 }}>
+                                <strong>趋势变化</strong>
+                              </div>
+                              <Line
+                                data={tag.trend}
+                                xField="date"
+                                yField="count"
+                                height={200}
+                                xAxis={{ title: null, label: { autoRotate: true } }}
+                                yAxis={{ title: null, min: 0 }}
+                                smooth
+                                point={{ size: 3 }}
+                                meta={{
+                                  date: { alias: '月份' },
+                                  count: { alias: '数量' },
+                                }}
+                                tooltip={{
+                                  showMarkers: false,
+                                  formatter: (datum) => ({ name: '数量', value: datum.count }),
+                                }}
+                              />
+                            </Col>
+                            {/* 人员分析 */}
+                            <Col span={12}>
+                              <div style={{ marginBottom: 8 }}>
+                                <strong>相关人员（按事件数排序）</strong>
+                              </div>
+                              <Table
+                                dataSource={tag.persons}
+                                pagination={false}
+                                size="small"
+                                rowKey="phone"
+                                columns={[
+                                  {
+                                    title: '姓名',
+                                    dataIndex: 'name',
+                                    key: 'name',
+                                    width: 100,
+                                  },
+                                  {
+                                    title: '手机号',
+                                    dataIndex: 'phone',
+                                    key: 'phone',
+                                    width: 130,
+                                    render: (text) => (
+                                      <span style={{ fontFamily: 'monospace' }}>{text}</span>
+                                    ),
+                                  },
+                                  {
+                                    title: '角色',
+                                    dataIndex: 'role',
+                                    key: 'role',
+                                    width: 80,
+                                    render: (text) => {
+                                      let color = 'default';
+                                      if (text === '报警人') color = 'blue';
+                                      else if (text === '对方') color = 'orange';
+                                      else if (text === '当事人') color = 'green';
+                                      return <Tag color={color}>{text}</Tag>;
+                                    },
+                                  },
+                                  {
+                                    title: '事件数',
+                                    dataIndex: 'event_count',
+                                    key: 'event_count',
+                                    width: 80,
+                                    align: 'center',
+                                    render: (text) => (
+                                      <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{text}</span>
+                                    ),
+                                  },
+                                ]}
+                              />
+                            </Col>
+                          </Row>
+                        </Card>
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              )
+            }
+          ]}
+        />
       </Card>
 
-      {/* 编辑抽屉 */}
-      <Drawer
-        title="编辑主题"
-        width={720}
-        open={editDrawerVisible}
-        onClose={() => setEditDrawerVisible(false)}
-        extra={
-          <Space>
-            <Button onClick={() => setEditDrawerVisible(false)}>取消</Button>
-            <Button type="primary" loading={saving} onClick={handleSaveEdit}>
-              保存
+      {/* 标签编辑弹窗 */}
+      <Modal
+        title="编辑标签"
+        open={tagEditModalVisible}
+        onCancel={() => {
+          setTagEditModalVisible(false);
+          setCurrentEditEvent(null);
+          setSelectedTags([]);
+        }}
+        onOk={handleSaveTagsEdit}
+        width={600}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <strong>事件编号：</strong>
+          {currentEditEvent?.事件编号}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <strong>事件描述：</strong>
+          <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+            {currentEditEvent?.事件描述}
+          </div>
+        </div>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <strong>选择标签：</strong>
+            <Button
+              type="primary"
+              size="small"
+              onClick={handleAIRecommend}
+              loading={aiRecommending}
+              danger
+            >
+              AI 推荐
             </Button>
+          </div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%', marginTop: 8 }}
+            placeholder="请选择标签"
+            value={selectedTags}
+            onChange={setSelectedTags}
+            showSearch
+            filterOption={(input, option) => {
+              // 支持搜索标签名称
+              const label = option?.label || option?.children || '';
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            maxTagCount="responsive"
+            listHeight={400}
+            dropdownStyle={{ maxHeight: 400 }}
+          >
+            {availableTags.map(group => (
+              <Select.OptGroup key={group.groupName} label={group.groupName}>
+                {group.tags.map(tag => (
+                  <Select.Option key={tag.name} value={tag.name} label={tag.name}>
+                    <span>
+                      {tag.type === 'ai' ? '🤖 ' : '👤 '}
+                      {tag.name}
+                    </span>
+                  </Select.Option>
+                ))}
+              </Select.OptGroup>
+            ))}
+          </Select>
+        </div>
+      </Modal>
+
+      {/* AI 标签发现抽屉 */}
+      <Drawer
+        title={
+          <Space>
+            <RocketOutlined />
+            <span>AI 标签发现</span>
           </Space>
         }
-      >
-        <Form form={editForm} layout="vertical">
-          {/* 基础信息 */}
-          <div style={{ marginBottom: 24 }}>
-            <Title level={5} style={{ marginBottom: 16 }}>基础信息</Title>
-
-            <Form.Item
-              name="name"
-              label={<Text strong>主题名称</Text>}
-              rules={[{ required: true, message: '请输入主题名称' }]}
-            >
-              <Input placeholder="例如：噪音相关事件" maxLength={50} />
-            </Form.Item>
-
-            <Form.Item
-              name="description"
-              label={<Text strong>描述</Text>}
-            >
-              <Input.TextArea
-                placeholder="可描述该主题创建逻辑和用途"
-                rows={3}
-                maxLength={200}
-              />
-            </Form.Item>
-          </div>
-
-          {/* 包含关键词 */}
-          <Card size="small" title="第一道：包含关键词筛选" style={{ marginBottom: 16 }}>
-            <Alert
-              message="事件描述和处置结果之间是AND关系：必须同时满足两个字段的条件（如果都配置了关键词）"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="include_desc"
-                  label={<Text strong>事件描述关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：噪音 噪声 吵闹"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="include_result"
-                  label={<Text strong>处置结果关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：处理完毕 已解决"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          {/* 排除关键词 */}
-          <Card size="small" title="第二道：过滤关键词筛选" style={{ marginBottom: 16 }}>
-            <Alert
-              message="排除包含指定关键词的事件"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="exclude_desc"
-                  label={<Text strong>排除事件描述关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：KTV 超市 商场"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="exclude_result"
-                  label={<Text strong>排除处置结果关键词</Text>}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="例如：无需处理 已撤销"
-                    tokenSeparators={[',', '，', ' ']}
-                    open={false}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          {/* 去重设置 */}
-          <Card size="small" title="第三道：数据去重" style={{ marginBottom: 16 }}>
-            <Form.Item
-              name="dedup"
-              label={<Text strong>按事件描述去重</Text>}
-              valuePropName="checked"
-              initialValue={true}
-            >
-              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-            </Form.Item>
-          </Card>
-
-          {/* 分类配置 */}
-          <Card size="small" title="分类配置（可选）" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {categories.map((c, idx) => (
-                <Card key={idx} size="small" style={{ background: '#fafafa' }}>
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="街镇名称（可多选）"
-                          value={c.towns}
-                          onChange={(vals) => updateCategory(idx, 'towns', vals)}
-                          options={(filterOptionsForEdit.towns || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="事件级别（可多选）"
-                          value={c.levels}
-                          onChange={(vals) => updateCategory(idx, 'levels', vals)}
-                          options={(filterOptionsForEdit.levels || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                    </Row>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Select
-                          mode="multiple"
-                          placeholder="二级分类（可多选）"
-                          value={c.categories}
-                          onChange={(vals) => updateCategory(idx, 'categories', vals)}
-                          options={(filterOptionsForEdit.categories || []).map(t => ({ label: t, value: t }))}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                      <Col span={12}>
-                        <DatePicker.RangePicker
-                          value={c.timeRange || null}
-                          onChange={(dates) => updateCategory(idx, 'timeRange', dates)}
-                          placeholder={["开始日期", "结束日期"]}
-                          style={{ width: '100%' }}
-                        />
-                      </Col>
-                    </Row>
-                    <Button danger size="small" onClick={() => removeCategory(idx)}>
-                      删除分类
-                    </Button>
-                  </Space>
-                </Card>
-              ))}
+        open={aiDiscoveryDrawerVisible}
+        onClose={() => setAiDiscoveryDrawerVisible(false)}
+        width={900}
+        footer={
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setAiDiscoveryDrawerVisible(false)}>
+                取消
+              </Button>
               <Button
-                onClick={addCategory}
-                icon={<PlusOutlined />}
-                style={{ width: '100%', borderStyle: 'dashed' }}
+                type="primary"
+                onClick={handleConfirmAITags}
+                disabled={aiAnalyzing || selectedSuggestedTags.length === 0}
               >
-                添加分类
+                确认添加 {selectedSuggestedTags.length > 0 && `(${selectedSuggestedTags.length})`}
               </Button>
             </Space>
-          </Card>
-        </Form>
+          </div>
+        }
+      >
+        <div>
+          {/* 分析进行中 */}
+          {aiAnalyzing && (
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: 24, fontSize: 16, color: '#666' }}>
+                AI 正在分析未分类事件...
+              </div>
+              <div style={{ marginTop: 12, fontSize: 14, color: '#999' }}>
+                正在根据主题"{topic?.name}"和已有标签进行智能聚类分析
+              </div>
+            </div>
+          )}
+
+          {/* 分析结果 */}
+          {!aiAnalyzing && aiSuggestedTags.length > 0 && (
+            <div>
+              <Alert
+                message="AI 分析完成"
+                description={`发现 ${aiSuggestedTags.length} 个潜在的新标签，请选择需要添加到标签库的标签。`}
+                type="success"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+
+              <Checkbox.Group
+                value={selectedSuggestedTags}
+                onChange={setSelectedSuggestedTags}
+                style={{ width: '100%' }}
+              >
+                <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                  {aiSuggestedTags.map(tag => (
+                    <Card
+                      key={tag.id}
+                      size="small"
+                      hoverable
+                      style={{
+                        borderColor: selectedSuggestedTags.includes(tag.id) ? '#1890ff' : undefined,
+                        borderWidth: selectedSuggestedTags.includes(tag.id) ? 2 : 1,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                        <Checkbox value={tag.id} style={{ marginRight: 12, marginTop: 4 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ marginBottom: 8 }}>
+                            <Space>
+                              <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
+                                {tag.tagName}
+                              </Tag>
+                              <Tag color="green">
+                                {tag.eventCount} 个事件
+                              </Tag>
+                              <Tag color="orange">
+                                置信度: {(tag.confidence * 100).toFixed(0)}%
+                              </Tag>
+                            </Space>
+                          </div>
+                          <div style={{ color: '#666', marginBottom: 12 }}>
+                            {tag.description}
+                          </div>
+                          <div>
+                            <Text strong style={{ fontSize: 12 }}>示例事件：</Text>
+                            <div style={{ marginTop: 8 }}>
+                              {tag.sampleEvents.map((event, idx) => (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: '#f5f5f5',
+                                    borderRadius: 4,
+                                    marginBottom: 6,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  <Space>
+                                    <Text type="secondary" style={{ fontFamily: 'monospace' }}>
+                                      {event.id}
+                                    </Text>
+                                    <Text>{event.desc}</Text>
+                                  </Space>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </Space>
+              </Checkbox.Group>
+            </div>
+          )}
+
+          {/* 无结果 */}
+          {!aiAnalyzing && aiSuggestedTags.length === 0 && (
+            <Empty
+              description="暂无标签建议"
+              style={{ marginTop: 60 }}
+            />
+          )}
+        </div>
+      </Drawer>
+
+      {/* 编辑主题抽屉 */}
+      <Drawer
+        title="编辑主题"
+        open={editDrawerVisible}
+        onClose={() => setEditDrawerVisible(false)}
+        width={800}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Button
+              onClick={prevEditStep}
+              disabled={editCurrentStep === 0}
+              icon={<LeftOutlined />}
+            >
+              上一步
+            </Button>
+
+            <Space>
+              <Button onClick={() => setEditDrawerVisible(false)}>
+                取消
+              </Button>
+
+              {editCurrentStep < 2 ? (
+                <Button
+                  type="primary"
+                  onClick={nextEditStep}
+                  icon={<RightOutlined />}
+                >
+                  下一步
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  loading={editSubmitting}
+                  onClick={handleEditSubmit}
+                  icon={<CheckCircleOutlined />}
+                >
+                  保存更新
+                </Button>
+              )}
+            </Space>
+          </div>
+        }
+      >
+        <Steps
+          current={editCurrentStep}
+          style={{ marginBottom: 32 }}
+          items={editSteps.map(step => ({
+            title: step.title,
+            icon: step.icon
+          }))}
+        />
+
+        <div style={{ minHeight: '400px' }}>
+          {editSteps[editCurrentStep].content}
+        </div>
       </Drawer>
     </div>
   );
