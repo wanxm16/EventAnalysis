@@ -23,7 +23,7 @@ import { SearchOutlined, EyeOutlined, FilterOutlined, BellOutlined, DeleteOutlin
 import Highlighter from 'react-highlight-words';
 // 图表已迁移到 Topic 统计页面
 import { useNavigate } from 'react-router-dom';
-import { eventAPI } from '../services/api';
+import { eventAPI, tagAPI } from '../services/api';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -63,6 +63,16 @@ const EventList = () => {
 
   // 自定义列展示
   const defaultVisibleKeys = () => {
+    // 临时强制重置 - 确保标签列显示
+    const CONFIG_VERSION = 'v2'; // 版本号
+    const savedVersion = localStorage.getItem('event_list_columns_version');
+
+    if (savedVersion !== CONFIG_VERSION) {
+      // 版本不匹配，清除旧配置
+      localStorage.removeItem('event_list_visible_columns');
+      localStorage.setItem('event_list_columns_version', CONFIG_VERSION);
+    }
+
     // 默认显示除新增两列外的主要列
     const saved = localStorage.getItem('event_list_visible_columns');
     if (saved) {
@@ -71,7 +81,7 @@ const EventList = () => {
         return (parsed || []).filter(k => k !== '事件编号' && k !== 'action');
       } catch {}
     }
-    return ['事件描述','镇街名称','事件级别','二级分类','上报时间','报警人信息','相关','处置结果'];
+    return ['事件描述','镇街名称','事件级别','二级分类','上报时间','报警人信息','相关','处置结果','标签'];
   };
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(defaultVisibleKeys());
   const [columnModalOpen, setColumnModalOpen] = useState(false);
@@ -93,11 +103,20 @@ const EventList = () => {
     '报警人信息': 200,
     '处置结果': 180,
     '相关': 100,
+    '标签': 250,
     'action': 100,
   });
 
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // 标签相关状态
+  const [availableTags, setAvailableTags] = useState([]);
+  const [tagEditModalVisible, setTagEditModalVisible] = useState(false);
+  const [currentEditEvent, setCurrentEditEvent] = useState(null);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [aiRecommending, setAiRecommending] = useState(false);
+  const [aiRecommendations, setAiRecommendations] = useState([]); // AI推荐结果
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -927,18 +946,135 @@ const EventList = () => {
       },
     },
     {
+      title: '标签',
+      key: '标签',
+      dataIndex: 'tags',
+      width: columnWidths['标签'],
+      resizable: true,
+      onHeaderCell: () => ({
+        width: columnWidths['标签'],
+        onResize: handleResize('标签'),
+      }),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+        <div style={{ padding: 8, width: 300 }}>
+          <Select
+            mode="multiple"
+            style={{ width: '100%', marginBottom: 8 }}
+            placeholder="选择标签筛选"
+            value={selectedKeys}
+            onChange={values => {
+              setSelectedKeys(values);
+            }}
+            showSearch
+            maxTagCount={2}
+            filterOption={(input, option) => {
+              const label = option?.label || '';
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            listHeight={300}
+            dropdownStyle={{ maxHeight: 300 }}
+          >
+            {availableTags.map(group => (
+              <Select.OptGroup key={group.groupName} label={group.groupName}>
+                {group.tags.map(tag => (
+                  <Option key={tag.name} value={tag.name} label={tag.name}>
+                    <span>
+                      {tag.type === 'ai' ? '🤖 ' : '👤 '}
+                      {tag.name}
+                    </span>
+                  </Option>
+                ))}
+              </Select.OptGroup>
+            ))}
+          </Select>
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => {
+                confirm();
+              }}
+            >
+              确定
+            </Button>
+            <Button
+              size="small"
+              onClick={() => {
+                clearFilters();
+                confirm();
+              }}
+            >
+              重置
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value, record) => {
+        const tags = record.tags || [];
+        return tags.some(tag => {
+          const tagName = typeof tag === 'string' ? tag : tag.name;
+          return tagName === value;
+        });
+      },
+      filterIcon: (filtered) => (
+        <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+      ),
+      render: (tags, record) => {
+        // 处理标签数据，支持字符串或对象格式
+        const normalizedTags = (tags || []).map(tag => {
+          if (typeof tag === 'string') {
+            return { name: tag, type: 'unknown' };
+          }
+          return tag;
+        });
+
+        return (
+          <Space size={[0, 8]} wrap>
+            {normalizedTags.map((tag, index) => {
+              // 根据标签类型设置颜色
+              let color = 'default';
+              let icon = '';
+              if (tag.type === 'ai') {
+                color = 'blue';
+                icon = '🤖 '; // AI 图标
+              } else if (tag.type === 'human') {
+                color = 'green';
+                icon = '👤 '; // 人工图标
+              }
+
+              return (
+                <Tag
+                  key={`${record.事件编号}-${tag.name}-${index}`}
+                  color={color}
+                >
+                  {icon}{tag.name}
+                </Tag>
+              );
+            })}
+            <Button
+              type="dashed"
+              size="small"
+              onClick={() => handleEditTags(record)}
+            >
+              {tags && tags.length > 0 ? '编辑' : '添加'}
+            </Button>
+          </Space>
+        );
+      },
+    },
+    {
       title: '操作',
       key: 'action',
       width: 100,
       fixed: 'right',
       render: (_, record) => (
         <Button
-          type="primary"
+          type="link"
           size="small"
           icon={<EyeOutlined />}
           onClick={() => handleViewDetail(record)}
         >
-          查看详情
+          详情
         </Button>
       ),
     },
@@ -957,6 +1093,65 @@ const EventList = () => {
     return result;
   };
 
+  // Mock 标签数据 - 给前10条添加标签
+  const addMockTags = (events) => {
+    const mockTagsData = [
+      { tags: [
+        { name: '高频事件', type: 'ai' },
+        { name: '紧急处理', type: 'human' },
+        { name: '已解决', type: 'human' }
+      ]},
+      { tags: [
+        { name: '噪音投诉', type: 'ai' },
+        { name: '夜间扰民', type: 'ai' },
+        { name: '待跟进', type: 'human' }
+      ]},
+      { tags: [
+        { name: '停车纠纷', type: 'ai' },
+        { name: '重点关注', type: 'human' }
+      ]},
+      { tags: [
+        { name: '基础设施', type: 'ai' },
+        { name: '道路维修', type: 'ai' },
+        { name: '已派单', type: 'human' }
+      ]},
+      { tags: [
+        { name: '环境卫生', type: 'ai' },
+        { name: '垃圾清理', type: 'ai' }
+      ]},
+      { tags: [
+        { name: '邻里纠纷', type: 'ai' },
+        { name: '需调解', type: 'human' },
+        { name: '持续关注', type: 'human' }
+      ]},
+      { tags: [
+        { name: '消防安全', type: 'ai' },
+        { name: '隐患排查', type: 'ai' },
+        { name: '整改中', type: 'human' }
+      ]},
+      { tags: [
+        { name: '违章建筑', type: 'ai' },
+        { name: '待拆除', type: 'human' }
+      ]},
+      { tags: [
+        { name: '交通违章', type: 'ai' },
+        { name: '已处罚', type: 'human' }
+      ]},
+      { tags: [
+        { name: '公共秩序', type: 'ai' },
+        { name: '重点区域', type: 'human' },
+        { name: '加强巡查', type: 'human' }
+      ]}
+    ];
+
+    return events.map((event, index) => {
+      if (index < 10 && mockTagsData[index]) {
+        return { ...event, tags: mockTagsData[index].tags };
+      }
+      return event;
+    });
+  };
+
   // 加载事件列表
   const loadEvents = async (params = {}) => {
     setLoading(true);
@@ -969,8 +1164,11 @@ const EventList = () => {
         sort_order: sortOrder,
         ...params,
       });
-      
-      setEvents(response.items || []);
+
+      // 添加 mock 标签数据
+      const eventsWithMockTags = addMockTags(response.items || []);
+      setEvents(eventsWithMockTags);
+
       setPagination(prev => ({
         ...prev,
         total: response.total,
@@ -1085,6 +1283,242 @@ const EventList = () => {
       sort_field: newSortField,
       sort_order: newSortOrder,
     });
+  };
+
+  // 加载可用标签列表
+  const loadAvailableTags = async () => {
+    try {
+      // Mock 分组标签数据
+      const mockTagGroups = [
+        {
+          groupName: '事件分类',
+          tags: [
+            { name: '高频事件', type: 'ai' },
+            { name: '噪音投诉', type: 'ai' },
+            { name: '停车纠纷', type: 'ai' },
+            { name: '邻里纠纷', type: 'ai' },
+            { name: '消防安全', type: 'ai' },
+            { name: '违章建筑', type: 'ai' },
+            { name: '交通违章', type: 'ai' },
+            { name: '公共秩序', type: 'ai' },
+          ]
+        },
+        {
+          groupName: '环境类',
+          tags: [
+            { name: '环境卫生', type: 'ai' },
+            { name: '垃圾清理', type: 'ai' },
+            { name: '夜间扰民', type: 'ai' },
+            { name: '道路维修', type: 'ai' },
+            { name: '基础设施', type: 'ai' },
+          ]
+        },
+        {
+          groupName: '处理状态',
+          tags: [
+            { name: '待处理', type: 'human' },
+            { name: '处理中', type: 'human' },
+            { name: '已处理', type: 'human' },
+            { name: '已解决', type: 'human' },
+            { name: '待跟进', type: 'human' },
+            { name: '已派单', type: 'human' },
+            { name: '整改中', type: 'human' },
+          ]
+        },
+        {
+          groupName: '优先级标签',
+          tags: [
+            { name: '紧急处理', type: 'human' },
+            { name: '重点关注', type: 'human' },
+            { name: '持续关注', type: 'human' },
+            { name: '加强巡查', type: 'human' },
+            { name: '重点区域', type: 'human' },
+          ]
+        },
+        {
+          groupName: '安全隐患',
+          tags: [
+            { name: '隐患排查', type: 'ai' },
+            { name: '待拆除', type: 'human' },
+            { name: '已处罚', type: 'human' },
+            { name: '需调解', type: 'human' },
+          ]
+        }
+      ];
+
+      setAvailableTags(mockTagGroups);
+    } catch (error) {
+      console.error('加载标签列表失败:', error);
+    }
+  };
+
+  // 打开标签编辑弹窗
+  const handleEditTags = (record) => {
+    setCurrentEditEvent(record);
+    // 提取标签名称（支持字符串或对象格式）
+    const tagNames = (record.tags || []).map(tag =>
+      typeof tag === 'string' ? tag : tag.name
+    );
+    setSelectedTags(tagNames);
+    setTagEditModalVisible(true);
+  };
+
+  // 删除单个标签
+  const handleRemoveTag = async (record, tagToRemove) => {
+    try {
+      const tagNameToRemove = typeof tagToRemove === 'string' ? tagToRemove : tagToRemove.name;
+      const newTags = (record.tags || []).filter(tag => {
+        const tagName = typeof tag === 'string' ? tag : tag.name;
+        return tagName !== tagNameToRemove;
+      });
+
+      // 转换为纯字符串数组发送给后端
+      const tagNames = newTags.map(tag => typeof tag === 'string' ? tag : tag.name);
+      await eventAPI.updateEventTags(record.事件编号, tagNames);
+      message.success('标签已删除');
+
+      // 更新本地数据
+      setEvents(events.map(e =>
+        e.事件编号 === record.事件编号 ? { ...e, tags: newTags } : e
+      ));
+    } catch (error) {
+      message.error('删除标签失败: ' + error.message);
+    }
+  };
+
+  // AI 推荐标签
+  const handleAIRecommend = async () => {
+    if (!currentEditEvent) return;
+
+    setAiRecommending(true);
+    setAiRecommendations([]); // 清空之前的推荐
+    try {
+      // 模拟 AI 推荐延迟
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 根据事件描述推荐标签（Mock数据，实际应调用后端API）
+      const description = currentEditEvent.事件描述 || '';
+      const recommendations = [];
+
+      // 简单的关键词匹配推荐逻辑（带理由）
+      const keywordRules = {
+        '噪音|扰民|吵': [
+          { tag: '噪音投诉', reason: '事件描述中提到噪音/扰民相关内容' },
+          { tag: '夜间扰民', reason: '可能涉及夜间噪音问题，需关注时间段' },
+          { tag: '重点关注', reason: '噪音扰民易引发邻里矛盾，建议重点跟进' },
+        ],
+        '停车|车位': [
+          { tag: '停车纠纷', reason: '事件涉及停车或车位问题' },
+          { tag: '待处理', reason: '停车问题需要现场调解处理' },
+        ],
+        '纠纷|矛盾|争执': [
+          { tag: '邻里纠纷', reason: '事件描述中包含纠纷/矛盾关键词' },
+          { tag: '需调解', reason: '存在矛盾冲突，建议安排调解' },
+          { tag: '持续关注', reason: '纠纷类事件可能反复，需持续跟进' },
+        ],
+        '垃圾|卫生|清理': [
+          { tag: '环境卫生', reason: '事件涉及垃圾或卫生问题' },
+          { tag: '垃圾清理', reason: '需要安排清理工作' },
+          { tag: '已派单', reason: '建议派单给环卫部门处理' },
+        ],
+        '消防|安全|隐患': [
+          { tag: '消防安全', reason: '事件涉及消防或安全隐患' },
+          { tag: '隐患排查', reason: '存在安全风险，需排查处理' },
+          { tag: '紧急处理', reason: '安全隐患需要优先紧急处理' },
+        ],
+        '道路|维修|基础设施': [
+          { tag: '基础设施', reason: '涉及道路或基础设施问题' },
+          { tag: '道路维修', reason: '需要进行道路维护修缮' },
+        ],
+        '违章|违建': [
+          { tag: '违章建筑', reason: '事件涉及违章或违建问题' },
+          { tag: '待拆除', reason: '违建可能需要拆除处理' },
+        ],
+        '交通|堵塞': [
+          { tag: '交通违章', reason: '事件涉及交通相关问题' },
+          { tag: '重点区域', reason: '交通问题区域需重点关注' },
+        ],
+      };
+
+      // 遍历关键词进行匹配
+      for (const [pattern, recs] of Object.entries(keywordRules)) {
+        if (new RegExp(pattern).test(description)) {
+          recommendations.push(...recs);
+          break; // 只匹配第一个关键词组
+        }
+      }
+
+      // 如果没有匹配到，推荐一些通用标签
+      if (recommendations.length === 0) {
+        recommendations.push(
+          { tag: '待处理', reason: '新事件默认标记为待处理状态' },
+          { tag: '重点关注', reason: '建议关注事件后续进展' }
+        );
+      }
+
+      // 过滤掉已选中的标签
+      const filteredRecommendations = recommendations.filter(
+        rec => !selectedTags.includes(rec.tag)
+      );
+
+      setAiRecommendations(filteredRecommendations);
+
+      if (filteredRecommendations.length > 0) {
+        message.success(`AI 推荐了 ${filteredRecommendations.length} 个标签，请在下方查看`);
+      } else {
+        message.info('推荐的标签已全部添加');
+      }
+    } catch (error) {
+      message.error('AI 推荐失败: ' + error.message);
+    } finally {
+      setAiRecommending(false);
+    }
+  };
+
+  // 采用AI推荐的标签
+  const handleAcceptRecommendation = (tagName) => {
+    if (!selectedTags.includes(tagName)) {
+      setSelectedTags([...selectedTags, tagName]);
+      // 从推荐列表中移除已采用的标签
+      setAiRecommendations(prev => prev.filter(rec => rec.tag !== tagName));
+      message.success(`已添加标签：${tagName}`);
+    }
+  };
+
+  // 采用全部AI推荐的标签
+  const handleAcceptAllRecommendations = () => {
+    const newTags = aiRecommendations.map(rec => rec.tag);
+    const uniqueTags = Array.from(new Set([...selectedTags, ...newTags]));
+    setSelectedTags(uniqueTags);
+    setAiRecommendations([]);
+    message.success(`已添加 ${newTags.length} 个标签`);
+  };
+
+  // 保存标签编辑
+  const handleSaveTagsEdit = async () => {
+    if (!currentEditEvent) return;
+
+    try {
+      await eventAPI.updateEventTags(currentEditEvent.事件编号, selectedTags);
+      message.success('标签更新成功');
+
+      // 将新标签转换为对象格式（默认为人工标签）
+      const newTagObjects = selectedTags.map(tagName => ({
+        name: tagName,
+        type: 'human' // 手动添加的标签默认为人工标签
+      }));
+
+      // 更新本地数据
+      setEvents(events.map(e =>
+        e.事件编号 === currentEditEvent.事件编号 ? { ...e, tags: newTagObjects } : e
+      ));
+
+      setTagEditModalVisible(false);
+      setCurrentEditEvent(null);
+      setSelectedTags([]);
+    } catch (error) {
+      message.error('更新标签失败: ' + error.message);
+    }
   };
 
   // 查看详情
@@ -1498,6 +1932,7 @@ const EventList = () => {
     loadEvents();
     loadFilterOptions();
     loadSubscriptions();
+    loadAvailableTags();
   }, []);
 
   // 当筛选条件改变时，刷新趋势（与表格保持一致）
@@ -1520,13 +1955,13 @@ const EventList = () => {
       </div>
 
 
-      {/* 筛选条件标签和订阅按钮 */}
+      {/* 筛选条件标签 */}
       {getFilterTags().length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <Row justify="space-between" align="top">
             <Col flex="auto">
               <div style={{ marginBottom: 8 }}>
-                <span style={{ color: '#666', marginRight: 8 }}>当前筛选条件:</span>
+                <span style={{ color: '#666' }}>当前筛选条件:</span>
               </div>
               <Space size={[8, 8]} wrap>
                 {getFilterTags().map(tag => (
@@ -1550,26 +1985,25 @@ const EventList = () => {
                 </Button>
               </Space>
             </Col>
-            <Col>
-              <Button
-                type="primary"
-                icon={<BellOutlined />}
-                onClick={() => setSubscribeModalVisible(true)}
-                style={{ marginLeft: 16 }}
-              >
-                订阅查询
-              </Button>
-            </Col>
           </Row>
         </Card>
       )}
-      
 
       {/* 事件列表表格 */}
       <Card>
-        {/* 趋势图已移动到主题统计页面 */}
-        {/* 自定义列控制 */}
-        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
+        {/* 统计信息 */}
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 14 }}>
+            {getFilterTags().length === 0 ? (
+              <span style={{ color: '#666' }}>
+                总计 <strong style={{ fontSize: 16, color: '#1890ff' }}>{pagination.total}</strong> 条事件
+              </span>
+            ) : (
+              <span style={{ color: '#666' }}>
+                筛选出 <strong style={{ fontSize: 16, color: '#1890ff' }}>{events.length}</strong> 条 / 总共 <strong style={{ fontSize: 16, color: '#1890ff' }}>{pagination.total}</strong> 条
+              </span>
+            )}
+          </div>
           <Button onClick={() => setColumnModalOpen(true)} icon={<SettingOutlined />}>自定义列</Button>
         </div>
         <Table
@@ -1932,6 +2366,125 @@ const EventList = () => {
             提示：导出非脱敏数据需要相应权限，请谨慎使用
           </div>
         </div>
+      </Modal>
+
+      {/* 标签编辑弹窗 */}
+      <Modal
+        title="编辑标签"
+        open={tagEditModalVisible}
+        onCancel={() => {
+          setTagEditModalVisible(false);
+          setCurrentEditEvent(null);
+          setSelectedTags([]);
+          setAiRecommendations([]);
+        }}
+        onOk={handleSaveTagsEdit}
+        width={600}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <strong>事件编号：</strong>
+          {currentEditEvent?.事件编号}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <strong>事件描述：</strong>
+          <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+            {currentEditEvent?.事件描述}
+          </div>
+        </div>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <strong>选择标签：</strong>
+            <Button
+              type="link"
+              size="small"
+              onClick={handleAIRecommend}
+              loading={aiRecommending}
+              style={{ padding: 0 }}
+            >
+              AI 推荐
+            </Button>
+          </div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%', marginTop: 8 }}
+            placeholder="请选择标签"
+            value={selectedTags}
+            onChange={setSelectedTags}
+            showSearch
+            filterOption={(input, option) => {
+              // 支持搜索标签名称
+              const label = option?.label || option?.children || '';
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            listHeight={400}
+            dropdownStyle={{ maxHeight: 400 }}
+          >
+            {availableTags.map(group => (
+              <Select.OptGroup key={group.groupName} label={group.groupName}>
+                {group.tags.map(tag => (
+                  <Option key={tag.name} value={tag.name} label={tag.name}>
+                    <span>
+                      {tag.type === 'ai' ? '🤖 ' : '👤 '}
+                      {tag.name}
+                    </span>
+                  </Option>
+                ))}
+              </Select.OptGroup>
+            ))}
+          </Select>
+        </div>
+
+        {/* AI推荐结果展示区域 */}
+        {aiRecommendations.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <strong style={{ color: '#1890ff' }}>AI 推荐标签：</strong>
+              <Button
+                type="link"
+                size="small"
+                onClick={handleAcceptAllRecommendations}
+              >
+                全部采用
+              </Button>
+            </div>
+            <div style={{
+              padding: 12,
+              backgroundColor: '#f0f5ff',
+              borderRadius: 6,
+              border: '1px solid #d6e4ff'
+            }}>
+              {aiRecommendations.map((rec, index) => (
+                <div
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    padding: '8px 0',
+                    borderBottom: index < aiRecommendations.length - 1 ? '1px solid #e8e8e8' : 'none'
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <Tag color="blue" style={{ marginRight: 8 }}>
+                      {rec.tag}
+                    </Tag>
+                    <span style={{ color: '#666', fontSize: 12 }}>
+                      {rec.reason}
+                    </span>
+                  </div>
+                  <Button
+                    type="primary"
+                    size="small"
+                    ghost
+                    onClick={() => handleAcceptRecommendation(rec.tag)}
+                  >
+                    采用
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Modal>
 
     </div>
