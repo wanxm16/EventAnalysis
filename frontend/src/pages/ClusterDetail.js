@@ -87,6 +87,13 @@ const ClusterDetail = () => {
   const [duplicateDetailVisible, setDuplicateDetailVisible] = useState(false);
   const [selectedDuplicateGroup, setSelectedDuplicateGroup] = useState(null);
 
+  // 重复报警列表Modal状态
+  const [repeatAlarmsModalVisible, setRepeatAlarmsModalVisible] = useState(false);
+
+  // 参与人详情Modal状态
+  const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
+  const [participantsData, setParticipantsData] = useState([]);
+
   // 加载聚类事件详情
   const loadClusterDetail = async () => {
     setLoading(true);
@@ -99,6 +106,40 @@ const ClusterDetail = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 加载参与人详情（使用Mock数据）
+  const loadParticipantsDetail = () => {
+    // Mock数据 - 模拟参与人信息
+    const mockParticipants = [
+      {
+        phone: '138****0001',
+        name: '张三',
+        id_card: '330106********1234',
+        primary_role: '报警人',
+        event_count: 5,
+        population_tags: ['高频涉事人员', '本地户籍']
+      },
+      {
+        phone: '139****0002',
+        name: '李四',
+        id_card: '330106********5678',
+        primary_role: '对方',
+        event_count: 3,
+        population_tags: ['多次涉事']
+      },
+      {
+        phone: '137****0003',
+        name: '王五',
+        id_card: '330106********9012',
+        primary_role: '当事人',
+        event_count: 2,
+        population_tags: ['外地户籍', '租房']
+      }
+    ];
+
+    setParticipantsData(mockParticipants);
+    setParticipantsModalVisible(true);
   };
 
   // 加载筛选选项
@@ -824,6 +865,15 @@ const ClusterDetail = () => {
                   <UserOutlined style={{ marginRight: '4px' }} />
                   参与人数
                 </div>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={loadParticipantsDetail}
+                  style={{ marginTop: '4px', padding: 0, fontSize: '12px' }}
+                >
+                  查看详情
+                </Button>
               </div>
             </Col>
 
@@ -834,13 +884,38 @@ const ClusterDetail = () => {
                 </div>
                 <div style={{ fontSize: '13px', opacity: 0.9 }}>
                   <ClusterOutlined style={{ marginRight: '4px' }} />
-                  {dedupEnabled ? "去重后事件" : "事件总数"}
+                  事件数量
                 </div>
-                {dedupEnabled && clusterDetail.timeline?.length > 0 && deduplicateEvents(clusterDetail.timeline).length !== clusterDetail.timeline.length && (
-                  <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '2px' }}>
-                    原始: {clusterDetail.timeline.length} 个
-                  </div>
-                )}
+                {(() => {
+                  const dedupedEvents = deduplicateEvents(clusterDetail.timeline || []);
+                  const repeatCount = dedupedEvents.filter(e => e.isDuplicate && e.duplicateCount > 1).length;
+
+                  if (repeatCount > 0) {
+                    return (
+                      <div style={{ marginTop: '4px' }}>
+                        <div style={{ fontSize: '11px', color: '#fa8c16', marginBottom: '4px' }}>
+                          <CopyOutlined style={{ marginRight: '4px' }} />
+                          重复报警 {repeatCount} 次
+                        </div>
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={() => setRepeatAlarmsModalVisible(true)}
+                          style={{ padding: 0, fontSize: '12px' }}
+                        >
+                          查看详情
+                        </Button>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>
+                        无重复报警
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             </Col>
 
@@ -1484,6 +1559,121 @@ const ClusterDetail = () => {
         )}
       </Modal>
 
+      {/* 参与人详情Modal */}
+      <Modal
+        title={`参与人详情 - ${eventUID}`}
+        open={participantsModalVisible}
+        onCancel={() => setParticipantsModalVisible(false)}
+        footer={null}
+        width={1200}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Statistic
+            title="总人数"
+            value={participantsData.length}
+            suffix="人"
+            valueStyle={{ color: '#1890ff' }}
+          />
+        </div>
+        <Table
+          dataSource={participantsData}
+          pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true }}
+          size="middle"
+          rowKey="phone"
+          scroll={{ x: 1100 }}
+          columns={[
+            {
+              title: '手机号码',
+              dataIndex: 'phone',
+              key: 'phone',
+              width: 150,
+              fixed: 'left',
+              render: (text) => (
+                <span style={{ fontFamily: 'monospace' }}>{text || '-'}</span>
+              ),
+            },
+            {
+              title: '姓名',
+              dataIndex: 'name',
+              key: 'name',
+              width: 120,
+              render: (text) => text || '-',
+            },
+            {
+              title: '身份证号码',
+              dataIndex: 'id_card',
+              key: 'id_card',
+              width: 180,
+              render: (text) => (
+                <span style={{ fontFamily: 'monospace' }}>{text || '-'}</span>
+              ),
+            },
+            {
+              title: '主要角色',
+              dataIndex: 'primary_role',
+              key: 'primary_role',
+              width: 100,
+              render: (text) => {
+                if (!text) return '-';
+                let color = 'default';
+                if (text === '报警人') color = 'blue';
+                else if (text === '对方') color = 'orange';
+                else if (text === '当事人') color = 'green';
+                return <Tag color={color}>{text}</Tag>;
+              },
+            },
+            {
+              title: '事件总数',
+              dataIndex: 'event_count',
+              key: 'event_count',
+              width: 100,
+              align: 'center',
+              sorter: (a, b) => (a.event_count || 0) - (b.event_count || 0),
+              render: (text) => (
+                <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{text || 0}</span>
+              ),
+            },
+            {
+              title: '人口标签',
+              dataIndex: 'population_tags',
+              key: 'population_tags',
+              width: 200,
+              render: (tags) => {
+                if (!tags || !Array.isArray(tags) || tags.length === 0) {
+                  return <span style={{ color: '#999' }}>-</span>;
+                }
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {tags.map((tag, index) => (
+                      <Tag key={index} color="blue" style={{ fontSize: '11px', margin: 0 }}>
+                        {tag}
+                      </Tag>
+                    ))}
+                  </div>
+                );
+              },
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 100,
+              align: 'center',
+              fixed: 'right',
+              render: (_, record) => (
+                <Button
+                  type="link"
+                  icon={<EyeOutlined />}
+                  size="small"
+                  onClick={() => navigate(`/person-analysis/${encodeURIComponent(record.phone)}`)}
+                >
+                  查看详情
+                </Button>
+              ),
+            },
+          ]}
+        />
+      </Modal>
+
       {/* 添加事件模态框 */}
       <Modal
         title="添加事件到Cluster"
@@ -1507,7 +1697,7 @@ const ClusterDetail = () => {
           >
             <Input placeholder="请输入要添加的事件ID" />
           </Form.Item>
-          
+
           <Form.Item
             name="target_cluster"
             label="目标Cluster"
@@ -1523,7 +1713,7 @@ const ClusterDetail = () => {
             </Select>
           </Form.Item>
         </Form>
-        
+
         <Alert
           message="提示"
           description="如果事件当前属于其他cluster，系统会先显示确认对话框，告知事件的当前归属信息。"
@@ -1531,6 +1721,251 @@ const ClusterDetail = () => {
           showIcon
           style={{ marginTop: 16 }}
         />
+      </Modal>
+
+      {/* 重复报警列表Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CopyOutlined style={{ color: '#fa8c16' }} />
+            <span>重复报警列表</span>
+          </div>
+        }
+        open={repeatAlarmsModalVisible}
+        onCancel={() => setRepeatAlarmsModalVisible(false)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setRepeatAlarmsModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1400}
+      >
+        {(() => {
+          const dedupedEvents = deduplicateEvents(clusterDetail?.timeline || []);
+          const repeatAlarms = dedupedEvents.filter(e => e.isDuplicate && e.duplicateCount > 1);
+
+          if (repeatAlarms.length === 0) {
+            return (
+              <Alert
+                message="暂无重复报警"
+                description="当前聚合事件中没有发现重复报警"
+                type="info"
+                showIcon
+              />
+            );
+          }
+
+          return (
+            <div>
+              <Alert
+                message={`发现 ${repeatAlarms.length} 次重复报警`}
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+
+              <Table
+                dataSource={repeatAlarms}
+                rowKey={(record) => record.事件编号}
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  pageSizeOptions: ['10', '20', '50'],
+                }}
+                scroll={{ x: 1500 }}
+                size="middle"
+                expandable={{
+                  expandedRowRender: (record) => (
+                    <div style={{ padding: '16px', background: '#fafafa' }}>
+                      <div style={{ marginBottom: 12, fontWeight: 500, color: '#1890ff' }}>
+                        重复事件列表（共 {record.duplicateEvents?.length || 0} 个）
+                      </div>
+                      <Table
+                        dataSource={record.duplicateEvents || []}
+                        rowKey="事件编号"
+                        pagination={false}
+                        size="small"
+                        scroll={{ x: 1500 }}
+                        columns={[
+                          {
+                            title: '事件编号',
+                            dataIndex: '事件编号',
+                            key: '事件编号',
+                            width: 150,
+                            fixed: 'left',
+                            render: (id) => (
+                              <Button
+                                type="link"
+                                icon={<EyeOutlined />}
+                                onClick={() => handleViewEvent(id)}
+                                style={{ padding: 0, fontSize: '12px', fontFamily: 'monospace' }}
+                              >
+                                {id}
+                              </Button>
+                            ),
+                          },
+                          {
+                            title: '事件描述',
+                            dataIndex: '事件描述',
+                            key: '事件描述',
+                            width: 250,
+                            ellipsis: { showTitle: false },
+                            render: (text) => (
+                              <Tooltip title={text}>
+                                <span>{text}</span>
+                              </Tooltip>
+                            ),
+                          },
+                          {
+                            title: '事件类型',
+                            dataIndex: '事件类型',
+                            key: '事件类型',
+                            width: 120,
+                            render: (text) => text || '-',
+                          },
+                          {
+                            title: '二级分类',
+                            dataIndex: '二级分类',
+                            key: '二级分类',
+                            width: 120,
+                            render: (text) => text || '-',
+                          },
+                          {
+                            title: '镇街',
+                            dataIndex: '镇街名称',
+                            key: '镇街名称',
+                            width: 120,
+                            render: (text) => text || '-',
+                          },
+                          {
+                            title: '上报时间',
+                            dataIndex: '上报时间',
+                            key: '上报时间',
+                            width: 180,
+                            render: (time) => (
+                              <span>
+                                <ClockCircleOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+                                {formatTime(time)}
+                              </span>
+                            ),
+                          },
+                          {
+                            title: '状态',
+                            key: '状态',
+                            width: 100,
+                            align: 'center',
+                            fixed: 'right',
+                            render: (_, record) => {
+                              const statusConfig = {
+                                '已办结': { color: 'success', icon: <CheckCircleOutlined /> },
+                                '处理中': { color: 'processing', icon: <ClockCircleOutlined /> },
+                              };
+                              const status = record.办结时间 ? '已办结' : '处理中';
+                              const config = statusConfig[status] || { color: 'default', icon: null };
+                              return (
+                                <Tag color={config.color} icon={config.icon}>
+                                  {status}
+                                </Tag>
+                              );
+                            },
+                          },
+                        ]}
+                      />
+                    </div>
+                  ),
+                  expandIcon: ({ expanded, onExpand, record }) => (
+                    <span
+                      onClick={(e) => onExpand(record, e)}
+                      style={{
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#1890ff',
+                        fontWeight: 'bold',
+                        marginRight: 8,
+                        userSelect: 'none',
+                      }}
+                    >
+                      {expanded ? '−' : '+'}
+                    </span>
+                  ),
+                  expandIconColumnIndex: 0,
+                }}
+                columns={[
+                  {
+                    title: '事件编号',
+                    dataIndex: '事件编号',
+                    key: '事件编号',
+                    width: 150,
+                    render: (text) => (
+                      <Tag color="blue" style={{ fontFamily: 'monospace' }}>
+                        {text}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: '事件描述',
+                    dataIndex: '事件描述',
+                    key: '事件描述',
+                    width: 250,
+                    ellipsis: { showTitle: false },
+                    render: (text) => (
+                      <Tooltip title={text}>
+                        <span>{text}</span>
+                      </Tooltip>
+                    ),
+                  },
+                  {
+                    title: '事件类型',
+                    dataIndex: '事件类型',
+                    key: '事件类型',
+                    width: 120,
+                    render: (text) => text || '-',
+                  },
+                  {
+                    title: '二级分类',
+                    dataIndex: '二级分类',
+                    key: '二级分类',
+                    width: 120,
+                    render: (text) => text || '-',
+                  },
+                  {
+                    title: '镇街',
+                    dataIndex: '镇街名称',
+                    key: '镇街名称',
+                    width: 120,
+                  },
+                  {
+                    title: '报警次数',
+                    dataIndex: 'duplicateCount',
+                    key: 'duplicateCount',
+                    width: 100,
+                    align: 'center',
+                    render: (count) => (
+                      <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#fa8c16' }}>
+                        {count}
+                      </span>
+                    ),
+                    sorter: (a, b) => (a.duplicateCount || 0) - (b.duplicateCount || 0),
+                  },
+                  {
+                    title: '首次上报时间',
+                    dataIndex: '上报时间',
+                    key: '上报时间',
+                    width: 180,
+                    render: (time) => (
+                      <span>
+                        <ClockCircleOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+                        {formatTime(time)}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

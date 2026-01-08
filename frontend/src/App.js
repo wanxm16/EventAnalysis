@@ -34,6 +34,9 @@ import ClassificationTaskList from './pages/ClassificationTaskList';
 import ClassificationTaskCreate from './pages/ClassificationTaskCreate';
 import ClassificationTaskDetail from './pages/ClassificationTaskDetail';
 import CategoryTreeManagement from './pages/CategoryTreeManagement';
+import UserManagement from './pages/UserManagement';
+import RoleManagement from './pages/RoleManagement';
+import PermissionManagement from './pages/PermissionManagement';
 
 function App() {
   return (
@@ -203,6 +206,27 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <CategoryTreeManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/system/users" element={
+              <ProtectedRoute>
+                <Layout>
+                  <UserManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/system/roles" element={
+              <ProtectedRoute>
+                <Layout>
+                  <RoleManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/system/permissions" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PermissionManagement />
                 </Layout>
               </ProtectedRoute>
             } />

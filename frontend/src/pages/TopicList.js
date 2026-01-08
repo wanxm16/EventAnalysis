@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Button, Card, Modal, Space, Tag, Typography, message, Empty, Row, Col, Tooltip, Input, Drawer, Form, Select, Steps, Switch, Checkbox, Statistic, DatePicker, Alert } from 'antd';
-import { PlusOutlined, EyeOutlined, DeleteOutlined, EditOutlined, SettingOutlined, SearchOutlined, FilterOutlined, TagsOutlined, RocketOutlined, LeftOutlined, RightOutlined, CheckCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { Button, Card, Modal, Space, Tag, Typography, message, Empty, Row, Col, Tooltip, Input, Drawer, Form, Select, Steps, Switch, Checkbox, Statistic, DatePicker, Alert, Tabs, Badge } from 'antd';
+import { PlusOutlined, EyeOutlined, DeleteOutlined, EditOutlined, SettingOutlined, SearchOutlined, FilterOutlined, TagsOutlined, RocketOutlined, LeftOutlined, RightOutlined, CheckCircleOutlined, MinusCircleOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Line } from '@ant-design/plots';
 import dayjs from 'dayjs';
@@ -13,6 +13,10 @@ const TopicList = () => {
   const [loading, setLoading] = useState(false);
   const [topics, setTopics] = useState([]);
   const [searchText, setSearchText] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+
+  // 关注状态管理
+  const [followedTopics, setFollowedTopics] = useState(new Set());
 
   // 编辑抽屉状态
   const [editDrawerVisible, setEditDrawerVisible] = useState(false);
@@ -85,6 +89,21 @@ const TopicList = () => {
           message.error('删除主题失败: ' + e.message);
         }
       }
+    });
+  };
+
+  // 关注/取消关注主题
+  const handleToggleFollow = (topicId) => {
+    setFollowedTopics(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(topicId)) {
+        newSet.delete(topicId);
+        message.success('已取消关注');
+      } else {
+        newSet.add(topicId);
+        message.success('已添加关注');
+      }
+      return newSet;
     });
   };
 
@@ -257,45 +276,55 @@ const TopicList = () => {
 
   // 搜索过滤主题
   const filteredTopics = useMemo(() => {
-    if (!searchText.trim()) return topics;
+    let result = [...topics];
 
-    const searchLower = searchText.toLowerCase().trim();
+    // 如果在"重点关注"Tab，只显示已关注的主题
+    if (activeTab === 'followed') {
+      result = result.filter(topic => followedTopics.has(topic.id));
+    }
 
-    return topics.filter(topic => {
-      // 搜索主题名称
-      if (topic.name?.toLowerCase().includes(searchLower)) return true;
+    // 搜索过滤
+    if (searchText.trim()) {
+      const searchLower = searchText.toLowerCase().trim();
 
-      // 搜索描述
-      if (topic.description?.toLowerCase().includes(searchLower)) return true;
+      result = result.filter(topic => {
+        // 搜索主题名称
+        if (topic.name?.toLowerCase().includes(searchLower)) return true;
 
-      // 搜索包含关键词
-      if (topic.include_keywords) {
-        if (typeof topic.include_keywords === 'object' && !Array.isArray(topic.include_keywords)) {
-          const { description = [], result = [] } = topic.include_keywords;
-          const allIncludeKeywords = [...description, ...result];
-          if (allIncludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
-        } else if (Array.isArray(topic.include_keywords)) {
-          if (topic.include_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        // 搜索描述
+        if (topic.description?.toLowerCase().includes(searchLower)) return true;
+
+        // 搜索包含关键词
+        if (topic.include_keywords) {
+          if (typeof topic.include_keywords === 'object' && !Array.isArray(topic.include_keywords)) {
+            const { description = [], result = [] } = topic.include_keywords;
+            const allIncludeKeywords = [...description, ...result];
+            if (allIncludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+          } else if (Array.isArray(topic.include_keywords)) {
+            if (topic.include_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+          }
         }
-      }
 
-      // 搜索排除关键词
-      if (topic.exclude_keywords) {
-        if (typeof topic.exclude_keywords === 'object' && !Array.isArray(topic.exclude_keywords)) {
-          const { description = [], result = [] } = topic.exclude_keywords;
-          const allExcludeKeywords = [...description, ...result];
-          if (allExcludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
-        } else if (Array.isArray(topic.exclude_keywords)) {
-          if (topic.exclude_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+        // 搜索排除关键词
+        if (topic.exclude_keywords) {
+          if (typeof topic.exclude_keywords === 'object' && !Array.isArray(topic.exclude_keywords)) {
+            const { description = [], result = [] } = topic.exclude_keywords;
+            const allExcludeKeywords = [...description, ...result];
+            if (allExcludeKeywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+          } else if (Array.isArray(topic.exclude_keywords)) {
+            if (topic.exclude_keywords.some(kw => kw.toLowerCase().includes(searchLower))) return true;
+          }
         }
-      }
 
-      // 搜索精细筛选
-      if (topic.fine_filters?.some(filter => filter.toLowerCase().includes(searchLower))) return true;
+        // 搜索精细筛选
+        if (topic.fine_filters?.some(filter => filter.toLowerCase().includes(searchLower))) return true;
 
-      return false;
-    });
-  }, [topics, searchText]);
+        return false;
+      });
+    }
+
+    return result;
+  }, [topics, searchText, activeTab, followedTopics]);
 
   // 编辑抽屉 - 渲染第一步：规则筛选
   const renderEditStep1 = () => (
@@ -632,31 +661,39 @@ const TopicList = () => {
         )}
       </div>
 
-      {topics.length === 0 ? (
-        <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <Empty description="暂无主题">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate('/topics/create')}
-            >
-              立即创建
-            </Button>
-          </Empty>
-        </Card>
-      ) : filteredTopics.length === 0 ? (
-        <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <Empty description="没有找到匹配的主题">
-            <Button
-              type="link"
-              onClick={() => setSearchText('')}
-            >
-              清空搜索
-            </Button>
-          </Empty>
-        </Card>
-      ) : (
-        <Row gutter={[16, 16]}>
+      {/* Tabs */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'all',
+            label: '全部主题',
+            children: topics.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <Empty description="暂无主题">
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => navigate('/topics/create')}
+                  >
+                    立即创建
+                  </Button>
+                </Empty>
+              </Card>
+            ) : filteredTopics.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <Empty description="没有找到匹配的主题">
+                  <Button
+                    type="link"
+                    onClick={() => setSearchText('')}
+                  >
+                    清空搜索
+                  </Button>
+                </Empty>
+              </Card>
+            ) : (
+              <Row gutter={[16, 16]}>
           {filteredTopics.map(topic => {
             const trend = generateMockTrend(topic.id);
             const stats = generateMockStats(trend.data);
@@ -855,6 +892,17 @@ const TopicList = () => {
                           }}
                         />
                       </Tooltip>
+                      <Tooltip title={followedTopics.has(topic.id) ? '已关注' : '关注'}>
+                        <Button
+                          type="text"
+                          icon={followedTopics.has(topic.id) ? <StarFilled style={{ color: '#faad14', fontSize: '14px' }} /> : <StarOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFollow(topic.id);
+                          }}
+                        />
+                      </Tooltip>
                     </Space>
                   </div>
                 </Card>
@@ -862,7 +910,252 @@ const TopicList = () => {
             );
           })}
         </Row>
-      )}
+            )
+          },
+          {
+            key: 'followed',
+            label: (
+              <span>
+                <StarFilled style={{ marginRight: 4, color: '#faad14' }} />
+                重点关注
+                {followedTopics.size > 0 && (
+                  <Badge count={followedTopics.size} style={{ marginLeft: 8 }} />
+                )}
+              </span>
+            ),
+            children: filteredTopics.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <Empty description="暂无关注的主题">
+                  <Button
+                    type="link"
+                    onClick={() => setActiveTab('all')}
+                  >
+                    查看全部主题
+                  </Button>
+                </Empty>
+              </Card>
+            ) : (
+              <Row gutter={[16, 16]}>
+                {filteredTopics.map(topic => {
+                  const trend = generateMockTrend(topic.id);
+                  const stats = generateMockStats(trend.data);
+                  const hasData = trend.data.length > 0;
+
+                  return (
+                    <Col xs={24} sm={12} lg={8} key={topic.id}>
+                      <Card
+                        style={{
+                          borderRadius: '8px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                          height: '100%',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s',
+                        }}
+                        bodyStyle={{ padding: '16px' }}
+                        onClick={() => navigate(`/topics/${topic.id}`)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                      >
+                        {/* Header */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: '8px'
+                        }}>
+                          <Title level={5} style={{ margin: 0, fontSize: '16px' }}>
+                            {topic.name}
+                          </Title>
+                        </div>
+
+                        {/* Description */}
+                        <Text
+                          style={{
+                            color: '#666',
+                            fontSize: '13px',
+                            display: 'block',
+                            marginBottom: '8px'
+                          }}
+                        >
+                          {topic.description || '我是描述信息'}
+                        </Text>
+
+                        {/* Tags */}
+                        <div style={{ marginBottom: '8px', minHeight: '28px' }}>
+                          <Space size={[4, 4]} wrap>
+                            {renderKeywordTags(topic.include_keywords, '包含', 'blue')}
+                            {renderKeywordTags(topic.exclude_keywords, '排除', 'red')}
+                            {topic.fine_filters?.length > 0 && (
+                              <Tag
+                                color="orange"
+                                style={{
+                                  marginRight: 4,
+                                  marginBottom: 4,
+                                  border: '1px solid #faad14',
+                                  background: 'white'
+                                }}
+                              >
+                                无直: {topic.fine_filters[0]}
+                              </Tag>
+                            )}
+                          </Space>
+                        </div>
+
+                        {/* Trend info */}
+                        <div style={{ marginBottom: '8px' }}>
+                          <Space>
+                            <Text style={{ color: '#666', fontSize: '13px' }}>事件趋势</Text>
+                            {hasData && (
+                              <Text
+                                style={{
+                                  color: trend.percent > 0 ? '#ff4d4f' : trend.percent < 0 ? '#52c41a' : '#999',
+                                  fontSize: '13px',
+                                  fontWeight: 500
+                                }}
+                              >
+                                本周 {trend.percent > 0 ? '+' : ''}{trend.percent}%
+                              </Text>
+                            )}
+                            {!hasData && (
+                              <Text style={{ color: '#999', fontSize: '13px' }}>
+                                本周 0 件
+                              </Text>
+                            )}
+                          </Space>
+                        </div>
+
+                        {/* Chart */}
+                        {hasData ? (
+                          <div style={{ marginBottom: '8px', height: '120px' }}>
+                            <Line
+                              data={trend.data.map((count, index) => ({
+                                date: index,
+                                count: count
+                              }))}
+                              xField="date"
+                              yField="count"
+                              height={120}
+                              padding={[10, 10, 30, 30]}
+                              smooth
+                              color="#1890ff"
+                              xAxis={{
+                                label: null,
+                                line: { style: { stroke: '#e8e8e8' } },
+                                tickLine: null,
+                                grid: null
+                              }}
+                              yAxis={{
+                                label: null,
+                                line: null,
+                                tickLine: null,
+                                grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
+                              }}
+                              areaStyle={{
+                                fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff',
+                              }}
+                              point={false}
+                              tooltip={false}
+                            />
+                            {/* Stats */}
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              fontSize: '12px',
+                              color: '#999',
+                              marginTop: '-20px'
+                            }}>
+                              <span>最低：{stats.min}</span>
+                              <span>平均：{stats.avg}</span>
+                              <span>最高：{stats.max}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{
+                            height: '120px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#fafafa',
+                            borderRadius: '4px',
+                            marginBottom: '8px'
+                          }}>
+                            <Text style={{ color: '#bbb', fontSize: '13px' }}>暂无数据</Text>
+                          </div>
+                        )}
+
+                        {/* Footer */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          paddingTop: '8px',
+                          borderTop: '1px solid #f0f0f0'
+                        }}>
+                          <Text style={{ color: '#bbb', fontSize: '12px' }}>
+                            {topic.createTime || dayjs().format('YYYY-MM-DD HH:mm:ss')}
+                          </Text>
+                          <Space size={4}>
+                            <Tooltip title="查看详情">
+                              <Button
+                                type="text"
+                                icon={<EyeOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/topics/${topic.id}`);
+                                }}
+                              />
+                            </Tooltip>
+                            <Tooltip title="编辑">
+                              <Button
+                                type="text"
+                                icon={<EditOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditDrawer(topic);
+                                }}
+                              />
+                            </Tooltip>
+                            <Tooltip title="删除">
+                              <Button
+                                type="text"
+                                icon={<DeleteOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTopic(topic.id, topic.name);
+                                }}
+                              />
+                            </Tooltip>
+                            <Tooltip title={followedTopics.has(topic.id) ? '已关注' : '关注'}>
+                              <Button
+                                type="text"
+                                icon={followedTopics.has(topic.id) ? <StarFilled style={{ color: '#faad14', fontSize: '14px' }} /> : <StarOutlined style={{ color: '#bbb', fontSize: '14px' }} />}
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleFollow(topic.id);
+                                }}
+                              />
+                            </Tooltip>
+                          </Space>
+                        </div>
+                      </Card>
+                    </Col>
+                  );
+                })}
+              </Row>
+            )
+          }
+        ]}
+      />
 
       {/* 编辑主题抽屉 */}
       <Drawer

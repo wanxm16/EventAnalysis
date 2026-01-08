@@ -33,10 +33,12 @@ import {
   ClockCircleOutlined,
   PhoneOutlined,
   EnvironmentOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import Highlighter from 'react-highlight-words';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { eventAPI } from '../services/api';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 
@@ -117,7 +119,9 @@ const ClusterList = () => {
   const [repeatAlarmColumnWidths, setRepeatAlarmColumnWidths] = useState({
     event_uid: 150,
     description: 300,
-    caller: 180,
+    event_type: 120,
+    category: 120,
+    event_level: 100,
     town: 100,
     repeat_count: 100,
     first_time: 180,
@@ -140,7 +144,7 @@ const ClusterList = () => {
   // 重复报警Mock数据
   const [repeatAlarms] = useState([
     {
-      event_uid: "cluster_repeat_001",
+      event_uid: "BYW202505220001",
       phone: "15258180637",
       name: "王长远",
       event_type: "矛盾纠纷",
@@ -152,16 +156,41 @@ const ClusterList = () => {
       time_span_minutes: 19,
       status: "处理中",
       warning_level: "高",
+      event_level: "一级",
       resolved_count: 0,
       pending_count: 2,
       town: "白云街道",
+      village: "云峰村",
+      disposal_result: "处理中",
       events: [
-        { id: "BYW20251220002", time: "09:31", status: "已办结" },
-        { id: "BYW20251220003", time: "09:50", status: "处理中" }
+        {
+          id: "BYW202505220315",
+          time: "2025-05-22 09:31:00",
+          status: "已办结",
+          description: "快递送货客户要求各种拖理由投诉退款，有纠纷",
+          event_type: "矛盾纠纷",
+          category: "快递纠纷",
+          event_level: "一级",
+          town: "白云街道",
+          village: "云峰村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "BYW202505220328",
+          time: "2025-05-22 09:50:00",
+          status: "处理中",
+          description: "快递送货客户要求各种拖理由投诉退款，有纠纷",
+          event_type: "矛盾纠纷",
+          category: "快递纠纷",
+          event_level: "一级",
+          town: "白云街道",
+          village: "云峰村",
+          disposal_result: "处理中"
+        }
       ]
     },
     {
-      event_uid: "cluster_repeat_002",
+      event_uid: "DQIW202505150001",
       phone: "15038305197",
       name: null,
       event_type: "矛盾纠纷",
@@ -173,16 +202,41 @@ const ClusterList = () => {
       time_span_minutes: 14,
       status: "已办结",
       warning_level: "极高",
+      event_level: "二级",
       resolved_count: 2,
       pending_count: 0,
       town: "洞桥镇",
+      village: "洞桥村",
+      disposal_result: "已办结",
       events: [
-        { id: "DQIW20251215004", time: "21:57", status: "已办结" },
-        { id: "DQIW20251215005", time: "22:11", status: "已办结" }
+        {
+          id: "DQIW202505150421",
+          time: "2025-05-15 21:57:00",
+          status: "已办结",
+          description: "给人送货，运费不给我，有纠纷",
+          event_type: "矛盾纠纷",
+          category: "运费纠纷",
+          event_level: "二级",
+          town: "洞桥镇",
+          village: "洞桥村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "DQIW202505150435",
+          time: "2025-05-15 22:11:00",
+          status: "已办结",
+          description: "给人送货，运费不给我，有纠纷",
+          event_type: "矛盾纠纷",
+          category: "运费纠纷",
+          event_level: "二级",
+          town: "洞桥镇",
+          village: "洞桥村",
+          disposal_result: "已办结"
+        }
       ]
     },
     {
-      event_uid: "cluster_repeat_003",
+      event_uid: "NMW202505200001",
       phone: "13900001111",
       name: "张三",
       event_type: "矛盾纠纷",
@@ -194,17 +248,53 @@ const ClusterList = () => {
       time_span_minutes: 135,
       status: "处理中",
       warning_level: "中",
+      event_level: "三级",
       resolved_count: 1,
       pending_count: 2,
       town: "南门街道",
+      village: "南门社区",
+      disposal_result: "部分办结",
       events: [
-        { id: "NMW20251220015", time: "08:15", status: "已办结" },
-        { id: "NMW20251220023", time: "09:20", status: "处理中" },
-        { id: "NMW20251220031", time: "10:30", status: "处理中" }
+        {
+          id: "NMW202505200815",
+          time: "2025-05-20 08:15:00",
+          status: "已办结",
+          description: "小区停车位被长期占用，多次沟通无果",
+          event_type: "矛盾纠纷",
+          category: "停车纠纷",
+          event_level: "三级",
+          town: "南门街道",
+          village: "南门社区",
+          disposal_result: "已办结"
+        },
+        {
+          id: "NMW202505200920",
+          time: "2025-05-20 09:20:00",
+          status: "处理中",
+          description: "小区停车位被长期占用，多次沟通无果",
+          event_type: "矛盾纠纷",
+          category: "停车纠纷",
+          event_level: "三级",
+          town: "南门街道",
+          village: "南门社区",
+          disposal_result: "处理中"
+        },
+        {
+          id: "NMW202505201030",
+          time: "2025-05-20 10:30:00",
+          status: "处理中",
+          description: "小区停车位被长期占用，多次沟通无果",
+          event_type: "矛盾纠纷",
+          category: "停车纠纷",
+          event_level: "三级",
+          town: "南门街道",
+          village: "南门社区",
+          disposal_result: "处理中"
+        }
       ]
     },
     {
-      event_uid: "cluster_repeat_004",
+      event_uid: "WCW202505180001",
       phone: "13800002222",
       name: "李四",
       event_type: "矛盾纠纷",
@@ -216,18 +306,65 @@ const ClusterList = () => {
       time_span_minutes: 165,
       status: "处理中",
       warning_level: "高",
+      event_level: "一级",
       resolved_count: 0,
       pending_count: 4,
       town: "望城街道",
+      village: "望城社区",
+      disposal_result: "处理中",
       events: [
-        { id: "WCW20251218045", time: "22:45", status: "处理中" },
-        { id: "WCW20251218052", time: "23:20", status: "处理中" },
-        { id: "WCW20251219002", time: "00:15", status: "处理中" },
-        { id: "WCW20251219008", time: "01:30", status: "处理中" }
+        {
+          id: "WCW202505182245",
+          time: "2025-05-18 22:45:00",
+          status: "处理中",
+          description: "楼上住户深夜噪音扰民，影响休息",
+          event_type: "矛盾纠纷",
+          category: "噪音投诉",
+          event_level: "一级",
+          town: "望城街道",
+          village: "望城社区",
+          disposal_result: "处理中"
+        },
+        {
+          id: "WCW202505182320",
+          time: "2025-05-18 23:20:00",
+          status: "处理中",
+          description: "楼上住户深夜噪音扰民，影响休息",
+          event_type: "矛盾纠纷",
+          category: "噪音投诉",
+          event_level: "一级",
+          town: "望城街道",
+          village: "望城社区",
+          disposal_result: "处理中"
+        },
+        {
+          id: "WCW202505190015",
+          time: "2025-05-19 00:15:00",
+          status: "处理中",
+          description: "楼上住户深夜噪音扰民，影响休息",
+          event_type: "矛盾纠纷",
+          category: "噪音投诉",
+          event_level: "一级",
+          town: "望城街道",
+          village: "望城社区",
+          disposal_result: "处理中"
+        },
+        {
+          id: "WCW202505190130",
+          time: "2025-05-19 01:30:00",
+          status: "处理中",
+          description: "楼上住户深夜噪音扰民，影响休息",
+          event_type: "矛盾纠纷",
+          category: "噪音投诉",
+          event_level: "一级",
+          town: "望城街道",
+          village: "望城社区",
+          disposal_result: "处理中"
+        }
       ]
     },
     {
-      event_uid: "cluster_repeat_005",
+      event_uid: "GLW202505170001",
       phone: "13700003333",
       name: "王五",
       event_type: "矛盾纠纷",
@@ -239,15 +376,73 @@ const ClusterList = () => {
       time_span_minutes: 205,
       status: "已办结",
       warning_level: "极高",
+      event_level: "二级",
       resolved_count: 5,
       pending_count: 0,
       town: "古林镇",
+      village: "古林村",
+      disposal_result: "已办结",
       events: [
-        { id: "GLW20251217020", time: "14:20", status: "已办结" },
-        { id: "GLW20251217025", time: "15:05", status: "已办结" },
-        { id: "GLW20251217032", time: "15:50", status: "已办结" },
-        { id: "GLW20251217038", time: "16:40", status: "已办结" },
-        { id: "GLW20251217044", time: "17:45", status: "已办结" }
+        {
+          id: "GLW202505171420",
+          time: "2025-05-17 14:20:00",
+          status: "已办结",
+          description: "物业不作为，公共设施损坏长期不修",
+          event_type: "矛盾纠纷",
+          category: "物业纠纷",
+          event_level: "二级",
+          town: "古林镇",
+          village: "古林村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "GLW202505171505",
+          time: "2025-05-17 15:05:00",
+          status: "已办结",
+          description: "物业不作为，公共设施损坏长期不修",
+          event_type: "矛盾纠纷",
+          category: "物业纠纷",
+          event_level: "二级",
+          town: "古林镇",
+          village: "古林村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "GLW202505171550",
+          time: "2025-05-17 15:50:00",
+          status: "已办结",
+          description: "物业不作为，公共设施损坏长期不修",
+          event_type: "矛盾纠纷",
+          category: "物业纠纷",
+          event_level: "二级",
+          town: "古林镇",
+          village: "古林村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "GLW202505171640",
+          time: "2025-05-17 16:40:00",
+          status: "已办结",
+          description: "物业不作为，公共设施损坏长期不修",
+          event_type: "矛盾纠纷",
+          category: "物业纠纷",
+          event_level: "二级",
+          town: "古林镇",
+          village: "古林村",
+          disposal_result: "已办结"
+        },
+        {
+          id: "GLW202505171745",
+          time: "2025-05-17 17:45:00",
+          status: "已办结",
+          description: "物业不作为，公共设施损坏长期不修",
+          event_type: "矛盾纠纷",
+          category: "物业纠纷",
+          event_level: "二级",
+          town: "古林镇",
+          village: "古林村",
+          disposal_result: "已办结"
+        }
       ]
     }
   ]);
@@ -1258,7 +1453,7 @@ const ClusterList = () => {
           size="small"
           onClick={() => handleViewDetail(record.EventUID)}
         >
-          查看详情
+          详情
         </Button>
       ),
     },
@@ -1347,26 +1542,37 @@ const ClusterList = () => {
         ),
       },
       {
-        title: '报警人',
-        key: 'caller',
-        width: repeatAlarmColumnWidths['caller'],
+        title: '事件分类',
+        dataIndex: 'event_type',
+        key: 'event_type',
+        width: repeatAlarmColumnWidths['event_type'] || 120,
         onHeaderCell: () => ({
-          width: repeatAlarmColumnWidths['caller'],
-          onResize: handleRepeatAlarmResize('caller'),
+          width: repeatAlarmColumnWidths['event_type'] || 120,
+          onResize: handleRepeatAlarmResize('event_type'),
         }),
-        render: (_, record) => (
-          <div>
-            <div>
-              <PhoneOutlined style={{ marginRight: 4, color: '#666' }} />
-              {record.phone}
-            </div>
-            {record.name && (
-              <div style={{ fontSize: '12px', color: '#999', marginTop: 2 }}>
-                {record.name}
-              </div>
-            )}
-          </div>
-        ),
+        render: (text) => text || '-',
+      },
+      {
+        title: '二级分类',
+        dataIndex: 'category',
+        key: 'category',
+        width: repeatAlarmColumnWidths['category'] || 120,
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['category'] || 120,
+          onResize: handleRepeatAlarmResize('category'),
+        }),
+        render: (text) => text || '-',
+      },
+      {
+        title: '事件级别',
+        dataIndex: 'event_level',
+        key: 'event_level',
+        width: repeatAlarmColumnWidths['event_level'] || 100,
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['event_level'] || 100,
+          onResize: handleRepeatAlarmResize('event_level'),
+        }),
+        render: (text) => text || '-',
       },
       {
         title: '镇街',
@@ -1377,6 +1583,17 @@ const ClusterList = () => {
           width: repeatAlarmColumnWidths['town'],
           onResize: handleRepeatAlarmResize('town'),
         }),
+      },
+      {
+        title: '村庄名称',
+        dataIndex: 'village',
+        key: 'village',
+        width: repeatAlarmColumnWidths['village'] || 120,
+        onHeaderCell: () => ({
+          width: repeatAlarmColumnWidths['village'] || 120,
+          onResize: handleRepeatAlarmResize('village'),
+        }),
+        render: (text) => text || '-',
       },
       {
         title: '报警次数',
@@ -1434,75 +1651,42 @@ const ClusterList = () => {
         sorter: (a, b) => a.time_span_minutes - b.time_span_minutes,
       },
       {
-        title: '操作',
-        key: 'action',
-        width: repeatAlarmColumnWidths['action'],
+        title: '处置结果',
+        dataIndex: 'disposal_result',
+        key: 'disposal_result',
+        width: repeatAlarmColumnWidths['disposal_result'] || 120,
         align: 'center',
         onHeaderCell: () => ({
-          width: repeatAlarmColumnWidths['action'],
-          onResize: handleRepeatAlarmResize('action'),
+          width: repeatAlarmColumnWidths['disposal_result'] || 120,
+          onResize: handleRepeatAlarmResize('disposal_result'),
         }),
-        render: (_, record) => (
-          <Button
-            type="link"
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => handleViewRepeatAlarmDetail(record)}
-          >
-            查看详情
-          </Button>
-        ),
+        render: (text) => {
+          const statusConfig = {
+            '已办结': { color: 'success' },
+            '处理中': { color: 'processing' },
+            '部分办结': { color: 'warning' },
+            '待处理': { color: 'default' },
+          };
+          const config = statusConfig[text] || { color: 'default' };
+          return (
+            <Tag color={config.color}>
+              {text || '-'}
+            </Tag>
+          );
+        },
       },
     ];
 
     return (
       <div>
-        {/* 统计卡片 */}
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="重复报警总数"
-                value={repeatAlarms.length}
-                suffix="个"
-                valueStyle={{ color: '#cf1322' }}
-                prefix={<WarningOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="未办结事件"
-                value={repeatAlarms.filter(a => a.pending_count > 0).length}
-                suffix="个"
-                valueStyle={{ color: '#faad14' }}
-                prefix={<ClockCircleOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="平均报警次数"
-                value={(repeatAlarms.reduce((sum, a) => sum + a.repeat_count, 0) / repeatAlarms.length).toFixed(1)}
-                suffix="次"
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="极高预警"
-                value={repeatAlarms.filter(a => a.warning_level === '极高').length}
-                suffix="个"
-                valueStyle={{ color: '#ff4d4f' }}
-                prefix={<WarningOutlined />}
-              />
-            </Card>
-          </Col>
-        </Row>
+        {/* 重复报警提示信息 */}
+        <Alert
+          message={`${dayjs().subtract(1, 'day').format('YYYY年MM月DD日')}发现重复报警 ${repeatAlarms.length} 次`}
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ marginBottom: 16 }}
+        />
 
         {/* 重复报警表格 */}
         <Card>
@@ -1523,6 +1707,169 @@ const ClusterList = () => {
               header: {
                 cell: ResizeableTitle,
               },
+            }}
+            expandable={{
+              expandedRowRender: (record) => (
+                <div style={{ padding: '16px', background: '#fafafa' }}>
+                  <div style={{ marginBottom: 12, fontWeight: 500, color: '#1890ff' }}>
+                    重复事件列表（共 {record.events?.length || 0} 个）
+                  </div>
+                  <Table
+                    dataSource={record.events || []}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 1500 }}
+                    columns={[
+                      {
+                        title: '事件编号',
+                        dataIndex: 'id',
+                        key: 'id',
+                        width: 150,
+                        fixed: 'left',
+                        render: (id) => (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <EyeOutlined style={{ color: '#1890ff' }} />
+                            <Tooltip title={id}>
+                              <span
+                                style={{
+                                  color: '#1890ff',
+                                  fontFamily: 'monospace',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => navigate(`/events/${id}`)}
+                              >
+                                {id}
+                              </span>
+                            </Tooltip>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: '事件描述',
+                        dataIndex: 'description',
+                        key: 'description',
+                        width: 250,
+                        ellipsis: {
+                          showTitle: false,
+                        },
+                        render: (text) => (
+                          <Tooltip title={text}>
+                            <span>{text}</span>
+                          </Tooltip>
+                        ),
+                      },
+                      {
+                        title: '事件分类',
+                        dataIndex: 'event_type',
+                        key: 'event_type',
+                        width: 120,
+                        render: (text) => text || '-',
+                      },
+                      {
+                        title: '二级分类',
+                        dataIndex: 'category',
+                        key: 'category',
+                        width: 120,
+                        render: (text) => text || '-',
+                      },
+                      {
+                        title: '事件级别',
+                        dataIndex: 'event_level',
+                        key: 'event_level',
+                        width: 100,
+                        render: (text) => text || '-',
+                      },
+                      {
+                        title: '镇街',
+                        dataIndex: 'town',
+                        key: 'town',
+                        width: 120,
+                        render: (text) => text || '-',
+                      },
+                      {
+                        title: '村庄名称',
+                        dataIndex: 'village',
+                        key: 'village',
+                        width: 120,
+                        render: (text) => text || '-',
+                      },
+                      {
+                        title: '上报时间',
+                        dataIndex: 'time',
+                        key: 'time',
+                        width: 180,
+                        render: (time) => (
+                          <span>
+                            <ClockCircleOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+                            {time}
+                          </span>
+                        ),
+                      },
+                      {
+                        title: '处置结果',
+                        dataIndex: 'disposal_result',
+                        key: 'disposal_result',
+                        width: 120,
+                        align: 'center',
+                        render: (text) => {
+                          const statusConfig = {
+                            '已办结': { color: 'success' },
+                            '处理中': { color: 'processing' },
+                            '部分办结': { color: 'warning' },
+                            '待处理': { color: 'default' },
+                          };
+                          const config = statusConfig[text] || { color: 'default' };
+                          return (
+                            <Tag color={config.color}>
+                              {text || '-'}
+                            </Tag>
+                          );
+                        },
+                      },
+                      {
+                        title: '状态',
+                        dataIndex: 'status',
+                        key: 'status',
+                        width: 100,
+                        align: 'center',
+                        fixed: 'right',
+                        render: (status) => {
+                          const statusConfig = {
+                            '已办结': { color: 'success', icon: <CheckCircleOutlined /> },
+                            '处理中': { color: 'processing', icon: <ClockCircleOutlined /> },
+                            '待处理': { color: 'warning', icon: <WarningOutlined /> },
+                          };
+                          const config = statusConfig[status] || { color: 'default', icon: null };
+                          return (
+                            <Tag color={config.color} icon={config.icon}>
+                              {status}
+                            </Tag>
+                          );
+                        },
+                      },
+                    ]}
+                  />
+                </div>
+              ),
+              expandIcon: ({ expanded, onExpand, record }) => (
+                <span
+                  onClick={(e) => onExpand(record, e)}
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#1890ff',
+                    fontWeight: 'bold',
+                    marginRight: 8,
+                    userSelect: 'none',
+                  }}
+                >
+                  {expanded ? '−' : '+'}
+                </span>
+              ),
+              expandIconColumnIndex: 0,
             }}
           />
         </Card>
@@ -1806,188 +2153,142 @@ const ClusterList = () => {
         />
       </Modal>
 
-      {/* 重复报警详情Modal */}
+      {/* 重复事件详情Modal */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <WarningOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
-            <span>重复报警详情</span>
+            <WarningOutlined style={{ marginRight: 8, color: '#fa8c16' }} />
+            <span>重复事件详情</span>
           </div>
         }
         open={repeatAlarmDetailVisible}
         onCancel={() => setRepeatAlarmDetailVisible(false)}
-        footer={null}
-        width={800}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setRepeatAlarmDetailVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={1000}
       >
         {selectedRepeatAlarm && (
           <div>
-            {/* 基本信息 */}
-            <Card size="small" style={{ marginBottom: 16 }}>
-              <Row gutter={[16, 16]}>
-                <Col span={12}>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>事件编号：</span>
-                    <Tag color="blue" style={{ fontFamily: 'monospace' }}>
-                      {selectedRepeatAlarm.event_uid}
-                    </Tag>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>报警人：</span>
-                    <strong>
-                      {selectedRepeatAlarm.name || '未知'} ({selectedRepeatAlarm.phone})
-                    </strong>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>所属镇街：</span>
-                    <Tag icon={<EnvironmentOutlined />}>{selectedRepeatAlarm.town}</Tag>
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>事件类型：</span>
-                    <Tag color="purple">{selectedRepeatAlarm.event_type}</Tag>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>事件分类：</span>
-                    <Tag color="cyan">{selectedRepeatAlarm.category}</Tag>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ color: '#666' }}>状态：</span>
-                    <Tag color={selectedRepeatAlarm.status === '已办结' ? 'success' : 'processing'}>
-                      {selectedRepeatAlarm.status}
-                    </Tag>
-                  </div>
-                </Col>
-              </Row>
-            </Card>
+            {/* 顶部提示信息 */}
+            <Alert
+              message={`找到 ${selectedRepeatAlarm.repeat_count || selectedRepeatAlarm.events?.length || 0} 个描述相同的重复事件`}
+              description="以下事件具有相同的事件描述，已自动合并显示，点击事件编号可查看详情。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
 
-            {/* 事件描述 */}
-            <Card size="small" title="事件描述" style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
+            {/* 共同描述 */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{
+                fontWeight: 'bold',
+                fontSize: '14px',
+                marginBottom: 8,
+                color: '#000'
+              }}>
+                共同描述
+              </div>
+              <div style={{
+                padding: '12px 16px',
+                background: '#fafafa',
+                borderRadius: 4,
+                fontSize: '14px',
+                lineHeight: '1.8',
+                color: '#666'
+              }}>
                 {selectedRepeatAlarm.description}
               </div>
-            </Card>
+            </div>
 
-            {/* 统计信息 */}
-            <Card size="small" title="统计信息" style={{ marginBottom: 16 }}>
-              <Row gutter={16}>
-                <Col span={6}>
-                  <Statistic
-                    title="报警次数"
-                    value={selectedRepeatAlarm.repeat_count}
-                    suffix="次"
-                    valueStyle={{ color: '#fa8c16', fontSize: '24px' }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Statistic
-                    title="时间跨度"
-                    value={formatTimeSpan(selectedRepeatAlarm.time_span_minutes)}
-                    valueStyle={{ color: '#1890ff', fontSize: '20px' }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Statistic
-                    title="已办结"
-                    value={selectedRepeatAlarm.resolved_count}
-                    suffix="个"
-                    valueStyle={{ color: '#52c41a', fontSize: '24px' }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Statistic
-                    title="未办结"
-                    value={selectedRepeatAlarm.pending_count}
-                    suffix="个"
-                    valueStyle={{ color: '#ff4d4f', fontSize: '24px' }}
-                  />
-                </Col>
-              </Row>
-            </Card>
+            {/* 重复事件列表 */}
+            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: 12, color: '#000' }}>
+              重复事件列表 ({selectedRepeatAlarm.events?.length || 0} 个)
+            </div>
 
-            {/* 时间线信息 */}
-            <Card size="small" title="时间线" style={{ marginBottom: 16 }}>
-              <div style={{ marginBottom: 8 }}>
-                <ClockCircleOutlined style={{ marginRight: 8, color: '#52c41a' }} />
-                <span style={{ color: '#666' }}>首次报警：</span>
-                <strong style={{ marginLeft: 8 }}>{selectedRepeatAlarm.first_time}</strong>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <ClockCircleOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
-                <span style={{ color: '#666' }}>最后报警：</span>
-                <strong style={{ marginLeft: 8 }}>{selectedRepeatAlarm.last_time}</strong>
-              </div>
-              <div>
-                <span style={{ color: '#666' }}>紧急程度：</span>
-                {(() => {
-                  const urgency = getUrgencyTag(selectedRepeatAlarm.time_span_minutes);
-                  return (
-                    <Tag color={urgency.color} icon={urgency.icon} style={{ marginLeft: 8 }}>
-                      {urgency.text}
-                    </Tag>
-                  );
-                })()}
-              </div>
-            </Card>
-
-            {/* 相关事件列表 */}
-            <Card size="small" title={`相关事件 (${selectedRepeatAlarm.events.length}个)`}>
-              <Table
-                size="small"
-                dataSource={selectedRepeatAlarm.events}
-                pagination={false}
-                columns={[
-                  {
-                    title: '序号',
-                    key: 'index',
-                    width: 60,
-                    render: (_, __, index) => index + 1,
-                  },
-                  {
-                    title: '事件编号',
-                    dataIndex: 'id',
-                    key: 'id',
-                    render: (text) => (
-                      <Tag color="blue" style={{ fontFamily: 'monospace' }}>
-                        {text}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {selectedRepeatAlarm.events?.map((event, index) => (
+                <div
+                  key={event.id || index}
+                  style={{
+                    padding: '16px',
+                    background: '#e6f7ff',
+                    borderRadius: 4,
+                    border: '1px solid #91d5ff'
+                  }}
+                >
+                  {/* 顶部：事件编号 + 标签 + 时间 */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 12
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <EyeOutlined style={{ color: '#1890ff' }} />
+                      <Tooltip title={event.id}>
+                        <span
+                          style={{
+                            color: '#1890ff',
+                            fontFamily: 'monospace',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => navigate(`/events/${event.id}`)}
+                        >
+                          {event.id}
+                        </span>
+                      </Tooltip>
+                      {index === 0 && (
+                        <Tag color="blue" style={{ margin: 0 }}>代表事件</Tag>
+                      )}
+                      <Tag color={event.status === '已办结' ? 'success' : 'warning'} style={{ margin: 0 }}>
+                        {event.status || '处理中'}
                       </Tag>
-                    ),
-                  },
-                  {
-                    title: '报警时间',
-                    dataIndex: 'time',
-                    key: 'time',
-                    render: (text) => (
-                      <span>
-                        <ClockCircleOutlined style={{ marginRight: 4 }} />
-                        {text}
-                      </span>
-                    ),
-                  },
-                  {
-                    title: '状态',
-                    dataIndex: 'status',
-                    key: 'status',
-                    align: 'center',
-                    render: (status) => (
-                      <Tag color={status === '已办结' ? 'success' : 'processing'}>
-                        {status}
-                      </Tag>
-                    ),
-                  },
-                ]}
-              />
-            </Card>
+                    </div>
+                    <span style={{ color: '#666', fontSize: '13px' }}>
+                      {event.time}
+                    </span>
+                  </div>
 
-            {/* 预警提示 */}
-            <Alert
-              message={`预警级别：${selectedRepeatAlarm.warning_level}`}
-              description={`此重复报警被评估为${selectedRepeatAlarm.warning_level}预警级别，建议优先处理。`}
-              type={selectedRepeatAlarm.warning_level === '极高' || selectedRepeatAlarm.warning_level === '高' ? 'error' : 'warning'}
-              showIcon
-              icon={<WarningOutlined />}
-              style={{ marginTop: 16 }}
-            />
+                  {/* 中间：三列信息 */}
+                  <Row gutter={16} style={{ marginBottom: 12 }}>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666' }}>镇街名称</div>
+                      <div style={{ fontSize: '14px', color: '#000', marginTop: 4 }}>
+                        {event.town || selectedRepeatAlarm.town || '-'}
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666' }}>事件级别</div>
+                      <div style={{ fontSize: '14px', color: '#000', marginTop: 4 }}>
+                        {event.level || selectedRepeatAlarm.event_type || '-'}
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ fontSize: '12px', color: '#666' }}>二级分类</div>
+                      <div style={{ fontSize: '14px', color: '#000', marginTop: 4 }}>
+                        {event.category || selectedRepeatAlarm.category || '-'}
+                      </div>
+                    </Col>
+                  </Row>
+
+                  {/* 底部：报警人信息 */}
+                  <div style={{
+                    fontSize: '13px',
+                    color: '#1890ff'
+                  }}>
+                    <span style={{ fontWeight: 500 }}>报警人：</span>
+                    {event.reporter_name || selectedRepeatAlarm.name || '未知'}，
+                    电话：{event.reporter_phone || selectedRepeatAlarm.phone || '未知'}
+                    {event.reporter_idcard && ` | 身份证：${event.reporter_idcard}`}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Modal>

@@ -132,7 +132,8 @@ function ExampleManagement() {
               <List.Item
                 actions={[
                   <Button
-                    type="text"
+                    type="link"
+                    size="small"
                     danger
                     icon={<DeleteOutlined />}
                     onClick={() => handleDelete(item.id)}

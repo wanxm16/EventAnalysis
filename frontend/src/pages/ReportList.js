@@ -53,8 +53,8 @@ const ReportList = () => {
     { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180 },
     { title: '操作', key: 'op', width: 200, render: (_, r) => (
       <Space>
-        <Button icon={<EditOutlined />} onClick={() => navigate(`/reports/${r.id}/edit`)}>编辑</Button>
-        <Button icon={<EyeOutlined />} onClick={async () => {
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate(`/reports/${r.id}/edit`)}>编辑</Button>
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={async () => {
           try {
             const prev = await reportAPI.preview(r.id, r.content_md_draft || '', r.month);
             const win = window.open('', '_blank');
@@ -63,7 +63,7 @@ const ReportList = () => {
             message.error('预览失败');
           }
         }}>预览</Button>
-        <Button icon={<FileWordOutlined />} onClick={async () => {
+        <Button type="link" size="small" icon={<FileWordOutlined />} onClick={async () => {
           try {
             const blob = await reportAPI.exportDocx(r.id, r.month);
             const url = window.URL.createObjectURL(new Blob([blob]));
