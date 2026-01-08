@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, DatePicker, Input, Space, Table, Tag, Typography, message, Select, Modal, Popconfirm, Tooltip, Drawer, Form, Switch, Row, Col, Divider, Alert, Radio, Tabs, Spin, Steps, Checkbox, Statistic, Empty, Collapse } from 'antd';
 import { SettingOutlined, SearchOutlined, FilterOutlined, EyeOutlined, DeleteOutlined, RobotOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, BarChartOutlined, RightOutlined, LeftOutlined, TagsOutlined, RocketOutlined, CheckCircleOutlined, MinusCircleOutlined, UserOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
-import { Line } from '@ant-design/plots';
+import { Line, Column, Pie } from '@ant-design/plots';
 import Highlighter from 'react-highlight-words';
 import dayjs from 'dayjs';
 import { eventAPI, tagAPI } from '../services/api';
@@ -152,6 +152,21 @@ const TopicDetail = () => {
           { date: '2024-08', count: 42 },
           { date: '2024-09', count: 52 },
         ],
+        regionDistribution: [
+          { region: '白云街道', count: 78 },
+          { region: '望春街道', count: 65 },
+          { region: '段塘街道', count: 52 },
+          { region: '南门街道', count: 48 },
+          { region: '西门街道', count: 42 },
+          { region: '鼓楼街道', count: 35 },
+          { region: '其他', count: 22 },
+        ],
+        levelDistribution: [
+          { level: '一级', count: 45, color: '#ff4d4f' },
+          { level: '二级', count: 89, color: '#fa8c16' },
+          { level: '三级', count: 126, color: '#faad14' },
+          { level: '四级', count: 82, color: '#52c41a' },
+        ],
         persons: [
           { name: '张三', phone: '13800138001', idCard: '330102199001011234', event_count: 15, role: '报警人', profileTags: ['老年人', '退休人员'] },
           { name: '李四', phone: '13800138002', idCard: '330102198505052345', event_count: 12, role: '对方', profileTags: ['中年人', '个体户'] },
@@ -175,6 +190,20 @@ const TopicDetail = () => {
           { date: '2024-08', count: 35 },
           { date: '2024-09', count: 33 },
         ],
+        regionDistribution: [
+          { region: '南门街道', count: 58 },
+          { region: '西门街道', count: 52 },
+          { region: '白云街道', count: 45 },
+          { region: '段塘街道', count: 38 },
+          { region: '望春街道', count: 35 },
+          { region: '鼓楼街道', count: 28 },
+        ],
+        levelDistribution: [
+          { level: '一级', count: 28, color: '#ff4d4f' },
+          { level: '二级', count: 72, color: '#fa8c16' },
+          { level: '三级', count: 98, color: '#faad14' },
+          { level: '四级', count: 58, color: '#52c41a' },
+        ],
         persons: [
           { name: '孙八', phone: '13800138006', idCard: '330102198808086789', event_count: 18, role: '报警人', profileTags: ['中年人', '自由职业者'] },
           { name: '周九', phone: '13800138007', idCard: '330102199509097890', event_count: 14, role: '对方', profileTags: ['青年人', '公司职员'] },
@@ -197,6 +226,20 @@ const TopicDetail = () => {
           { date: '2024-08', count: 24 },
           { date: '2024-09', count: 21 },
         ],
+        regionDistribution: [
+          { region: '鼓楼街道', count: 45 },
+          { region: '白云街道', count: 42 },
+          { region: '望春街道', count: 38 },
+          { region: '南门街道', count: 32 },
+          { region: '段塘街道', count: 25 },
+          { region: '西门街道', count: 16 },
+        ],
+        levelDistribution: [
+          { level: '一级', count: 15, color: '#ff4d4f' },
+          { level: '二级', count: 48, color: '#fa8c16' },
+          { level: '三级', count: 85, color: '#faad14' },
+          { level: '四级', count: 50, color: '#52c41a' },
+        ],
         persons: [
           { name: '冯二', phone: '13800138010', idCard: '330102199304040123', event_count: 13, role: '报警人', profileTags: ['青年人', '快递员'] },
           { name: '陈三', phone: '13800138011', idCard: '330102198607071234', event_count: 10, role: '对方', profileTags: ['中年人', '餐饮业主'] },
@@ -218,6 +261,20 @@ const TopicDetail = () => {
           { date: '2024-08', count: 20 },
           { date: '2024-09', count: 19 },
         ],
+        regionDistribution: [
+          { region: '望春街道', count: 38 },
+          { region: '白云街道', count: 35 },
+          { region: '南门街道', count: 32 },
+          { region: '鼓楼街道', count: 28 },
+          { region: '段塘街道', count: 22 },
+          { region: '西门街道', count: 12 },
+        ],
+        levelDistribution: [
+          { level: '一级', count: 12, color: '#ff4d4f' },
+          { level: '二级', count: 35, color: '#fa8c16' },
+          { level: '三级', count: 72, color: '#faad14' },
+          { level: '四级', count: 48, color: '#52c41a' },
+        ],
         persons: [
           { name: '卫五', phone: '13800138013', idCard: '330102198909092456', event_count: 12, role: '报警人', profileTags: ['中年人', '护士'] },
           { name: '蒋六', phone: '13800138014', idCard: '330102199402023567', event_count: 9, role: '对方', profileTags: ['青年人', '程序员'] },
@@ -238,6 +295,20 @@ const TopicDetail = () => {
           { date: '2024-07', count: 19 },
           { date: '2024-08', count: 18 },
           { date: '2024-09', count: 14 },
+        ],
+        regionDistribution: [
+          { region: '白云街道', count: 32 },
+          { region: '段塘街道', count: 28 },
+          { region: '望春街道', count: 25 },
+          { region: '南门街道', count: 22 },
+          { region: '鼓楼街道', count: 20 },
+          { region: '西门街道', count: 16 },
+        ],
+        levelDistribution: [
+          { level: '一级', count: 8, color: '#ff4d4f' },
+          { level: '二级', count: 32, color: '#fa8c16' },
+          { level: '三级', count: 65, color: '#faad14' },
+          { level: '四级', count: 38, color: '#52c41a' },
         ],
         persons: [
           { name: '韩八', phone: '13800138016', idCard: '330102199208085789', event_count: 11, role: '报警人', profileTags: ['中年人', '设计师'] },
@@ -2289,21 +2360,29 @@ const TopicDetail = () => {
                             </Space>
                           }
                           extra={
-                            <Button
-                              type="link"
-                              icon={<EyeOutlined />}
-                              onClick={() => {
-                                setSelectedTag(tag);
-                                setTagEventsModalVisible(true);
-                              }}
-                            >
-                              查看事件列表
-                            </Button>
+                            <Space>
+                              <RangePicker
+                                size="small"
+                                style={{ width: 220 }}
+                                placeholder={['开始时间', '结束时间']}
+                                allowClear
+                              />
+                              <Button
+                                type="link"
+                                icon={<EyeOutlined />}
+                                onClick={() => {
+                                  setSelectedTag(tag);
+                                  setTagEventsModalVisible(true);
+                                }}
+                              >
+                                查看事件列表
+                              </Button>
+                            </Space>
                           }
                         >
                           <Row gutter={[16, 16]}>
-                            {/* 趋势图 */}
-                            <Col span={12}>
+                            {/* 三个图表一排 */}
+                            <Col span={8}>
                               <div style={{ marginBottom: 8 }}>
                                 <strong>趋势变化</strong>
                               </div>
@@ -2311,11 +2390,11 @@ const TopicDetail = () => {
                                 data={tag.trend}
                                 xField="date"
                                 yField="count"
-                                height={200}
-                                xAxis={{ title: null, label: { autoRotate: true } }}
+                                height={180}
+                                xAxis={{ title: null, label: { autoRotate: true, style: { fontSize: 10 } } }}
                                 yAxis={{ title: null, min: 0 }}
                                 smooth
-                                point={{ size: 3 }}
+                                point={{ size: 2 }}
                                 meta={{
                                   date: { alias: '月份' },
                                   count: { alias: '数量' },
@@ -2326,56 +2405,71 @@ const TopicDetail = () => {
                                 }}
                               />
                             </Col>
-                            {/* 人员分析 */}
-                            <Col span={12}>
+                            <Col span={8}>
                               <div style={{ marginBottom: 8 }}>
-                                <strong>相关人员（按事件数排序）</strong>
+                                <strong>地域分布</strong>
                               </div>
-                              <Table
-                                dataSource={tag.persons}
-                                pagination={false}
-                                size="small"
-                                rowKey="phone"
-                                columns={[
-                                  {
-                                    title: '姓名',
-                                    dataIndex: 'name',
-                                    key: 'name',
-                                    width: 100,
+                              <Column
+                                data={tag.regionDistribution || []}
+                                xField="region"
+                                yField="count"
+                                height={180}
+                                color="#1890ff"
+                                xAxis={{
+                                  title: null,
+                                  label: {
+                                    autoRotate: true,
+                                    style: { fontSize: 10 },
                                   },
-                                  {
-                                    title: '手机号',
-                                    dataIndex: 'phone',
-                                    key: 'phone',
-                                    width: 130,
-                                    render: (text) => (
-                                      <span style={{ fontFamily: 'monospace' }}>{text}</span>
-                                    ),
+                                }}
+                                yAxis={{ title: null, min: 0 }}
+                                label={false}
+                                meta={{
+                                  region: { alias: '镇街' },
+                                  count: { alias: '事件数' },
+                                }}
+                                tooltip={{
+                                  showMarkers: false,
+                                  formatter: (datum) => ({ name: datum.region, value: datum.count }),
+                                }}
+                              />
+                            </Col>
+                            <Col span={8}>
+                              <div style={{ marginBottom: 8 }}>
+                                <strong>事件等级分布</strong>
+                              </div>
+                              <Pie
+                                data={tag.levelDistribution || []}
+                                angleField="count"
+                                colorField="level"
+                                radius={0.75}
+                                innerRadius={0.5}
+                                height={180}
+                                color={({ level }) => {
+                                  const item = (tag.levelDistribution || []).find(d => d.level === level);
+                                  return item?.color || '#1890ff';
+                                }}
+                                label={false}
+                                legend={{
+                                  position: 'right',
+                                  itemName: { style: { fontSize: 11 } },
+                                }}
+                                statistic={{
+                                  title: {
+                                    content: '总计',
+                                    style: { fontSize: 11 },
                                   },
-                                  {
-                                    title: '角色',
-                                    dataIndex: 'role',
-                                    key: 'role',
-                                    width: 80,
-                                    render: (text) => {
-                                      let color = 'default';
-                                      if (text === '报警人') color = 'blue';
-                                      else if (text === '对方') color = 'orange';
-                                      else if (text === '当事人') color = 'green';
-                                      return <Tag color={color}>{text}</Tag>;
-                                    },
+                                  content: {
+                                    content: String(tag.count),
+                                    style: { fontSize: 14, fontWeight: 'bold' },
                                   },
-                                  {
-                                    title: '事件数',
-                                    dataIndex: 'event_count',
-                                    key: 'event_count',
-                                    width: 80,
-                                    align: 'center',
-                                    render: (text) => (
-                                      <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{text}</span>
-                                    ),
-                                  },
-                                ]}
+                                }}
+                                tooltip={{
+                                  formatter: (datum) => ({
+                                    name: datum.level,
+                                    value: `${datum.count} 件 (${((datum.count / tag.count) * 100).toFixed(1)}%)`,
+                                  }),
+                                }}
                               />
                             </Col>
                           </Row>
@@ -3026,8 +3120,8 @@ const TopicDetail = () => {
         )}
       </Drawer>
 
-      {/* 标签事件列表Modal */}
-      <Modal
+      {/* 标签事件列表抽屉 */}
+      <Drawer
         title={
           <Space>
             <TagsOutlined style={{ color: '#1890ff' }} />
@@ -3036,16 +3130,12 @@ const TopicDetail = () => {
           </Space>
         }
         open={tagEventsModalVisible}
-        onCancel={() => {
+        onClose={() => {
           setTagEventsModalVisible(false);
           setSelectedTag(null);
         }}
-        footer={[
-          <Button key="close" type="primary" onClick={() => setTagEventsModalVisible(false)}>
-            关闭
-          </Button>
-        ]}
-        width={1400}
+        width={1200}
+        placement="right"
       >
         {selectedTag && (
           <div>
@@ -3158,7 +3248,7 @@ const TopicDetail = () => {
             />
           </div>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 };
