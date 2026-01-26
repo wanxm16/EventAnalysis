@@ -137,7 +137,7 @@ const Layout = ({ children }) => {
           }}
           onClick={() => navigate('/dashboard')}
         >
-          智研通
+          海治通
         </Title>
         <Menu
           mode="horizontal"
@@ -158,14 +158,15 @@ const Layout = ({ children }) => {
         </Space>
       </Header>
       
-      <Content style={{ 
-        paddingTop: '64px'
+      <Content style={{
+        paddingTop: '64px',
+        background: '#f5f5f5'
       }}>
         {children}
       </Content>
-      
-      <Footer style={{ textAlign: 'center', background: '#f0f2f5' }}>
-        智研通 ©2025 杭州量之技术支持
+
+      <Footer style={{ textAlign: 'center', background: '#f5f5f5', padding: '8px 50px' }}>
+        海治通 ©2025 杭州量之技术支持
       </Footer>
     </AntLayout>
   );

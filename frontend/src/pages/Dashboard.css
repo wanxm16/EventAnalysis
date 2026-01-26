@@ -1,7 +1,6 @@
 .dashboard-container {
-  padding: 24px;
+  padding: 24px 24px 8px 24px;
   background: #f5f5f5;
-  min-height: 100vh;
 }
 
 .dashboard-header {
@@ -102,6 +101,92 @@
   font-weight: 600;
 }
 
+/* 模块区域样式 */
+.modules-section {
+  transition: all 0.4s ease;
+}
+
+.modules-section.expanded {
+  /* 展开状态 */
+}
+
+/* 大卡片样式 */
+.module-large-card {
+  min-height: 180px;
+}
+
+.module-large-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(24, 144, 255, 0.15);
+}
+
+/* TAB卡片样式 */
+.module-tab-card {
+  cursor: pointer;
+}
+
+.module-tab-card:hover {
+  transform: translateY(-2px);
+}
+
+.module-tab-card.active {
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+}
+
+/* 气泡图样式 */
+.bubble-item:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.module-content-area {
+  animation: fadeIn 0.3s ease;
+}
+
+.module-tabs-row {
+  animation: slideUp 0.3s ease;
+}
+
+.module-cards-grid {
+  animation: fadeIn 0.3s ease;
+}
+
+/* 知识图谱容器 */
+.knowledge-graph-container {
+  position: relative;
+  height: 100%;
+  min-height: 400px;
+}
+
+.center-topic:hover,
+.surrounding-topic:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .dashboard-container {
@@ -113,7 +198,7 @@
   .dashboard-container {
     padding: 12px;
   }
-  
+
   .stat-card {
     margin-bottom: 12px;
   }

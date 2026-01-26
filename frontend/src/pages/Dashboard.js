@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Card, Row, Col, Statistic, Button, Tag, Table, Drawer, Space, Typography, Select, DatePicker, Cascader, Tooltip, Tabs, Alert } from 'antd';
+import { Card, Row, Col, Statistic, Button, Tag, Table, Drawer, Space, Typography, Select, DatePicker, Cascader, Tooltip, Tabs, Alert, Pagination } from 'antd';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -10,6 +11,12 @@ import {
   DatabaseOutlined,
   QuestionCircleOutlined,
   PlusOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  LineChartOutlined,
+  AlertOutlined,
+  SyncOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Line } from '@ant-design/plots';
@@ -30,6 +37,13 @@ const Dashboard = () => {
   const [selectedEventType, setSelectedEventType] = useState('all');
   const [selectedStreet, setSelectedStreet] = useState('all');
 
+  // 模块展开状态和当前激活的TAB
+  const [modulesExpanded, setModulesExpanded] = useState(false);
+  const [activeModuleTab, setActiveModuleTab] = useState('issueFocus'); // 'issueFocus' | 'situationAnalysis' | 'prediction' | 'closedLoop'
+
+  // 数据总览趋势图展开状态
+  const [trendChartExpanded, setTrendChartExpanded] = useState(false);
+
   // 数据总览筛选条件
   const [overviewTimeRange, setOverviewTimeRange] = useState(null);
   const [overviewStreet, setOverviewStreet] = useState('all');
@@ -37,6 +51,48 @@ const Dashboard = () => {
   // 态势分析筛选条件 - 使用级联选择器,默认矛盾纠纷的全部
   const [situationCategory, setSituationCategory] = useState(['disputes']); // 默认矛盾纠纷(只选一级)
   const [situationTimeRange, setSituationTimeRange] = useState([dayjs().subtract(11, 'month').startOf('month'), dayjs()]); // 默认12个月
+
+  // 模块配置
+  const moduleConfig = [
+    {
+      key: 'issueFocus',
+      title: '问题聚焦',
+      description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
+      tags: ['知识图谱', '高频热点'],
+      icon: <AimOutlined style={{ fontSize: 20, color: '#1890ff' }} />,
+      image: '/images/issue-focus.png',
+    },
+    {
+      key: 'situationAnalysis',
+      title: '态势分析',
+      description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
+      tags: ['态势', '趋势'],
+      icon: <LineChartOutlined style={{ fontSize: 20, color: '#52c41a' }} />,
+      image: '/images/situation-analysis.png',
+    },
+    {
+      key: 'prediction',
+      title: '预测预警',
+      description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
+      tags: ['人群', '地域', '类型'],
+      icon: <AlertOutlined style={{ fontSize: 20, color: '#faad14' }} />,
+      image: '/images/prediction.png',
+    },
+    {
+      key: 'closedLoop',
+      title: '闭环监测',
+      description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
+      tags: ['实质性闭环核查', '文本解析'],
+      icon: <SyncOutlined style={{ fontSize: 20, color: '#722ed1' }} />,
+      image: '/images/closed-loop.png',
+    },
+  ];
+
+  // 点击模块卡片
+  const handleModuleClick = (moduleKey) => {
+    setModulesExpanded(true);
+    setActiveModuleTab(moduleKey);
+  };
 
   // 街镇选项数据
   const streetOptions = [
@@ -301,7 +357,43 @@ const Dashboard = () => {
         { id: 5, event: '某商场消费纠纷', persons: 8, personsTrend: -1, category: '消费纠纷', desc: '多名消费者反映退款难', lastTime: '2025-12-15', street: '高桥镇', riskLevel: '中' },
       ]
     },
+    // 4. 预警分类数据（首页展示用）
+    warningCategories: {
+      oneEventMultiTimes: { dailyNew: 5, weeklyNew: 34, monthlyNew: 124 },
+      oneLocationMultiEvents: { dailyNew: 5, weeklyNew: 34, monthlyNew: 124 },
+      onePersonMultiEvents: { dailyNew: 5, weeklyNew: 34, monthlyNew: 124 },
+      multiPersonOneEvent: { dailyNew: 5, weeklyNew: 34, monthlyNew: 124 },
+    },
   }), []);
+
+  // Mock数据 - 闭环监测表格数据
+  const closedLoopTableData = useMemo(() => [
+    { id: 1, rank: 1, topic: '噪音相关事件', totalCount: 34605, dailyNew: 0, weeklyNew: 0, monthlyNew: 29 },
+    { id: 2, rank: 2, topic: '噪音', totalCount: 34605, dailyNew: 0, weeklyNew: 0, monthlyNew: 29 },
+    { id: 3, rank: 3, topic: '噪音相关事件', totalCount: 34605, dailyNew: 0, weeklyNew: 0, monthlyNew: 29 },
+    { id: 4, rank: 4, topic: '邻里纠纷', totalCount: 5862, dailyNew: 0, weeklyNew: 0, monthlyNew: 0 },
+    { id: 5, rank: 5, topic: '古林噪音xxx', totalCount: 2000, dailyNew: 0, weeklyNew: 0, monthlyNew: 2 },
+    { id: 6, rank: 6, topic: '南门噪声', totalCount: 1972, dailyNew: 0, weeklyNew: 0, monthlyNew: 4 },
+    { id: 7, rank: 7, topic: '噪声', totalCount: 1, dailyNew: 0, weeklyNew: 0, monthlyNew: 0 },
+  ], []);
+
+  // Mock数据 - 问题聚焦气泡图数据
+  const bubbleChartData = useMemo(() => [
+    { name: '噪音相关事件', value: 2847, trend: 0, color: '#52c41a' },
+    { name: '噪音相关事件', value: 2456, trend: 0, color: '#52c41a' },
+    { name: '南门噪声', value: 1972, trend: 33.3, color: '#ff4d4f' },
+    { name: '噪声', value: 1654, trend: -100, color: '#52c41a' },
+    { name: '古林噪音xxx', value: 2000, trend: 0, color: '#52c41a' },
+    { name: '月湖噪声', value: 1500, trend: -54.5, color: '#52c41a' },
+    { name: '古林镇噪音问题', value: 1200, trend: 0, color: '#52c41a' },
+    { name: 'aaa', value: 800, trend: -49, color: '#52c41a' },
+    { name: '邻里纠纷', value: 1100, trend: 0, color: '#52c41a' },
+    { name: '河流污染', value: 900, trend: 0, color: '#52c41a' },
+    { name: '电信诈骗', value: 950, trend: 0, color: '#52c41a' },
+    { name: '未成年人', value: 1050, trend: 0, color: '#52c41a' },
+    { name: '安全', value: 700, trend: 0, color: '#52c41a' },
+    { name: '噪音', value: 750, trend: 0, color: '#52c41a' },
+  ], []);
 
   // Mock数据 - 闭环监测
   const closedLoopData = useMemo(() => ({
@@ -360,6 +452,76 @@ const Dashboard = () => {
   const handleWarningClick = (type) => {
     setWarningType(type);
     setWarningDrawerVisible(true);
+  };
+
+  // 渲染气泡图（问题聚焦展开时使用）
+  const renderBubbleChart = () => {
+    const bubbles = bubbleChartData;
+    // 计算气泡位置（3行布局）
+    const rows = [
+      bubbles.slice(0, 7),  // 第一行7个
+      bubbles.slice(7, 13), // 第二行6个
+      bubbles.slice(13),    // 第三行剩余
+    ];
+
+    return (
+      <div className="bubble-chart-container" style={{
+        position: 'relative',
+        height: 260,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+      }}>
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}>
+            {row.map((bubble, index) => {
+              const baseSize = 70;
+              const sizeMultiplier = Math.max(0.6, Math.min(1.3, bubble.value / 1500));
+              const size = baseSize * sizeMultiplier;
+              const isPositive = bubble.trend > 0;
+              const isNegative = bubble.trend < 0;
+              const bgColor = isPositive ? '#ff4d4f' : isNegative ? '#52c41a' : '#52c41a';
+
+              return (
+                <div
+                  key={index}
+                  onClick={() => handleTopicClick({ name: bubble.name, trend: bubble.trend, count: bubble.value, analysis: `${bubble.name}相关事件分析：该主题事件环比${bubble.trend >= 0 ? '增长' : '下降'}${Math.abs(bubble.trend)}%，主要涉及周边居民投诉和相关纠纷处理。建议加强相关部门协调，及时回应群众诉求。` })}
+                  style={{
+                    width: size,
+                    height: size,
+                    borderRadius: '50%',
+                    background: bgColor,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  }}
+                  className="bubble-item"
+                >
+                  <div style={{ fontSize: 11, fontWeight: 'bold', textAlign: 'center', padding: '0 4px', lineHeight: 1.2 }}>
+                    {bubble.name.length > 6 ? bubble.name.slice(0, 6) + '...' : bubble.name}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 'bold' }}>
+                    {bubble.trend === 0 ? '0%' : `${bubble.trend > 0 ? '+' : ''}${bubble.trend}%`}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   // 渲染知识图谱（圆形布局）
@@ -457,503 +619,634 @@ const Dashboard = () => {
     );
   };
 
-  return (
-    <div className="dashboard-container">
-      <Card
-        className="overview-card"
-        title={<span style={{ fontSize: 18, fontWeight: 600 }}>📊 数据总览</span>}
-        style={{ marginBottom: 24 }}
-        extra={
-          <Space>
-            <span style={{ fontSize: 14, color: '#666' }}>选择月份：</span>
-            <RangePicker
-              picker="month"
-              style={{ width: 220 }}
-              placeholder={['开始月份', '结束月份']}
-              value={overviewTimeRange}
-              onChange={setOverviewTimeRange}
-              format="YYYY-MM"
-            />
-          </Space>
-        }
-      >
-        <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col span={6}>
-            <Card className="stat-card" hoverable>
-              <Statistic
-                title="事件总量"
-                value={overviewData.totalEvents}
-                prefix={<FileTextOutlined />}
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card className="stat-card" hoverable>
-              <Statistic
-                title="本月事件"
-                value={overviewData.monthEvents}
-                prefix={<ClockCircleOutlined />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card className="stat-card" hoverable>
-              <Statistic
-                title="本月同比增长"
-                value={overviewData.growth}
-                suffix="%"
-                prefix={overviewData.growth > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                valueStyle={{ color: overviewData.growth > 0 ? '#cf1322' : '#3f8600' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card className="stat-card" hoverable>
-              <Statistic
-                title="本月环比增长"
-                value={overviewData.monthOnMonthGrowth}
-                suffix="%"
-                prefix={overviewData.monthOnMonthGrowth > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                valueStyle={{ color: overviewData.monthOnMonthGrowth > 0 ? '#cf1322' : '#3f8600' }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        <div style={{ marginBottom: 16 }}>
-          <Text strong style={{ fontSize: 14, marginBottom: 8, display: 'block' }}>
-            月度变化趋势
-          </Text>
-          <Line
-            data={overviewData.monthlyTrend}
-            xField="month"
-            yField="count"
-            height={280}
-            smooth
-            color="#1890ff"
-            point={{ size: 4, shape: 'circle' }}
-            areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' }}
-            xAxis={{ label: { style: { fontSize: 12 } } }}
-            yAxis={{
-              label: { style: { fontSize: 12 } },
-              grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
-            }}
+  // 渲染态势分析趋势图
+  const renderSituationChart = () => (
+    <div>
+      {/* 筛选器 */}
+      <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fafafa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <Space align="center">
+          <Text style={{ fontSize: 13, color: '#666' }}>选择月段</Text>
+          <Select
+            style={{ width: 120 }}
+            defaultValue="12months"
+            options={[
+              { label: '近3个月', value: '3months' },
+              { label: '近6个月', value: '6months' },
+              { label: '近12个月', value: '12months' },
+            ]}
           />
-        </div>
-      </Card>
+        </Space>
+        <Space align="center">
+          <Text style={{ fontSize: 13, color: '#666' }}>事件分类</Text>
+          <Cascader
+            style={{ width: 200 }}
+            options={categoryOptions}
+            value={situationCategory}
+            onChange={setSituationCategory}
+            placeholder="请选择分类"
+            changeOnSelect
+          />
+        </Space>
+        <Space align="center">
+          <Text style={{ fontSize: 13, color: '#666' }}>选择级别</Text>
+          <Select
+            style={{ width: 120 }}
+            defaultValue="all"
+            options={[
+              { label: '全部级别', value: 'all' },
+              { label: '一级事件', value: '1' },
+              { label: '二级事件', value: '2' },
+              { label: '三级事件', value: '3' },
+              { label: '四级事件', value: '4' },
+            ]}
+          />
+        </Space>
+      </div>
+      <Line
+        data={situationChartData}
+        xField="monthLabel"
+        yField="count"
+        height={220}
+        smooth
+        color="#1890ff"
+        point={{ size: 4, shape: 'circle' }}
+        areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' }}
+        xAxis={{ label: { style: { fontSize: 12 } } }}
+        yAxis={{
+          label: { style: { fontSize: 11 } },
+          grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
+        }}
+      />
+    </div>
+  );
 
-      <Card
-        title={<span style={{ fontSize: 16, fontWeight: 600 }}>预测预警</span>}
-        extra={<Text type="secondary" style={{ fontSize: 12 }}>数据更新时间：{dayjs().subtract(1, 'day').format('YYYY-MM-DD')}</Text>}
-        className="prediction-card"
-        style={{ marginBottom: 24 }}
-        styles={{ body: { padding: 16 } }}
-      >
-        <Row gutter={[16, 16]}>
-          {/* 1. 重复报警 */}
-          <Col span={8}>
-            <Card
-              className="warning-card"
-              hoverable
-              style={{ background: '#fff', height: '100%', borderRadius: 8 }}
-              styles={{ body: { padding: '16px 20px' } }}
-              onClick={() => handleWarningClick('repeatEvents')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                  <FileTextOutlined style={{ fontSize: 16, color: '#fff' }} />
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>重复报警</span>
-                <Tooltip title="重复报警：同一事件被多次重复上报的预警提醒">
-                  <QuestionCircleOutlined style={{ fontSize: 14, color: '#9ca3af', marginLeft: 6, cursor: 'help' }} />
-                </Tooltip>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.repeatEvents.dailyNew}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.repeatEvents.weeklyNew}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.repeatEvents.monthlyNew}</div>
-                </div>
-              </div>
-            </Card>
-          </Col>
-
-          {/* 2. 重点人员报警 */}
-          <Col span={8}>
-            <Card
-              className="warning-card"
-              hoverable
-              style={{ background: '#fff', height: '100%', borderRadius: 8 }}
-              styles={{ body: { padding: '16px 20px' } }}
-              onClick={() => handleWarningClick('keyPerson')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F97316', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                  <WarningOutlined style={{ fontSize: 16, color: '#fff' }} />
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>重点人员报警</span>
-                <Tooltip title="重点人员报警：已标记的重点人员产生新事件的预警提醒">
-                  <QuestionCircleOutlined style={{ fontSize: 14, color: '#9ca3af', marginLeft: 6, cursor: 'help' }} />
-                </Tooltip>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>当日报警</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.keyPerson.dailyAlarm}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>本周报警</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.keyPerson.weeklyAlarm}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>当月报警</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.keyPerson.monthlyAlarm}</div>
-                </div>
-              </div>
-            </Card>
-          </Col>
-
-          {/* 3. 多人一事预警 */}
-          <Col span={8}>
-            <Card
-              className="warning-card"
-              hoverable
-              style={{ background: '#fff', height: '100%', borderRadius: 8 }}
-              styles={{ body: { padding: '16px 20px' } }}
-              onClick={() => handleWarningClick('multiPersonEvent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                  <DatabaseOutlined style={{ fontSize: 16, color: '#fff' }} />
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>多人一事预警</span>
-                <Tooltip title="活跃事件集合：在统计周期内有新事件加入的事件集合数量">
-                  <QuestionCircleOutlined style={{ fontSize: 14, color: '#9ca3af', marginLeft: 6, cursor: 'help' }} />
-                </Tooltip>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>当日活跃</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.multiPersonEvent.dailyActive}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>本周活跃</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.multiPersonEvent.weeklyActive}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>本月活跃</div>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#1f2937' }}>{predictionData.multiPersonEvent.monthlyActive}</div>
-                </div>
-              </div>
-            </Card>
-          </Col>
-
-        </Row>
-      </Card>
-
-      {/* 每日检测 + 问题聚焦 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+  // 渲染预测预警内容
+  const renderPredictionContent = () => (
+    <div>
+      <Row gutter={[16, 16]}>
+        {/* 一事多次 */}
         <Col span={12}>
           <Card
-            title={<span style={{ fontSize: 18, fontWeight: 600 }}>📅 每日检测</span>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>数据更新时间：{dayjs().subtract(1, 'day').format('YYYY-MM-DD')}</Text>}
-            style={{ height: '100%' }}
+            hoverable
+            style={{ background: '#fff', borderRadius: 8 }}
+            styles={{ body: { padding: '16px 20px' } }}
           >
-            <Table
-              dataSource={dailyTopicData}
-              size="small"
-              pagination={false}
-              rowKey="id"
-              scroll={{ y: 380 }}
-              columns={[
-                {
-                  title: '排名',
-                  key: 'rank',
-                  width: 60,
-                  align: 'center',
-                  render: (_, __, index) => (
-                    <Tag color={index < 3 ? 'red' : index < 6 ? 'orange' : 'default'}>{index + 1}</Tag>
-                  ),
-                },
-                {
-                  title: '事件主题',
-                  dataIndex: 'name',
-                  key: 'name',
-                  width: 120,
-                  render: (name) => (
-                    <Button type="link" style={{ padding: 0 }}>{name}</Button>
-                  ),
-                },
-                {
-                  title: '事件总数',
-                  dataIndex: 'totalCount',
-                  key: 'totalCount',
-                  width: 90,
-                  align: 'right',
-                  render: (count) => <Text strong>{count.toLocaleString()}</Text>,
-                },
-                {
-                  title: '当月新增',
-                  dataIndex: 'monthlyNew',
-                  key: 'monthlyNew',
-                  width: 90,
-                  align: 'right',
-                  render: (count) => <Text style={{ color: '#52c41a' }}>+{count}</Text>,
-                },
-                {
-                  title: '本周新增',
-                  dataIndex: 'weeklyNew',
-                  key: 'weeklyNew',
-                  width: 90,
-                  align: 'right',
-                  render: (count) => <Text style={{ color: '#faad14' }}>+{count}</Text>,
-                },
-                {
-                  title: '当日新增',
-                  dataIndex: 'dailyNew',
-                  key: 'dailyNew',
-                  width: 90,
-                  align: 'right',
-                  render: (count) => <Text strong style={{ color: '#1890ff' }}>+{count}</Text>,
-                },
-              ]}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <FileTextOutlined style={{ fontSize: 14, color: '#fff' }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一事多次</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.dailyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.weeklyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.monthlyNew}</div>
+              </div>
+            </div>
           </Card>
         </Col>
-
+        {/* 一地多事 */}
         <Col span={12}>
           <Card
-            title={<span style={{ fontSize: 18, fontWeight: 600 }}>🔍 问题聚焦</span>}
-            extra={
-              <Button
-                type="primary"
-                size="small"
-              >
-                环比涨幅
-              </Button>
-            }
-            className="issue-cluster-card"
-            style={{ height: '100%' }}
+            hoverable
+            style={{ background: '#fff', borderRadius: 8 }}
+            styles={{ body: { padding: '16px 20px' } }}
           >
-            <div style={{ height: 400, position: 'relative' }}>
-              {renderKnowledgeGraph()}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <DatabaseOutlined style={{ fontSize: 14, color: '#fff' }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一地多事</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.dailyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.weeklyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.monthlyNew}</div>
+              </div>
+            </div>
+          </Card>
+        </Col>
+        {/* 一人多事 */}
+        <Col span={12}>
+          <Card
+            hoverable
+            style={{ background: '#fff', borderRadius: 8 }}
+            styles={{ body: { padding: '16px 20px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F97316', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <WarningOutlined style={{ fontSize: 14, color: '#fff' }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一人多事</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.dailyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.weeklyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.monthlyNew}</div>
+              </div>
+            </div>
+          </Card>
+        </Col>
+        {/* 多人一事 */}
+        <Col span={12}>
+          <Card
+            hoverable
+            style={{ background: '#fff', borderRadius: 8 }}
+            styles={{ body: { padding: '16px 20px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <DatabaseOutlined style={{ fontSize: 14, color: '#fff' }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>多人一事</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.dailyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.weeklyNew}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.monthlyNew}</div>
+              </div>
             </div>
           </Card>
         </Col>
       </Row>
+    </div>
+  );
 
-      {/* 态势分析 + 闭环监测 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={12}>
+  // 渲染闭环监测表格
+  const renderClosedLoopTable = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16, gap: 8 }}>
+        <Button type={closedLoopTab === 'daily' ? 'primary' : 'default'} size="small" onClick={() => setClosedLoopTab('daily')}>日常监测</Button>
+        <Button type={closedLoopTab === 'weekly' ? 'primary' : 'default'} size="small" onClick={() => setClosedLoopTab('weekly')}>每日监测</Button>
+      </div>
+      <Table
+        dataSource={closedLoopTableData}
+        size="small"
+        pagination={{ pageSize: 5, showTotal: (total) => `共 ${total} 条` }}
+        rowKey="id"
+        columns={[
+          {
+            title: '排名',
+            dataIndex: 'rank',
+            key: 'rank',
+            width: 60,
+            align: 'center',
+          },
+          {
+            title: '事件主题',
+            dataIndex: 'topic',
+            key: 'topic',
+            render: (text) => <Button type="link" style={{ padding: 0, color: '#1890ff' }}>{text}</Button>,
+          },
+          {
+            title: '事件总数',
+            dataIndex: 'totalCount',
+            key: 'totalCount',
+            width: 100,
+            align: 'right',
+          },
+          {
+            title: '当日新增',
+            dataIndex: 'dailyNew',
+            key: 'dailyNew',
+            width: 100,
+            align: 'right',
+            render: (val) => <span style={{ color: '#52c41a' }}>+{val}</span>,
+          },
+          {
+            title: '本周新增',
+            dataIndex: 'weeklyNew',
+            key: 'weeklyNew',
+            width: 100,
+            align: 'right',
+            render: (val) => <span style={{ color: '#52c41a' }}>+{val}</span>,
+          },
+          {
+            title: '本月新增',
+            dataIndex: 'monthlyNew',
+            key: 'monthlyNew',
+            width: 100,
+            align: 'right',
+            render: (val) => <span style={{ color: '#faad14' }}>+{val}</span>,
+          },
+        ]}
+      />
+    </div>
+  );
+
+  // 渲染展开后的模块详情内容
+  const renderModuleContent = () => {
+    switch (activeModuleTab) {
+      case 'issueFocus':
+        return (
           <Card
-            title={<span style={{ fontSize: 18, fontWeight: 600 }}>📈 态势分析</span>}
-            className="situation-card"
-            style={{ height: '100%' }}
-          >
-            {/* 筛选器 */}
-            <div style={{ marginBottom: 16, padding: '12px', background: '#fafafa', borderRadius: 4 }}>
-              <Space align="center" wrap>
-                <Text style={{ fontSize: 13, color: '#666' }}>选择月份：</Text>
-                <RangePicker
-                  picker="month"
-                  style={{ width: 220 }}
-                  placeholder={['开始月份', '结束月份']}
-                  value={situationTimeRange}
-                  onChange={setSituationTimeRange}
-                  format="YYYY-MM"
-                />
-                <Text style={{ fontSize: 13, color: '#666', marginLeft: 16 }}>事件分类：</Text>
-                <Cascader
-                  style={{ width: 280 }}
-                  options={categoryOptions}
-                  value={situationCategory}
-                  onChange={setSituationCategory}
-                  placeholder="请选择事件分类"
-                  changeOnSelect
-                  showSearch
-                  displayRender={(labels) => {
-                    if (labels.length === 1) {
-                      return `${labels[0]} - 全部`;
-                    }
-                    return labels.join(' / ');
-                  }}
-                />
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}><FileTextOutlined style={{ marginRight: 8 }} />问题聚焦</span>}
+            extra={
+              <Space>
+                <Button type={graphMode === 'count' ? 'primary' : 'default'} size="small" onClick={() => setGraphMode('count')}>数据量</Button>
+                <Button type={graphMode === 'trend' ? 'primary' : 'default'} size="small" onClick={() => setGraphMode('trend')}>环比涨幅</Button>
+                <Tooltip title="收起">
+                  <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
+                </Tooltip>
               </Space>
-            </div>
+            }
+            style={{ borderRadius: 8 }}
+            styles={{ body: { minHeight: 280 } }}
+          >
+            {renderBubbleChart()}
+          </Card>
+        );
+      case 'situationAnalysis':
+        return (
+          <Card
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}><LineChartOutlined style={{ marginRight: 8 }} />态势分析</span>}
+            extra={
+              <Tooltip title="收起">
+                <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
+              </Tooltip>
+            }
+            style={{ borderRadius: 8 }}
+            styles={{ body: { minHeight: 280 } }}
+          >
+            {renderSituationChart()}
+          </Card>
+        );
+      case 'prediction':
+        return (
+          <Card
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}><AlertOutlined style={{ marginRight: 8 }} />预测预警</span>}
+            extra={
+              <Tooltip title="收起">
+                <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
+              </Tooltip>
+            }
+            style={{ borderRadius: 8 }}
+            styles={{ body: { minHeight: 280 } }}
+          >
+            {renderPredictionContent()}
+          </Card>
+        );
+      case 'closedLoop':
+        return (
+          <Card
+            title={<span style={{ fontSize: 16, fontWeight: 600 }}><SyncOutlined style={{ marginRight: 8 }} />闭环监测</span>}
+            extra={
+              <Tooltip title="收起">
+                <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
+              </Tooltip>
+            }
+            style={{ borderRadius: 8 }}
+            styles={{ body: { minHeight: 280 } }}
+          >
+            {renderClosedLoopTable()}
+          </Card>
+        );
+      default:
+        return null;
+    }
+  };
 
-            {/* 图表 */}
-            <div>
-              <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-                {(() => {
-                  const primaryCategory = situationCategory && situationCategory.length > 0 ? situationCategory[0] : 'disputes';
-                  const categoryLabel = categoryOptions.find(opt => opt.value === primaryCategory)?.label || '矛盾纠纷';
-                  if (situationCategory && situationCategory.length === 2) {
-                    // 选择了二级分类
-                    const secondaryLabel = categoryOptions
-                      .find(opt => opt.value === primaryCategory)
-                      ?.children?.find(child => child.value === situationCategory[1])?.label;
-                    return `${categoryLabel} - ${secondaryLabel}趋势`;
-                  }
-                  return `${categoryLabel} - 事件级别趋势`;
-                })()}
-              </Text>
-              {situationChartData.length > 0 ? (
+  return (
+    <div className="dashboard-container">
+      {/* 数据总览卡片 */}
+      <Card
+        className="overview-card"
+        title={<span style={{ fontSize: 18, fontWeight: 600 }}><DatabaseOutlined style={{ marginRight: 8, color: '#1890ff' }} />数据总览</span>}
+        style={{ marginBottom: 24 }}
+        extra={
+          <Button type="link" style={{ padding: 0 }} onClick={() => setTrendChartExpanded(!trendChartExpanded)}>
+            {trendChartExpanded ? '收起趋势图' : '展开趋势图'}
+          </Button>
+        }
+      >
+        <div style={{ display: 'flex', gap: 16 }}>
+          {/* 事件总数 */}
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <FileTextOutlined style={{ fontSize: 16, color: '#fff' }} />
+              </div>
+              <div style={{ color: '#666', fontSize: 13 }}>事件总数</div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>403,140</div>
+          </Card>
+          {/* 分析型事件 */}
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <DatabaseOutlined style={{ fontSize: 16, color: '#fff' }} />
+              </div>
+              <div style={{ color: '#666', fontSize: 13 }}>分析型事件</div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>156,892</div>
+          </Card>
+          {/* 本月事件 */}
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <FileTextOutlined style={{ fontSize: 16, color: '#fff' }} />
+              </div>
+              <div style={{ color: '#666', fontSize: 13 }}>本月事件</div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>784</div>
+          </Card>
+          {/* 本月同比增长 */}
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '12px 16px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <ArrowDownOutlined style={{ fontSize: 16, color: '#52c41a' }} />
+              </div>
+              <div style={{ color: '#52c41a', fontSize: 13 }}>本月同比增长</div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
+              <ArrowDownOutlined style={{ fontSize: 16, marginRight: 4 }} />-95.8%
+            </div>
+          </Card>
+          {/* 本月环比增长 */}
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '12px 16px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <ArrowDownOutlined style={{ fontSize: 16, color: '#52c41a' }} />
+              </div>
+              <div style={{ color: '#52c41a', fontSize: 13 }}>本月环比增长</div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
+              <ArrowDownOutlined style={{ fontSize: 16, marginRight: 4 }} />-49.0%
+            </div>
+          </Card>
+        </div>
+
+        {/* 月度变化趋势图 */}
+        <AnimatePresence>
+          {trendChartExpanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{ marginTop: 24, padding: '16px', background: '#fafafa', borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <Text strong style={{ fontSize: 16 }}>月度变化趋势</Text>
+                  <Select
+                    defaultValue="2025-01_2026-01"
+                    style={{ width: 180 }}
+                    options={[
+                      { label: '2025-01 至 2026-01', value: '2025-01_2026-01' },
+                      { label: '2024-01 至 2025-01', value: '2024-01_2025-01' },
+                      { label: '2023-01 至 2024-01', value: '2023-01_2024-01' },
+                    ]}
+                  />
+                </div>
                 <Line
-                  data={situationChartData}
-                  xField="monthLabel"
+                  data={(() => {
+                    // 生成25个月的月度数据
+                    const data = [];
+                    for (let i = 24; i >= 0; i--) {
+                      const month = dayjs().subtract(i, 'month');
+                      // 模拟数据：前面较高，后面较低
+                      const baseValue = i > 12 ? 22000 + Math.random() * 5000 : 3000 + Math.random() * 2000;
+                      data.push({
+                        month: month.format('YYYY-MM'),
+                        count: Math.floor(baseValue),
+                      });
+                    }
+                    return data;
+                  })()}
+                  xField="month"
                   yField="count"
-                  height={360}
+                  height={280}
                   smooth
                   color="#1890ff"
-                  point={{ size: 4, shape: 'circle' }}
+                  point={{ size: 3, shape: 'circle' }}
                   areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' }}
-                  xAxis={{ label: { style: { fontSize: 12 } } }}
+                  xAxis={{
+                    label: {
+                      style: { fontSize: 11 },
+                      autoRotate: true,
+                      autoHide: false,
+                    }
+                  }}
                   yAxis={{
                     label: { style: { fontSize: 11 } },
                     grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
                   }}
                 />
-              ) : (
-                <div style={{
-                  height: 360,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#999'
-                }}>
-                  暂无数据
-                </div>
-              )}
-            </div>
-          </Card>
-        </Col>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Card>
 
-        <Col span={12}>
-          <Card
-            title={<span style={{ fontSize: 18, fontWeight: 600 }}>🔄 闭环监测</span>}
-            className="closed-loop-card"
-            style={{ height: '100%' }}
-            extra={
-              <Space>
-                <Button
-                  type={closedLoopTab === 'daily' ? 'primary' : 'default'}
-                  size="small"
-                  onClick={() => setClosedLoopTab('daily')}
+      {/* 四个功能模块区域 - 使用 Framer Motion 实现 Magic Move */}
+      <LayoutGroup>
+        <div className={`modules-section ${modulesExpanded ? 'expanded' : ''}`} style={{ marginBottom: 24 }}>
+          {/* 展开状态：TAB卡片 + 详情内容 */}
+          {modulesExpanded && (
+            <>
+              {/* TAB卡片行 */}
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                {moduleConfig.map((module) => (
+                  <Col span={6} key={module.key}>
+                    <motion.div
+                      layoutId={`module-card-${module.key}`}
+                      onClick={() => setActiveModuleTab(module.key)}
+                      style={{
+                        borderRadius: 8,
+                        border: activeModuleTab === module.key ? '2px solid #1890ff' : '1px solid #f0f0f0',
+                        background: activeModuleTab === module.key ? '#e6f7ff' : '#fff',
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        boxShadow: activeModuleTab === module.key ? '0 4px 12px rgba(24, 144, 255, 0.2)' : '0 2px 8px rgba(0,0,0,0.06)',
+                      }}
+                      transition={{ type: 'spring', stiffness: 170, damping: 22 }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {/* 文字内容：使用淡入淡出，不使用 layoutId */}
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.3, duration: 0.35 }}
+                        >
+                          <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', marginBottom: 4 }}>
+                            {module.title}
+                          </div>
+                          <Space size={4}>
+                            {module.tags.slice(0, 2).map((tag, idx) => (
+                              <Tag key={idx} style={{ fontSize: 11, margin: 0, padding: '0 6px', borderRadius: 4 }}>{tag}</Tag>
+                            ))}
+                          </Space>
+                        </motion.div>
+                        {/* 图标：使用 layoutId 做位置/大小动画 */}
+                        <motion.div
+                          layoutId={`module-icon-${module.key}`}
+                          style={{
+                            width: 50,
+                            height: 45,
+                            background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                            borderRadius: 8,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                          transition={{ type: 'spring', stiffness: 170, damping: 22 }}
+                        >
+                          <motion.span
+                            initial={{ scale: 0.6, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.25, duration: 0.3 }}
+                            style={{ fontSize: 20, display: 'flex' }}
+                          >
+                            {module.icon}
+                          </motion.span>
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                  </Col>
+                ))}
+              </Row>
+
+              {/* 详情内容区 */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeModuleTab}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.35, delay: 0.1 }}
                 >
-                  当日
-                </Button>
-                <Button
-                  type={closedLoopTab === 'weekly' ? 'primary' : 'default'}
-                  size="small"
-                  onClick={() => setClosedLoopTab('weekly')}
-                >
-                  本周
-                </Button>
-                <Button
-                  type={closedLoopTab === 'monthly' ? 'primary' : 'default'}
-                  size="small"
-                  onClick={() => setClosedLoopTab('monthly')}
-                >
-                  本月
-                </Button>
-              </Space>
-            }
-          >
-            {/* 统计概览 */}
-            <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={12}>
-                <div style={{ textAlign: 'center', padding: '16px 0', background: '#e6f7ff', borderRadius: 8 }}>
-                  <div style={{ fontSize: 28, fontWeight: 'bold', color: '#1890ff' }}>{closedLoopData[closedLoopTab].closed}</div>
-                  <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{closedLoopTab === 'daily' ? '当日' : closedLoopTab === 'weekly' ? '本周' : '本月'}办结</div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ textAlign: 'center', padding: '16px 0', background: '#fff7e6', borderRadius: 8 }}>
-                  <div style={{ fontSize: 28, fontWeight: 'bold', color: '#fa8c16' }}>{closedLoopData[closedLoopTab].pending}</div>
-                  <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>待办结</div>
-                </div>
-              </Col>
+                  {renderModuleContent()}
+                </motion.div>
+              </AnimatePresence>
+            </>
+          )}
+
+          {/* 收起状态：大卡片 2x2 布局 */}
+          {!modulesExpanded && (
+            <Row gutter={[16, 16]}>
+              {moduleConfig.map((module) => (
+                <Col span={12} key={module.key}>
+                  <motion.div
+                    layoutId={`module-card-${module.key}`}
+                    onClick={() => handleModuleClick(module.key)}
+                    whileHover={{ y: -4, boxShadow: '0 8px 24px rgba(24, 144, 255, 0.15)' }}
+                    style={{
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      background: 'linear-gradient(135deg, #f8faff 0%, #fff 100%)',
+                      border: '1px solid #e8f0fe',
+                      padding: 24,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    }}
+                    transition={{ type: 'spring', stiffness: 170, damping: 22 }}
+                  >
+                    <Row>
+                      <Col span={16}>
+                        {/* 文字内容：使用淡入淡出 */}
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.3, duration: 0.35 }}
+                        >
+                          <div style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', marginBottom: 8 }}>
+                            {module.title}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16, lineHeight: 1.6 }}>{module.description}</div>
+                          <Space size={8}>
+                            {module.tags.map((tag, idx) => (
+                              <Tag key={idx} style={{ fontSize: 12, padding: '2px 10px', borderRadius: 12, background: '#f0f5ff', border: '1px solid #d6e4ff', color: '#1890ff' }}>{tag}</Tag>
+                            ))}
+                          </Space>
+                          <div style={{ marginTop: 16 }}>
+                            <Button type="link" style={{ padding: 0, color: '#52c41a', fontWeight: 500 }}>查看详情</Button>
+                          </div>
+                        </motion.div>
+                      </Col>
+                      <Col span={8} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {/* 图标：使用 layoutId 做位置/大小动画 */}
+                        <motion.div
+                          layoutId={`module-icon-${module.key}`}
+                          style={{
+                            width: 120,
+                            height: 120,
+                            background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                            borderRadius: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          transition={{ type: 'spring', stiffness: 170, damping: 22 }}
+                        >
+                          <motion.span
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.25, duration: 0.3 }}
+                            style={{ fontSize: 48, display: 'flex' }}
+                          >
+                            {module.icon}
+                          </motion.span>
+                        </motion.div>
+                      </Col>
+                    </Row>
+                  </motion.div>
+                </Col>
+              ))}
             </Row>
+          )}
+        </div>
+      </LayoutGroup>
 
-            {/* 办结类型分布 */}
-            <div style={{ padding: '16px', background: '#fafafa', borderRadius: 8, marginBottom: 16 }}>
-              <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 16 }}>
-                办结类型分布（根据文本解析标准提供）
-              </Text>
-              {(() => {
-                const currentData = closedLoopData[closedLoopTab];
-                const total = currentData.phased + currentData.simplified + currentData.false;
-                const phasedPercent = total > 0 ? (currentData.phased / total * 100).toFixed(0) : 0;
-                const simplifiedPercent = total > 0 ? (currentData.simplified / total * 100).toFixed(0) : 0;
-                const falsePercent = total > 0 ? (currentData.false / total * 100).toFixed(0) : 0;
-                return (
-                  <Space direction="vertical" style={{ width: '100%' }} size={16}>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <Text><CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />阶段性办结</Text>
-                        <Text strong style={{ color: '#52c41a' }}>{currentData.phased} 件</Text>
-                      </div>
-                      <div style={{ background: '#f0f0f0', borderRadius: 4, height: 8 }}>
-                        <div style={{ background: '#52c41a', borderRadius: 4, height: 8, width: `${phasedPercent}%` }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <Text><ClockCircleOutlined style={{ color: '#faad14', marginRight: 8 }} />简化性办结</Text>
-                        <Text strong style={{ color: '#faad14' }}>{currentData.simplified} 件</Text>
-                      </div>
-                      <div style={{ background: '#f0f0f0', borderRadius: 4, height: 8 }}>
-                        <div style={{ background: '#faad14', borderRadius: 4, height: 8, width: `${simplifiedPercent}%` }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <Text><WarningOutlined style={{ color: '#ff4d4f', marginRight: 8 }} />虚假性办结</Text>
-                        <Text strong style={{ color: '#ff4d4f' }}>{currentData.false} 件</Text>
-                      </div>
-                      <div style={{ background: '#f0f0f0', borderRadius: 4, height: 8 }}>
-                        <div style={{ background: '#ff4d4f', borderRadius: 4, height: 8, width: `${falsePercent}%` }} />
-                      </div>
-                    </div>
-                  </Space>
-                );
-              })()}
-            </div>
+      {/* 底部标语 */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #1890ff 0%, #36cfc9 100%)',
+          borderRadius: 12,
+          padding: '40px 0',
+          textAlign: 'center',
+          marginBottom: 0,
+        }}
+      >
+        <div style={{ fontSize: 28, fontWeight: 600, color: '#fff', letterSpacing: 8 }}>
+          数据瞰海曙 &nbsp; 治理促卓越
+        </div>
+      </div>
 
-            {/* 办结趋势图 */}
-            <div style={{ padding: '16px', background: '#fafafa', borderRadius: 8 }}>
-              <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-                {closedLoopTab === 'daily' ? '今日办结趋势' : closedLoopTab === 'weekly' ? '本周办结趋势' : '本月办结趋势'}
-              </Text>
-              <Line
-                data={closedLoopData[closedLoopTab].trend}
-                xField="time"
-                yField="count"
-                height={140}
-                smooth
-                color="#1890ff"
-                point={{ size: 3, shape: 'circle' }}
-                areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' }}
-                xAxis={{ label: { style: { fontSize: 11 } } }}
-                yAxis={{
-                  label: { style: { fontSize: 11 } },
-                  grid: { line: { style: { stroke: '#f0f0f0', lineDash: [4, 4] } } }
-                }}
-              />
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
+      {/* 主题分析Drawer */}
       <Drawer
         title={`主题分析 - ${selectedIssue?.name}`}
         placement="right"
