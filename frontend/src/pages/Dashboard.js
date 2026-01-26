@@ -43,6 +43,7 @@ const Dashboard = () => {
 
   // 数据总览趋势图展开状态
   const [trendChartExpanded, setTrendChartExpanded] = useState(false);
+  const [trendChartTab, setTrendChartTab] = useState('total'); // 'total' | 'analysis'
 
   // 数据总览筛选条件
   const [overviewTimeRange, setOverviewTimeRange] = useState(null);
@@ -59,7 +60,7 @@ const Dashboard = () => {
       title: '问题聚焦',
       description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
       tags: ['知识图谱', '高频热点'],
-      icon: <AimOutlined style={{ fontSize: 20, color: '#1890ff' }} />,
+      icon: <AimOutlined style={{ fontSize: 24, color: '#1890ff' }} />,
       image: '/images/issue-focus.png',
     },
     {
@@ -67,7 +68,7 @@ const Dashboard = () => {
       title: '态势分析',
       description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
       tags: ['态势', '趋势'],
-      icon: <LineChartOutlined style={{ fontSize: 20, color: '#52c41a' }} />,
+      icon: <LineChartOutlined style={{ fontSize: 24, color: '#52c41a' }} />,
       image: '/images/situation-analysis.png',
     },
     {
@@ -75,7 +76,7 @@ const Dashboard = () => {
       title: '预测预警',
       description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
       tags: ['人群', '地域', '类型'],
-      icon: <AlertOutlined style={{ fontSize: 20, color: '#faad14' }} />,
+      icon: <AlertOutlined style={{ fontSize: 24, color: '#faad14' }} />,
       image: '/images/prediction.png',
     },
     {
@@ -83,7 +84,7 @@ const Dashboard = () => {
       title: '闭环监测',
       description: '自动识别同一报案人或同一位置的反复诉求，让"办而不结"的现象无处遁形',
       tags: ['实质性闭环核查', '文本解析'],
-      icon: <SyncOutlined style={{ fontSize: 20, color: '#722ed1' }} />,
+      icon: <SyncOutlined style={{ fontSize: 24, color: '#722ed1' }} />,
       image: '/images/closed-loop.png',
     },
   ];
@@ -509,10 +510,10 @@ const Dashboard = () => {
                   }}
                   className="bubble-item"
                 >
-                  <div style={{ fontSize: 11, fontWeight: 'bold', textAlign: 'center', padding: '0 4px', lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 'bold', textAlign: 'center', padding: '0 4px', lineHeight: 1.2 }}>
                     {bubble.name.length > 6 ? bubble.name.slice(0, 6) + '...' : bubble.name}
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 'bold' }}>
+                  <div style={{ fontSize: 14, fontWeight: 'bold' }}>
                     {bubble.trend === 0 ? '0%' : `${bubble.trend > 0 ? '+' : ''}${bubble.trend}%`}
                   </div>
                 </div>
@@ -559,11 +560,11 @@ const Dashboard = () => {
             zIndex: 10,
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>{centerTopic.name}</div>
-          <div style={{ fontSize: 20, fontWeight: 'bold' }}>
+          <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 4 }}>{centerTopic.name}</div>
+          <div style={{ fontSize: 24, fontWeight: 'bold' }}>
             {`${centerTopic.trend > 0 ? '+' : ''}${centerTopic.trend}%`}
           </div>
-          <div style={{ fontSize: 11, opacity: 0.9 }}>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>
             环比
           </div>
         </div>
@@ -603,13 +604,13 @@ const Dashboard = () => {
                 color: 'white',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                 transition: 'all 0.3s',
-                fontSize: 12,
+                fontSize: 14,
               }}
             >
               <div style={{ fontWeight: 'bold', marginBottom: 2, textAlign: 'center', padding: '0 4px' }}>
                 {topic.name}
               </div>
-              <div style={{ fontSize: 14, fontWeight: 'bold' }}>
+              <div style={{ fontSize: 16, fontWeight: 'bold' }}>
                 {`${topic.trend > 0 ? '+' : ''}${topic.trend}%`}
               </div>
             </div>
@@ -625,11 +626,13 @@ const Dashboard = () => {
       {/* 筛选器 */}
       <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fafafa', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <Space align="center">
-          <Text style={{ fontSize: 13, color: '#666' }}>选择月段</Text>
+          <Text style={{ fontSize: 15, color: '#666' }}>选择时段</Text>
           <Select
             style={{ width: 120 }}
-            defaultValue="12months"
+            defaultValue="30days"
             options={[
+              { label: '近7天', value: '7days' },
+              { label: '近30天', value: '30days' },
               { label: '近3个月', value: '3months' },
               { label: '近6个月', value: '6months' },
               { label: '近12个月', value: '12months' },
@@ -637,18 +640,7 @@ const Dashboard = () => {
           />
         </Space>
         <Space align="center">
-          <Text style={{ fontSize: 13, color: '#666' }}>事件分类</Text>
-          <Cascader
-            style={{ width: 200 }}
-            options={categoryOptions}
-            value={situationCategory}
-            onChange={setSituationCategory}
-            placeholder="请选择分类"
-            changeOnSelect
-          />
-        </Space>
-        <Space align="center">
-          <Text style={{ fontSize: 13, color: '#666' }}>选择级别</Text>
+          <Text style={{ fontSize: 15, color: '#666' }}>选择级别</Text>
           <Select
             style={{ width: 120 }}
             defaultValue="all"
@@ -692,23 +684,23 @@ const Dashboard = () => {
             styles={{ body: { padding: '16px 20px' } }}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <FileTextOutlined style={{ fontSize: 14, color: '#fff' }} />
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <FileTextOutlined style={{ fontSize: 18, color: '#fff' }} />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一事多次</span>
+              <span style={{ fontSize: 18, fontWeight: 500, color: '#1f2937' }}>一事多次</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.dailyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.dailyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.weeklyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.weeklyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.monthlyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneEventMultiTimes.monthlyNew}</div>
               </div>
             </div>
           </Card>
@@ -721,23 +713,23 @@ const Dashboard = () => {
             styles={{ body: { padding: '16px 20px' } }}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <DatabaseOutlined style={{ fontSize: 14, color: '#fff' }} />
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <DatabaseOutlined style={{ fontSize: 18, color: '#fff' }} />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一地多事</span>
+              <span style={{ fontSize: 18, fontWeight: 500, color: '#1f2937' }}>一地多事</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.dailyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.dailyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.weeklyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.weeklyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.monthlyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.oneLocationMultiEvents.monthlyNew}</div>
               </div>
             </div>
           </Card>
@@ -750,23 +742,23 @@ const Dashboard = () => {
             styles={{ body: { padding: '16px 20px' } }}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F97316', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <WarningOutlined style={{ fontSize: 14, color: '#fff' }} />
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F97316', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <WarningOutlined style={{ fontSize: 18, color: '#fff' }} />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>一人多事</span>
+              <span style={{ fontSize: 18, fontWeight: 500, color: '#1f2937' }}>一人多事</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.dailyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.dailyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.weeklyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.weeklyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.monthlyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.onePersonMultiEvents.monthlyNew}</div>
               </div>
             </div>
           </Card>
@@ -779,23 +771,23 @@ const Dashboard = () => {
             styles={{ body: { padding: '16px 20px' } }}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <DatabaseOutlined style={{ fontSize: 14, color: '#fff' }} />
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <DatabaseOutlined style={{ fontSize: 18, color: '#fff' }} />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500, color: '#1f2937' }}>多人一事</span>
+              <span style={{ fontSize: 18, fontWeight: 500, color: '#1f2937' }}>多人一事</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.dailyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>当日新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.dailyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.weeklyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本周新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.weeklyNew}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.monthlyNew}</div>
+                <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>本月新增</div>
+                <div style={{ fontSize: 28, fontWeight: 600, color: '#1f2937' }}>{predictionData.warningCategories.multiPersonOneEvent.monthlyNew}</div>
               </div>
             </div>
           </Card>
@@ -872,15 +864,11 @@ const Dashboard = () => {
       case 'issueFocus':
         return (
           <Card
-            title={<span style={{ fontSize: 16, fontWeight: 600 }}><FileTextOutlined style={{ marginRight: 8 }} />问题聚焦</span>}
+            title={<span style={{ fontSize: 20, fontWeight: 600 }}><FileTextOutlined style={{ marginRight: 8 }} />问题聚焦</span>}
             extra={
-              <Space>
-                <Button type={graphMode === 'count' ? 'primary' : 'default'} size="small" onClick={() => setGraphMode('count')}>数据量</Button>
-                <Button type={graphMode === 'trend' ? 'primary' : 'default'} size="small" onClick={() => setGraphMode('trend')}>环比涨幅</Button>
-                <Tooltip title="收起">
-                  <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
-                </Tooltip>
-              </Space>
+              <Tooltip title="收起">
+                <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
+              </Tooltip>
             }
             style={{ borderRadius: 8 }}
             styles={{ body: { minHeight: 280 } }}
@@ -891,7 +879,7 @@ const Dashboard = () => {
       case 'situationAnalysis':
         return (
           <Card
-            title={<span style={{ fontSize: 16, fontWeight: 600 }}><LineChartOutlined style={{ marginRight: 8 }} />态势分析</span>}
+            title={<span style={{ fontSize: 20, fontWeight: 600 }}><LineChartOutlined style={{ marginRight: 8 }} />态势分析</span>}
             extra={
               <Tooltip title="收起">
                 <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
@@ -906,7 +894,7 @@ const Dashboard = () => {
       case 'prediction':
         return (
           <Card
-            title={<span style={{ fontSize: 16, fontWeight: 600 }}><AlertOutlined style={{ marginRight: 8 }} />预测预警</span>}
+            title={<span style={{ fontSize: 20, fontWeight: 600 }}><AlertOutlined style={{ marginRight: 8 }} />预测预警</span>}
             extra={
               <Tooltip title="收起">
                 <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
@@ -921,7 +909,7 @@ const Dashboard = () => {
       case 'closedLoop':
         return (
           <Card
-            title={<span style={{ fontSize: 16, fontWeight: 600 }}><SyncOutlined style={{ marginRight: 8 }} />闭环监测</span>}
+            title={<span style={{ fontSize: 20, fontWeight: 600 }}><SyncOutlined style={{ marginRight: 8 }} />闭环监测</span>}
             extra={
               <Tooltip title="收起">
                 <Button type="text" icon={<FullscreenExitOutlined />} onClick={() => setModulesExpanded(false)} />
@@ -943,7 +931,7 @@ const Dashboard = () => {
       {/* 数据总览卡片 */}
       <Card
         className="overview-card"
-        title={<span style={{ fontSize: 18, fontWeight: 600 }}><DatabaseOutlined style={{ marginRight: 8, color: '#1890ff' }} />数据总览</span>}
+        title={<span style={{ fontSize: 22, fontWeight: 600 }}><DatabaseOutlined style={{ marginRight: 8, color: '#1890ff' }} />数据总览</span>}
         style={{ marginBottom: 24 }}
         extra={
           <Button type="link" style={{ padding: 0 }} onClick={() => setTrendChartExpanded(!trendChartExpanded)}>
@@ -953,57 +941,57 @@ const Dashboard = () => {
       >
         <div style={{ display: 'flex', gap: 16 }}>
           {/* 事件总数 */}
-          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <FileTextOutlined style={{ fontSize: 16, color: '#fff' }} />
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '16px 20px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <FileTextOutlined style={{ fontSize: 20, color: '#fff' }} />
               </div>
-              <div style={{ color: '#666', fontSize: 13 }}>事件总数</div>
+              <div style={{ color: '#666', fontSize: 16 }}>事件总数</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>403,140</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#1f2937' }}>403,140</div>
           </Card>
           {/* 分析型事件 */}
-          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <DatabaseOutlined style={{ fontSize: 16, color: '#fff' }} />
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '16px 20px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <DatabaseOutlined style={{ fontSize: 20, color: '#fff' }} />
               </div>
-              <div style={{ color: '#666', fontSize: 13 }}>分析型事件</div>
+              <div style={{ color: '#666', fontSize: 16 }}>分析型事件</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>156,892</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#1f2937' }}>156,892</div>
           </Card>
           {/* 本月事件 */}
-          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '12px 16px' } }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <FileTextOutlined style={{ fontSize: 16, color: '#fff' }} />
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#e6f4ff' }} styles={{ body: { padding: '16px 20px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <FileTextOutlined style={{ fontSize: 20, color: '#fff' }} />
               </div>
-              <div style={{ color: '#666', fontSize: 13 }}>本月事件</div>
+              <div style={{ color: '#666', fontSize: 16 }}>本月事件</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#1f2937' }}>784</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#1f2937' }}>784</div>
           </Card>
           {/* 本月同比增长 */}
-          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '12px 16px' } }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <ArrowDownOutlined style={{ fontSize: 16, color: '#52c41a' }} />
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '16px 20px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <ArrowDownOutlined style={{ fontSize: 20, color: '#52c41a' }} />
               </div>
-              <div style={{ color: '#52c41a', fontSize: 13 }}>本月同比增长</div>
+              <div style={{ color: '#52c41a', fontSize: 16 }}>本月同比增长</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
-              <ArrowDownOutlined style={{ fontSize: 16, marginRight: 4 }} />-95.8%
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
+              <ArrowDownOutlined style={{ fontSize: 20, marginRight: 4 }} />-95.8%
             </div>
           </Card>
           {/* 本月环比增长 */}
-          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '12px 16px' } }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <ArrowDownOutlined style={{ fontSize: 16, color: '#52c41a' }} />
+          <Card className="stat-card" hoverable style={{ flex: 1, background: '#f6ffed' }} styles={{ body: { padding: '16px 20px' } }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#d9f7be', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <ArrowDownOutlined style={{ fontSize: 20, color: '#52c41a' }} />
               </div>
-              <div style={{ color: '#52c41a', fontSize: 13 }}>本月环比增长</div>
+              <div style={{ color: '#52c41a', fontSize: 16 }}>本月环比增长</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
-              <ArrowDownOutlined style={{ fontSize: 16, marginRight: 4 }} />-49.0%
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#52c41a', display: 'flex', alignItems: 'center' }}>
+              <ArrowDownOutlined style={{ fontSize: 20, marginRight: 4 }} />-49.0%
             </div>
           </Card>
         </div>
@@ -1019,8 +1007,26 @@ const Dashboard = () => {
               style={{ overflow: 'hidden' }}
             >
               <div style={{ marginTop: 24, padding: '16px', background: '#fafafa', borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <Text strong style={{ fontSize: 16 }}>月度变化趋势</Text>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <Text strong style={{ fontSize: 18 }}>月度变化趋势</Text>
+                    <Space>
+                      <Button
+                        type={trendChartTab === 'total' ? 'primary' : 'default'}
+                        size="small"
+                        onClick={() => setTrendChartTab('total')}
+                      >
+                        事件总数
+                      </Button>
+                      <Button
+                        type={trendChartTab === 'analysis' ? 'primary' : 'default'}
+                        size="small"
+                        onClick={() => setTrendChartTab('analysis')}
+                      >
+                        分析型事件
+                      </Button>
+                    </Space>
+                  </div>
                   <Select
                     defaultValue="2025-01_2026-01"
                     style={{ width: 180 }}
@@ -1031,14 +1037,22 @@ const Dashboard = () => {
                     ]}
                   />
                 </div>
+                <div style={{ marginBottom: 16, fontSize: 15, color: '#666' }}>
+                  2025年1月至2026年1月期间，事件总量 <Text strong style={{ color: '#1890ff', fontSize: 16 }}>403,140</Text> 件，其中分析事件 <Text strong style={{ color: '#1890ff', fontSize: 16 }}>156,892</Text> 件
+                </div>
                 <Line
                   data={(() => {
                     // 生成25个月的月度数据
                     const data = [];
                     for (let i = 24; i >= 0; i--) {
                       const month = dayjs().subtract(i, 'month');
-                      // 模拟数据：前面较高，后面较低
-                      const baseValue = i > 12 ? 22000 + Math.random() * 5000 : 3000 + Math.random() * 2000;
+                      // 模拟数据：事件总数较高，分析型事件较低
+                      let baseValue;
+                      if (trendChartTab === 'total') {
+                        baseValue = i > 12 ? 22000 + Math.random() * 5000 : 3000 + Math.random() * 2000;
+                      } else {
+                        baseValue = i > 12 ? 8000 + Math.random() * 2000 : 1000 + Math.random() * 800;
+                      }
                       data.push({
                         month: month.format('YYYY-MM'),
                         count: Math.floor(baseValue),
@@ -1050,9 +1064,9 @@ const Dashboard = () => {
                   yField="count"
                   height={280}
                   smooth
-                  color="#1890ff"
+                  color={trendChartTab === 'total' ? '#1890ff' : '#722ed1'}
                   point={{ size: 3, shape: 'circle' }}
-                  areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' }}
+                  areaStyle={{ fill: trendChartTab === 'total' ? 'l(270) 0:#ffffff 0.5:#e6f7ff 1:#bae7ff' : 'l(270) 0:#ffffff 0.5:#f9f0ff 1:#efdbff' }}
                   xAxis={{
                     label: {
                       style: { fontSize: 11 },
@@ -1101,12 +1115,12 @@ const Dashboard = () => {
                           animate={{ opacity: 1 }}
                           transition={{ delay: 0.3, duration: 0.35 }}
                         >
-                          <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', marginBottom: 4 }}>
+                          <div style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', marginBottom: 6 }}>
                             {module.title}
                           </div>
                           <Space size={4}>
                             {module.tags.slice(0, 2).map((tag, idx) => (
-                              <Tag key={idx} style={{ fontSize: 11, margin: 0, padding: '0 6px', borderRadius: 4 }}>{tag}</Tag>
+                              <Tag key={idx} style={{ fontSize: 13, margin: 0, padding: '2px 8px', borderRadius: 4 }}>{tag}</Tag>
                             ))}
                           </Space>
                         </motion.div>
@@ -1183,13 +1197,13 @@ const Dashboard = () => {
                           animate={{ opacity: 1 }}
                           transition={{ delay: 0.3, duration: 0.35 }}
                         >
-                          <div style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', marginBottom: 8 }}>
+                          <div style={{ fontSize: 22, fontWeight: 600, color: '#1f2937', marginBottom: 10 }}>
                             {module.title}
                           </div>
-                          <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16, lineHeight: 1.6 }}>{module.description}</div>
+                          <div style={{ fontSize: 15, color: '#6b7280', marginBottom: 16, lineHeight: 1.6 }}>{module.description}</div>
                           <Space size={8}>
                             {module.tags.map((tag, idx) => (
-                              <Tag key={idx} style={{ fontSize: 12, padding: '2px 10px', borderRadius: 12, background: '#f0f5ff', border: '1px solid #d6e4ff', color: '#1890ff' }}>{tag}</Tag>
+                              <Tag key={idx} style={{ fontSize: 14, padding: '4px 12px', borderRadius: 12, background: '#f0f5ff', border: '1px solid #d6e4ff', color: '#1890ff' }}>{tag}</Tag>
                             ))}
                           </Space>
                           <div style={{ marginTop: 16 }}>
@@ -1241,7 +1255,7 @@ const Dashboard = () => {
           marginBottom: 0,
         }}
       >
-        <div style={{ fontSize: 28, fontWeight: 600, color: '#fff', letterSpacing: 8 }}>
+        <div style={{ fontSize: 36, fontWeight: 600, color: '#fff', letterSpacing: 10 }}>
           数据瞰海曙 &nbsp; 治理促卓越
         </div>
       </div>
